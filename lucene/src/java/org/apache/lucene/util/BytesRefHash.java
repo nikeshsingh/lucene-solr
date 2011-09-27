@@ -457,7 +457,7 @@ public final class BytesRefHash {
     hashSize = newSize;
     hashHalfSize = newSize / 2;
   }
-
+  
   /**
    * reinitializes the {@link BytesRefHash} after a previous {@link #clear()}
    * call. If {@link #clear()} has not been called previously this method has no
@@ -608,6 +608,210 @@ public final class BytesRefHash {
     @Override
     public Counter bytesUsed() {
       return bytesUsed;
+    }
+  }
+  public BytesRefHashView getView(Comparator<BytesRef> comp, BytesRefHashView previous, boolean sort) {
+    if (previous != null && previous.size() == size()) {
+      return previous;
+    }
+    return new BytesRefHashView(this, comp, previous, sort);
+  }
+  
+  public BytesRefHashView getView(Comparator<BytesRef> comp, boolean sort) {
+    return getView(comp, null, sort);
+  }
+  
+  // nocommit javadoc
+  // nocommit - add ram tracking?
+  public static final class BytesRefHashView {
+    private final ByteBlockPool pool;
+    private final int[] bytesStart;
+    private final int hashSize;
+    private final int hashMask;
+    private final int count;
+    private final int[] ords;
+    private final int[] sortedOrds;
+    private final Comparator<BytesRef> comp;
+    
+    public BytesRefHashView(BytesRefHash hash, Comparator<BytesRef> comp, BytesRefHashView previous, boolean sort) {
+      pool = hash.pool;
+      ords =  hash.ords;
+      count = hash.count;
+      bytesStart = hash.bytesStart;
+      hashSize = ords.length;
+      hashMask = hashSize -1;
+      this.comp = comp;
+      if (sort) {
+        sortedOrds = previous != null ? merge(previous) : sort(initSortedOrds(), 0, count-1);
+      } else {
+        sortedOrds = null;
+      }
+    }
+    
+    public boolean seekExact(BytesRef bytes, BytesRef spare) {
+
+      int code = bytes.hashCode();
+      assert bytesStart != null : "Bytesstart is null - not initialized";
+      // final position
+      int hashPos = code & hashMask;
+      int e = ords[hashPos];
+      /*
+       * we might see stale values in the ords array since we concurrently
+       * write. yet, if so we can check against the count and tread it as -1 if
+       * it is less than the count
+       */
+      if (e != -1 && e < count && !equals(e, bytes, spare)) {
+        // Conflict: keep searching different locations in
+        // the hash table.
+        final int inc = ((code >> 8) + code) | 1;
+        do {
+          code += inc;
+          hashPos = code & hashMask;
+          e = ords[hashPos];
+        } while (e != -1 && e < count && !equals(e, bytes, spare));
+      }
+      return e >= 0; 
+    }
+    
+    public int size() {
+      return count;
+    }
+    
+    public int next(int previous, BytesRef spare) {
+      if (sortedOrds == null) {
+        throw new UnsupportedOperationException("BytesRefHashView was opened unsorted");
+      }
+      final int[] sorted = sortedOrds;
+      final int next = previous +1;
+      if (next < count) {
+        pool.setBytesRef(spare, bytesStart[sorted[next]]); 
+        return next;
+      }
+      // nocommit is -1 good here?
+      return -1;
+    }
+    
+    public int seekCeil(BytesRef bytes, BytesRef spare) {
+      if (sortedOrds == null) {
+        throw new UnsupportedOperationException("BytesRefHashView was opened unsorted");
+      }
+      // do a binary search on the sorted array 
+      final int[] sorted = sortedOrds;
+      int low = 0;
+      int mid = 0;
+      int high = count-1;
+      while (low <= high) {
+        mid = (low + high) >>> 1;
+        pool.setBytesRef(spare, bytesStart[sorted[mid]]);
+        final int cmp = comp.compare(spare, bytes);
+        if (cmp < 0) {
+          low = mid + 1;
+        } else if (cmp > 0) {
+          high = mid - 1;
+        } else {
+          return mid;
+        }
+      }
+      // once we are here there is no way the values is in the hash table
+      assert comp.compare(spare, bytes) != 0;
+      return -(low + 1);
+    }
+    
+    private boolean equals(int ord, BytesRef b, BytesRef spare) {
+      return pool.setBytesRef(spare, bytesStart[ord]).bytesEquals(b);
+    }
+    
+    private int[] merge(final BytesRefHashView previous) {
+      int pCount = previous.count;
+      final int[] merged = new int[count];
+      final int delta = count - pCount;
+      // ords are continuous - just fill them up and sort the new values in place
+      for (int i = pCount; i < count; i++) {
+        merged[i] = i;
+      }
+      // sort all new entries
+      sort(merged, pCount, count-1);
+      final BytesRef bytes = new BytesRef();
+      final BytesRef spare = new BytesRef();
+      int sourceOffset = 0;
+      int targetOffset = 0;
+      // merge previously sorted values with new values 
+      for (int i = 0; i < delta; i++) {
+        int j = merged[pCount + i];
+        pool.setBytesRef(bytes, bytesStart[j]);
+        final int seekCeil = previous.seekCeil(bytes, spare);
+        assert seekCeil < 0 : "new value already exists in previous hash";
+        int insertAt = (-seekCeil-1);
+        
+        if (sourceOffset == insertAt) {
+          // insert in the same destination
+          merged[targetOffset++] = j;
+        } else {
+          assert insertAt > sourceOffset;
+          final int length = insertAt - sourceOffset;
+          // TODO maybe it's worth to loop if the num of values to merge is small here?
+          System.arraycopy(previous.sortedOrds, sourceOffset, merged, targetOffset, length);
+          targetOffset += length;
+          merged[targetOffset++] = j;
+          sourceOffset = insertAt;
+        }
+      }
+      if (sourceOffset < pCount) { // move the tail over if there is one
+        System.arraycopy(previous.sortedOrds, sourceOffset, merged, targetOffset, pCount - sourceOffset);
+      }
+      return merged;
+    }
+    
+    public int[] initSortedOrds() {
+      final int[] sortedOrds = new int[count];
+      // don't compact only iterate and add missing ordinals
+      for (int i = 0; i < sortedOrds.length; i++) {
+        sortedOrds[i] = i;
+      }
+      return sortedOrds;
+    }
+    
+    
+    private int[] sort(final int[] compact, int start, int end) {
+      new SorterTemplate() {
+        @Override
+        protected void swap(int i, int j) {
+          final int o = compact[i];
+          compact[i] = compact[j];
+          compact[j] = o;
+        }
+        
+        @Override
+        protected int compare(int i, int j) {
+          final int ord1 = compact[i], ord2 = compact[j];
+          assert bytesStart.length > ord1 && bytesStart.length > ord2;
+          return comp.compare(pool.setBytesRef(scratch1, bytesStart[ord1]),
+            pool.setBytesRef(scratch2, bytesStart[ord2]));
+        }
+
+        @Override
+        protected void setPivot(int i) {
+          final int ord = compact[i];
+          assert bytesStart.length > ord;
+          pool.setBytesRef(pivot, bytesStart[ord]);
+        }
+    
+        @Override
+        protected int comparePivot(int j) {
+          final int ord = compact[j];
+          assert bytesStart.length > ord;
+          return comp.compare(pivot,
+            pool.setBytesRef(scratch2, bytesStart[ord]));
+        }
+        
+        private final BytesRef pivot = new BytesRef(),
+          scratch1 = new BytesRef(), scratch2 = new BytesRef();
+      }.quickSort(start, end);
+      return compact;
+    }
+    
+    public int[] sortedOrds() {
+      return sortedOrds;
     }
   }
 }

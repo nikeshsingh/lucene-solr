@@ -135,7 +135,7 @@ public final class IntsRef implements Comparable<IntsRef> {
       if (i > offset) {
         sb.append(' ');
       }
-      sb.append(Integer.toHexString(ints[i]));
+      sb.append(ints[i]);
     }
     sb.append(']');
     return sb.toString();
