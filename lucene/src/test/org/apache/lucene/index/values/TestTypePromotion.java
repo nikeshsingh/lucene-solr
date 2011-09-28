@@ -280,27 +280,7 @@ public class TestTypePromotion extends LuceneTestCase {
     ReaderContext topReaderContext = reader.getTopReaderContext();
     ReaderContext[] children = topReaderContext.children();
     IndexDocValues docValues = children[0].reader.docValues("promote");
-    assertNull(docValues);
-//    ValuesEnum valuesEnum = docValues.getEnum();
-//    for (int i = 0; i < values.length; i++) {
-//      int nextDoc = valuesEnum.nextDoc();
-//      assertEquals(i, nextDoc);
-//      switch (type) {
-//      case Byte:
-//        assertEquals("" + i, values[i], valuesEnum.bytes().length);
-//        break;
-//      case Float:
-//        assertEquals("" + i, Double.longBitsToDouble(values[i]), valuesEnum
-//            .getFloat().get(), 0.0);
-//        break;
-//      case Int:
-//        assertEquals("" + i, values[i], valuesEnum.getInt().get());
-//      default:
-//        break;
-//      }
-//
-//    }
-//    docValues.close();
+    assertNull(docValues); // no docvalues - dropped
     reader.close();
     dir.close();
   }
