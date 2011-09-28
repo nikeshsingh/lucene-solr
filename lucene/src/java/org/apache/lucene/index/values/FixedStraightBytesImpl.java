@@ -347,8 +347,6 @@ class FixedStraightBytesImpl {
       return new FixedStraightBytesEnum(source, cloneData(), size, maxDoc);
     }
 
-   
-
     @Override
     public ValueType type() {
       return ValueType.BYTES_FIXED_STRAIGHT;

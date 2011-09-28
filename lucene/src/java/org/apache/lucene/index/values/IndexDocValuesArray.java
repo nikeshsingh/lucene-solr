@@ -144,7 +144,7 @@ abstract class IndexDocValuesArray extends Source {
 
         @Override
         protected final long toLong(BytesRef bytesRef) {
-          return  bytesRef.bytes[bytesRef.offset];
+          return bytesRef.bytes[bytesRef.offset];
         }
       };
     }

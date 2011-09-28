@@ -114,7 +114,6 @@ public class Floats {
     }
   }
 
-  
   final static class FloatsReader extends FixedStraightBytesImpl.Reader {
     final IndexDocValuesArray arrayTemplate;
     FloatsReader(Directory dir, String id, int maxDoc, IOContext context)

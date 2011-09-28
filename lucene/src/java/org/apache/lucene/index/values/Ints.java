@@ -19,7 +19,6 @@ package org.apache.lucene.index.values;
 
 import java.io.IOException;
 
-import org.apache.lucene.index.values.FixedStraightBytesImpl.Reader;
 import org.apache.lucene.index.values.IndexDocValuesArray.ByteValues;
 import org.apache.lucene.index.values.IndexDocValuesArray.IntValues;
 import org.apache.lucene.index.values.IndexDocValuesArray.LongValues;
