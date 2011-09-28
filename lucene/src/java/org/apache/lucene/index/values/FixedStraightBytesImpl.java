@@ -58,6 +58,7 @@ class FixedStraightBytesImpl {
         int version, Counter bytesUsed, IOContext context) throws IOException {
       super(dir, id, codecName, version, bytesUsed, context);
       pool = new ByteBlockPool(new DirectTrackingAllocator(bytesUsed));
+      pool.nextBuffer();
     }
     
     @Override
@@ -69,7 +70,6 @@ class FixedStraightBytesImpl {
           throw new IllegalArgumentException("bytes arrays > " + Short.MAX_VALUE + " are not supported");
         }
         size = bytes.length;
-        pool.nextBuffer();
       } else if (bytes.length != size) {
         throw new IllegalArgumentException("expected bytes size=" + size
             + " but got " + bytes.length);
@@ -133,11 +133,13 @@ class FixedStraightBytesImpl {
 
     @Override
     protected void merge(MergeState state) throws IOException {
-      merge = true;
       datOut = getOrCreateDataOut();
       boolean success = false;
       try {
-        if (state.liveDocs == null && state.reader instanceof Reader ) {
+        if (!merge && size != -1) {
+          datOut.writeInt(size);
+        }
+        if (state.liveDocs == null && tryBulkMerge(state.reader)) {
           Reader reader = (Reader) state.reader;
           final int maxDocs = reader.maxDoc;
           if (maxDocs == 0) {
@@ -168,10 +170,15 @@ class FixedStraightBytesImpl {
         }
         success = true;
       } finally {
+        merge = true;
         if (!success) {
           IOUtils.closeWhileHandlingException(datOut);
         }
       }
+    }
+    
+    protected boolean tryBulkMerge(IndexDocValues docValues) {
+      return docValues instanceof Reader;
     }
     
     @Override
@@ -181,7 +188,7 @@ class FixedStraightBytesImpl {
         size = bytesRef.length;
         datOut.writeInt(size);
       }
-      assert size == bytesRef.length;
+      assert size == bytesRef.length : "size: " + size + " ref: " + bytesRef.length;
       if (lastDocID+1 < docID) {
         fill(datOut, docID);
       }
@@ -345,6 +352,11 @@ class FixedStraightBytesImpl {
     @Override
     public ValueType type() {
       return ValueType.BYTES_FIXED_STRAIGHT;
+    }
+
+    @Override
+    public TypePromoter getTypePromoter() {
+      return TypePromoter.create(type(), size);
     }
   }
   

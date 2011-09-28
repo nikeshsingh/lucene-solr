@@ -99,6 +99,11 @@ public class MultiIndexDocValues extends IndexDocValues {
     public ValueType type() {
       return emptySoruce.type();
     }
+
+    @Override
+    public TypePromoter getTypePromoter() {
+      return null;
+    }
   }
 
   private static class MultiValuesEnum extends ValuesEnum {
@@ -265,5 +270,17 @@ public class MultiIndexDocValues extends IndexDocValues {
   @Override
   public ValueType type() {
     return this.docValuesIdx[0].docValues.type();
+  }
+
+  @Override
+  public TypePromoter getTypePromoter() {
+    TypePromoter promoter = docValuesIdx[0].docValues.getTypePromoter();
+    for (int i = 1; i < docValuesIdx.length; i++) {
+      if (promoter == null) {
+        return null;
+      }
+      promoter = promoter.promote(docValuesIdx[i].docValues.getTypePromoter());
+    }
+    return promoter;
   }
 }

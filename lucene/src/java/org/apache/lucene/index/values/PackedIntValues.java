@@ -239,6 +239,12 @@ class PackedIntValues {
     public ValueType type() {
       return ValueType.VAR_INTS;
     }
+
+
+    @Override
+    public TypePromoter getTypePromoter() {
+      return TypePromoter.create(type());
+    }
   }
 
   

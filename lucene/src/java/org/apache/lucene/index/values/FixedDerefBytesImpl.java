@@ -124,6 +124,11 @@ class FixedDerefBytesImpl {
     public ValueType type() {
       return ValueType.BYTES_FIXED_DEREF;
     }
+
+    @Override
+    public TypePromoter getTypePromoter() {
+      return TypePromoter.create(type(), size);
+    }
   }
 
 }

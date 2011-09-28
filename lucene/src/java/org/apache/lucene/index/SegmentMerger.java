@@ -139,6 +139,7 @@ final class SegmentMerger {
     if (fieldInfos.hasVectors()) {
       mergeVectors();
     }
+    fieldInfos.write(directory, segment + "." + IndexFileNames.FIELD_INFOS_EXTENSION);
     return mergedDocs;
   }
 
@@ -252,7 +253,8 @@ final class SegmentMerger {
       }
     }
     final SegmentCodecs codecInfo = fieldInfos.buildSegmentCodecs(false);
-    fieldInfos.write(directory, segment + "." + IndexFileNames.FIELD_INFOS_EXTENSION);
+    //nocommit
+//    fieldInfos.write(directory, segment + "." + IndexFileNames.FIELD_INFOS_EXTENSION);
 
     int docCount = 0;
 
@@ -616,7 +618,7 @@ final class SegmentMerger {
     /* don't close the perDocProducers here since they are private segment producers
      * and will be closed once the SegmentReader goes out of scope */ 
   }
-
+  
   private MergeState mergeState;
 
   public boolean getAnyNonBulkMerges() {

@@ -20,6 +20,7 @@ import java.io.IOException;
 
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.values.IndexDocValues;
+import org.apache.lucene.index.values.TypePromoter;
 
 /**
  * Abstract API that consumes per document values. Concrete implementations of
@@ -57,6 +58,15 @@ public abstract class PerDocConsumer implements Closeable{
            */
           continue;
         }
+        final TypePromoter typePromoter = docValues.getTypePromoter();
+        if (typePromoter == null) {
+          //nocommit this should happen in the segment merger?
+          mergeState.fieldInfo.resetDocValues(null);
+          continue;
+        }
+        if (mergeState.fieldInfo.getDocValues() != typePromoter.type()) {
+          mergeState.fieldInfo.resetDocValues(typePromoter.type());
+        }
         final DocValuesConsumer docValuesConsumer = addValuesField(mergeState.fieldInfo);
         assert docValuesConsumer != null;
         docValuesConsumer.merge(mergeState, docValues);
@@ -64,4 +74,5 @@ public abstract class PerDocConsumer implements Closeable{
     }
 
   }
+  
 }

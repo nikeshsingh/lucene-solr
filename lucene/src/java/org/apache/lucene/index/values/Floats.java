@@ -25,6 +25,7 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Counter;
+import org.apache.lucene.util.FloatsRef;
 
 /**
  * Exposes {@link Writer} and reader ({@link Source}) for 32 bit and 64 bit
@@ -53,27 +54,63 @@ public class Floats {
   }
   
   final static class FloatsWriter extends FixedStraightBytesImpl.Writer {
-    private final int size; 
+    private final int size;
+    private final ValueType valueType;
+    private FloatsRef floatsRef;
     public FloatsWriter(Directory dir, String id, Counter bytesUsed,
         IOContext context, int size) throws IOException {
       super(dir, id, bytesUsed, context);
       this.bytesRef = new BytesRef(size);
+      assert size == 4 || size == 8;
       this.size = size;
+      valueType = size == 4 ? ValueType.FLOAT_32 : ValueType.FLOAT_64;
       bytesRef.length = size;
     }
     
     public void add(int docID, double v) throws IOException {
-      if (size == 8) {
-        bytesRef.copy(Double.doubleToRawLongBits(v));        
-      } else {
-        bytesRef.copy(Float.floatToRawIntBits((float)v));
-      }
+      toBytesRef(v);
       add(docID, bytesRef);
+    }
+
+    private void toBytesRef(double v) {
+      switch(valueType) {
+      case FLOAT_32:
+        bytesRef.copy(Float.floatToRawIntBits((float)v));
+        break;
+      case FLOAT_64:
+        bytesRef.copy(Double.doubleToRawLongBits(v));        
+        break;
+      }
+    }
+    
+    @Override
+    protected boolean tryBulkMerge(IndexDocValues docValues) {
+      // only bulk merge is value type is the same otherwise size differs
+      return super.tryBulkMerge(docValues) && docValues.type() == valueType;
     }
     
     @Override
     public void add(int docID, PerDocFieldValues docValues) throws IOException {
       add(docID, docValues.getFloat());
+    }
+    
+    @Override
+    protected void setNextEnum(ValuesEnum valuesEnum) {
+      if (valuesEnum.type() == valueType) {
+        super.setNextEnum(valuesEnum);
+        floatsRef = null;
+      } else {
+        floatsRef = valuesEnum.getFloat();
+        bytesRef = new BytesRef(size);
+      }
+    }
+
+    @Override
+    protected void mergeDoc(int docID) throws IOException {
+      if (floatsRef != null) {
+        toBytesRef(floatsRef.get());
+      }
+      super.mergeDoc(docID);
     }
   }
 

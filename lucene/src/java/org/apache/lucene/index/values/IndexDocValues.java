@@ -180,6 +180,9 @@ public abstract class IndexDocValues implements Closeable {
   public void close() throws IOException {
     cache.close(this);
   }
+  
+  //nocommit
+  public abstract TypePromoter getTypePromoter();
 
   /**
    * Sets the {@link SourceCache} used by this {@link IndexDocValues} instance. This

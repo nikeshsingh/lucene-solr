@@ -19,6 +19,7 @@ package org.apache.lucene.index.values;
 
 import java.io.IOException;
 
+import org.apache.lucene.index.values.FixedStraightBytesImpl.Reader;
 import org.apache.lucene.index.values.IndexDocValuesArray.ByteValues;
 import org.apache.lucene.index.values.IndexDocValuesArray.IntValues;
 import org.apache.lucene.index.values.IndexDocValuesArray.LongValues;
@@ -30,6 +31,7 @@ import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Counter;
 import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.LongsRef;
 
 /**
  * Stores ints packed and fixed with fixed-bit precision.
@@ -59,6 +61,7 @@ public final class Ints {
     protected static final int VERSION_CURRENT = VERSION_START;
 
     private final ValueType valueType;
+    private LongsRef longsRef; // used for merging / type promotion
 
     public IntsWriter(Directory dir, String id, Counter bytesUsed,
         IOContext context, ValueType valueType) throws IOException {
@@ -69,9 +72,9 @@ public final class Ints {
         int version, Counter bytesUsed, IOContext context, ValueType valueType) throws IOException {
       super(dir, id, codecName, version, bytesUsed, context);
       this.valueType = valueType;
-      final int expectedSize = getSize(valueType);
-      this.bytesRef = new BytesRef(expectedSize);
-      bytesRef.length = expectedSize;
+      size = getSize(valueType);
+      this.bytesRef = new BytesRef(size);
+      bytesRef.length = size;
     }
     
     private static int getSize(ValueType type) {
@@ -91,6 +94,11 @@ public final class Ints {
 
     @Override
     public void add(int docID, long v) throws IOException {
+      toBytesRef(v);
+      add(docID, bytesRef);
+    }
+
+    private void toBytesRef(long v) {
       switch (valueType) {
       case FIXED_INTS_64:
         bytesRef.copy(v);
@@ -107,13 +115,38 @@ public final class Ints {
       default:
         throw new IllegalStateException("illegal type " + valueType);
       }
-
-      add(docID, bytesRef);
     }
 
     @Override
     public void add(int docID, PerDocFieldValues docValues) throws IOException {
       add(docID, docValues.getInt());
+    }
+    
+    @Override
+    protected boolean tryBulkMerge(IndexDocValues docValues) {
+      // only bulk merge is value type is the same otherwise size differs
+      return super.tryBulkMerge(docValues) && docValues.type() == valueType;
+    }
+    
+    @Override
+    protected void setNextEnum(ValuesEnum valuesEnum) {
+      if (valuesEnum.type() == valueType) {
+        super.setNextEnum(valuesEnum);
+        longsRef = null;
+      } else {
+        longsRef = valuesEnum.getInt();
+        bytesRef = new BytesRef(size);
+        bytesRef.length = size;
+      }
+    }
+
+    @Override
+    protected void mergeDoc(int docID) throws IOException {
+      if (longsRef != null) {
+        // convert to bytes first
+        toBytesRef(longsRef.get());
+      }
+      super.mergeDoc(docID);
     }
   }
 

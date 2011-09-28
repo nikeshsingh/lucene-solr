@@ -139,5 +139,10 @@ class FixedSortedBytesImpl {
     public ValueType type() {
       return ValueType.BYTES_FIXED_SORTED;
     }
+
+    @Override
+    public TypePromoter getTypePromoter() {
+      return TypePromoter.create(type(), size);
+    }
   }
 }

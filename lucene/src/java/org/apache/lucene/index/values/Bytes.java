@@ -566,6 +566,13 @@ public final class Bytes {
         }
       }
     }
+
+    @Override
+    public TypePromoter getTypePromoter() {
+      return TypePromoter.create(type());
+    }
+    
+    
   }
   
   static abstract class DerefBytesWriterBase extends BytesWriterBase {
