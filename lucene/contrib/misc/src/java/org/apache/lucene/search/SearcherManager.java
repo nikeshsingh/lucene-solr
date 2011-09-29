@@ -70,7 +70,7 @@ public class SearcherManager implements Closeable {
   // Current searcher
   private volatile IndexSearcher currentSearcher;
   private final SearcherWarmer warmer;
-  private final Semaphore reopening = new Semaphore(1);
+  private final Semaphore reopening = new Semaphore(1); // only one concurrent reopen
   private final ExecutorService es;
 
   /** Opens an initial searcher from the Directory.
