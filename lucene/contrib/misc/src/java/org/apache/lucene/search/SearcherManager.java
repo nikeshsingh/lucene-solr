@@ -65,7 +65,7 @@ import org.apache.lucene.store.Directory;
 
 public class SearcherManager implements Closeable {
 
-  AtomicReferenceFieldUpdater<SearcherManager, IndexSearcher> searcherUpdater = AtomicReferenceFieldUpdater
+  final AtomicReferenceFieldUpdater<SearcherManager, IndexSearcher> searcherUpdater = AtomicReferenceFieldUpdater
   .newUpdater(SearcherManager.class, IndexSearcher.class, "currentSearcher");
   // Current searcher
   private volatile IndexSearcher currentSearcher;
