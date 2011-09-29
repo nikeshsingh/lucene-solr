@@ -21,6 +21,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
@@ -64,6 +65,8 @@ import org.apache.lucene.store.Directory;
 
 public class SearcherManager implements Closeable {
 
+  AtomicReferenceFieldUpdater<SearcherManager, IndexSearcher> searcherUpdater = AtomicReferenceFieldUpdater
+  .newUpdater(SearcherManager.class, IndexSearcher.class, "currentSearcher");
   // Current searcher
   private volatile IndexSearcher currentSearcher;
   private final SearcherWarmer warmer;
@@ -152,7 +155,12 @@ public class SearcherManager implements Closeable {
               }
             }
           }
-          swapSearcher(newSearcher);
+          if (!swapSearcher(newSearcher)) {
+            // in this case we have been closed so lets release the just opened searcher
+            assert currentSearcher == null;
+            release(newSearcher);
+            return false;
+          }
           return true;
         } else {
           return false;
@@ -188,15 +196,20 @@ public class SearcherManager implements Closeable {
     searcher.getIndexReader().decRef();
   }
 
-  // Replaces old searcher with new one - needs to be synced to make close() work
-  private synchronized void swapSearcher(IndexSearcher newSearcher)
+  // Replaces old searcher with new one
+  private boolean swapSearcher(IndexSearcher newSearcher)
     throws IOException {
-    IndexSearcher oldSearcher = currentSearcher;
-    if (oldSearcher == null) {
-      throw new AlreadyClosedException("this SearcherManager is closed");
+    IndexSearcher toReplace = currentSearcher;
+    if (currentSearcher == null) {
+      return false;
     }
-    currentSearcher = newSearcher;
-    release(oldSearcher);
+    if (searcherUpdater.compareAndSet(this, toReplace, newSearcher)) {
+      if (toReplace != null) {
+        release(toReplace);
+      }
+      return true;
+    }
+    return false;
   }
 
   /** Close this SearcherManager to future searching.  Any
@@ -205,6 +218,9 @@ public class SearcherManager implements Closeable {
    *  after they are done. */
   @Override
   public void close() throws IOException {
-    swapSearcher(null);
+    while(currentSearcher != null) {
+      swapSearcher(null);  
+    }
+    
   }
 }
