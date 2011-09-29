@@ -148,19 +148,24 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
     writer.addDocument(new Document());
     writer.commit();
     final AtomicBoolean success = new AtomicBoolean(false);
-    final AtomicBoolean reopened = new AtomicBoolean(false);
-
+    final AtomicBoolean triedReopen = new AtomicBoolean(false);
+    final Throwable[] exc = new Throwable[1];
     Thread thread = new Thread(new Runnable() {
       @Override
       public void run() {
         try {
-          reopened.set(searcherManager.maybeReopen());
+          triedReopen.set(true);
+          searcherManager.maybeReopen();
           success.set(true);
+        } catch (AlreadyClosedException e) {
+          // expected
         } catch (Throwable e) {
-          e.printStackTrace();
+          exc[0] = e;
+          // use success as the barrier here to make sure we see the write
+          success.set(false);
+
         }
       }
-
     });
     thread.start();
     awaitEnterWarm.await();
@@ -175,8 +180,9 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
     } catch (AlreadyClosedException ex) {
       // expected
     }
-    assertTrue(success.get());
-    assertFalse(reopened.get());
+    assertFalse(success.get());
+    assertTrue(triedReopen.get());
+    assertNull("" + exc[0], exc[0]);
     writer.close();
     dir.close();
 

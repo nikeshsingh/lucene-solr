@@ -155,11 +155,11 @@ public class SearcherManager implements Closeable {
               }
             }
           }
-          if (!swapSearcher(newSearcher)) {
+          if (!trySwapSearcher(newSearcher)) {
             // in this case we have been closed so lets release the just opened searcher
             assert currentSearcher == null;
             release(newSearcher);
-            return false;
+            throw new AlreadyClosedException("this SearcherManager is closed");
           }
           return true;
         } else {
@@ -197,10 +197,10 @@ public class SearcherManager implements Closeable {
   }
 
   // Replaces old searcher with new one
-  private boolean swapSearcher(IndexSearcher newSearcher)
+  private boolean trySwapSearcher(IndexSearcher newSearcher)
     throws IOException {
-    IndexSearcher toReplace = currentSearcher;
-    if (currentSearcher == null) {
+    final IndexSearcher toReplace = currentSearcher;
+    if (toReplace == null) {
       return false;
     }
     if (searcherUpdater.compareAndSet(this, toReplace, newSearcher)) {
@@ -219,7 +219,7 @@ public class SearcherManager implements Closeable {
   @Override
   public void close() throws IOException {
     while(currentSearcher != null) {
-      swapSearcher(null);  
+      trySwapSearcher(null);  
     }
     
   }
