@@ -39,7 +39,7 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
     return mgr.acquire();
   }
 
-  private SearcherManager mgr;
+  private SearchManager mgr;
 
   @Override
   protected void doAfterWriter(ExecutorService es) throws Exception {

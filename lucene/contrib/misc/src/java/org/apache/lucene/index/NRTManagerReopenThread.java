@@ -84,7 +84,6 @@ public class NRTManagerReopenThread extends Thread implements NRTManager.Waiting
   private final long targetMaxStaleNS;
   private final long targetMinStaleNS;
   private boolean finish;
-  private boolean waitingNeedsDeletes;
   private long waitingGen;
 
   /**
@@ -124,7 +123,6 @@ public class NRTManagerReopenThread extends Thread implements NRTManager.Waiting
   }
 
   public synchronized void waiting(boolean needsDeletes, long targetGen) {
-    waitingNeedsDeletes |= needsDeletes;
     waitingGen = Math.max(waitingGen, targetGen);
     notify();
     //System.out.println(Thread.currentThread().getName() + ": force wakeup waitingGen=" + waitingGen + " applyDeletes=" + applyDeletes + " waitingNeedsDeletes=" + waitingNeedsDeletes);
@@ -140,8 +138,6 @@ public class NRTManagerReopenThread extends Thread implements NRTManager.Waiting
     try {
       while (true) {
 
-        final boolean doApplyDeletes;
-
         boolean hasWaiting = false;
 
         synchronized(this) {
@@ -152,7 +148,7 @@ public class NRTManagerReopenThread extends Thread implements NRTManager.Waiting
             //System.out.println("reopen: cycle");
 
             // True if we have someone waiting for reopen'd searcher:
-            hasWaiting = waitingGen > manager.getCurrentSearchingGen(waitingNeedsDeletes);
+            hasWaiting = waitingGen > manager.getCurrentSearchingGen();
             final long nextReopenStartNS = lastReopenStartNS + (hasWaiting ? targetMinStaleNS : targetMaxStaleNS);
 
             final long sleepNS = nextReopenStartNS - System.nanoTime();
@@ -176,16 +172,13 @@ public class NRTManagerReopenThread extends Thread implements NRTManager.Waiting
             //System.out.println("reopen: finish");
             return;
           }
-
-          doApplyDeletes = hasWaiting ? waitingNeedsDeletes : true;
-          waitingNeedsDeletes = false;
           //System.out.println("reopen: start hasWaiting=" + hasWaiting);
         }
 
         lastReopenStartNS = System.nanoTime();
         try {
           //final long t0 = System.nanoTime();
-          manager.reopen(doApplyDeletes);
+          manager.maybeReopen();
           //System.out.println("reopen took " + ((System.nanoTime()-t0)/1000000.0) + " msec");
         } catch (IOException ioe) {
           //System.out.println(Thread.currentThread().getName() + ": IOE");
