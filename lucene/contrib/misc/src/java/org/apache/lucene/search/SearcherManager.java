@@ -25,6 +25,7 @@ import java.util.concurrent.Semaphore;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.NRTManager; // javadocs
+import org.apache.lucene.search.IndexSearcher; // javadocs
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 
@@ -110,7 +111,7 @@ public class SearcherManager implements Closeable {
   }
 
   /** You must call this, periodically, to perform a
-   *  reopen.  This calls {@link IndexReader#reopen} on the
+   *  reopen.  This calls {@link IndexReader#openIfChanged} on the
    *  underlying reader, and if that returns a new reader,
    *  it's warmed (if you provided a {@link SearcherWarmer}
    *  and then swapped into production.
@@ -138,21 +139,21 @@ public class SearcherManager implements Closeable {
     // threads just return immediately:
     if (reopening.tryAcquire()) {
       try {
-        IndexReader newReader = currentSearcher.getIndexReader().reopen();
-        if (newReader != currentSearcher.getIndexReader()) {
+        IndexReader newReader = IndexReader.openIfChanged(currentSearcher.getIndexReader());
+        if (newReader != null) {
           IndexSearcher newSearcher = new IndexSearcher(newReader, es);
-          if (warmer != null) {
-            boolean success = false;
-            try {
+          boolean success = false;
+          try {
+            if (warmer != null) {
               warmer.warm(newSearcher);
-              success = true;
-            } finally {
-              if (!success) {
-                newReader.decRef();
-              }
+            }
+            swapSearcher(newSearcher);
+            success = true;
+          } finally {
+            if (!success) {
+              release(newSearcher);
             }
           }
-          swapSearcher(newSearcher);
           return true;
         } else {
           return false;
@@ -204,7 +205,12 @@ public class SearcherManager implements Closeable {
    *  affected, and they should still call {@link #release}
    *  after they are done. */
   @Override
-  public void close() throws IOException {
-    swapSearcher(null);
+  public synchronized void close() throws IOException {
+    if (currentSearcher != null) {
+      // make sure we can call this more than once
+      // closeable javadoc says:
+      //   if this is already closed then invoking this method has no effect.
+      swapSearcher(null);
+    }
   }
 }
