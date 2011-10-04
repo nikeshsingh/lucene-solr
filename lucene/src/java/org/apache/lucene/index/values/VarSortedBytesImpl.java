@@ -198,7 +198,7 @@ class VarSortedBytesImpl {
       }
 
       @Override
-      public int advance(int target) throws IOException {
+      public int seek(int target) throws IOException {
         if (target >= docCount) {
           return pos = NO_MORE_DOCS;
         }
@@ -235,7 +235,7 @@ class VarSortedBytesImpl {
         if (pos >= docCount) {
           return pos = NO_MORE_DOCS;
         }
-        return advance(pos + 1);
+        return seek(pos + 1);
       }
     }
 

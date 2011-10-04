@@ -87,15 +87,17 @@ public class TestDocValues extends LuceneTestCase {
       assertNotNull("enum is null", bytesEnum);
       BytesRef ref = bytesEnum.bytes();
 
-      for (int i = 0; i < 2; i++) {
+      for (int i = 0; i < 100; i++) {
         final int idx = 2 * i;
-        assertEquals("doc: " + idx, idx, bytesEnum.advance(idx));
+        maybeRandomSeek(bytesEnum, maxDoc);
+        assertEquals("doc: " + idx, idx, bytesEnum.seek(idx));
         String utf8String = ref.utf8ToString();
         assertEquals("doc: " + idx + " lenLeft: " + values[idx].length()
             + " lenRight: " + utf8String.length(), values[idx], utf8String);
       }
-      assertEquals(ValuesEnum.NO_MORE_DOCS, bytesEnum.advance(maxDoc));
-      assertEquals(ValuesEnum.NO_MORE_DOCS, bytesEnum.advance(maxDoc + 1));
+      maybeRandomSeek(bytesEnum, maxDoc);
+      assertEquals(ValuesEnum.NO_MORE_DOCS, bytesEnum.seek(maxDoc));
+      assertEquals(ValuesEnum.NO_MORE_DOCS, bytesEnum.seek(maxDoc + 1));
 
       bytesEnum.close();
     }
@@ -394,14 +396,16 @@ public class TestDocValues extends LuceneTestCase {
         assertEquals(type, iEnum.type());
         LongsRef ints = iEnum.getInt();
         for (int i = 0; i < NUM_VALUES + additionalDocs; i += 1 + random.nextInt(25)) {
-          assertEquals(i, iEnum.advance(i));
+          maybeRandomSeek(iEnum, NUM_VALUES);
+          assertEquals(i, iEnum.seek(i));
           if (i < NUM_VALUES) {
             assertEquals(values[i], ints.get());
           } else {
             assertEquals(0, ints.get());
           }
         }
-        assertEquals(ValuesEnum.NO_MORE_DOCS, iEnum.advance(NUM_VALUES + additionalDocs));
+        maybeRandomSeek(iEnum, NUM_VALUES);
+        assertEquals(ValuesEnum.NO_MORE_DOCS, iEnum.seek(NUM_VALUES + additionalDocs));
         iEnum.close();
       }
       r.close();
@@ -455,14 +459,16 @@ public class TestDocValues extends LuceneTestCase {
       ValuesEnum fEnum = getEnum(r);
       FloatsRef floats = fEnum.getFloat();
       for (int i = 0; i < NUM_VALUES + additionalValues; i += 1 + random.nextInt(25)) {
-        assertEquals(i, fEnum.advance(i));
+        maybeRandomSeek(fEnum, NUM_VALUES);
+        assertEquals(i, fEnum.seek(i));
         if (i < NUM_VALUES) {
           assertEquals(values[i], floats.get(), delta);
         } else {
           assertEquals(0.0d, floats.get(), delta);
         }
       }
-      assertEquals(ValuesEnum.NO_MORE_DOCS, fEnum.advance(NUM_VALUES + additionalValues));
+      maybeRandomSeek(fEnum, NUM_VALUES);
+      assertEquals(ValuesEnum.NO_MORE_DOCS, fEnum.seek(NUM_VALUES + additionalValues));
       fEnum.close();
     }
 
@@ -488,5 +494,11 @@ public class TestDocValues extends LuceneTestCase {
     // getSortedSource uses cache internally
     return random.nextBoolean() ? values.loadSorted(comparator) : values
         .getSortedSorted(comparator);
+  }
+  
+  public static void maybeRandomSeek(ValuesEnum valuesEnum, int maxOrd) throws IOException {
+    if(random.nextInt(5) == 0) {
+      valuesEnum.seek(random.nextInt(maxOrd));
+    }
   }
 }

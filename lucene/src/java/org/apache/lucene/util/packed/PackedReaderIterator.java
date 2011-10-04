@@ -21,13 +21,15 @@ import org.apache.lucene.store.IndexInput;
 
 import java.io.IOException;
 
-final class PackedReaderIterator implements PackedInts.ReaderIterator {
+final class PackedReaderIterator implements PackedInts.SeekableReaderIterator {
   private long pending;
   private int pendingBitsLeft;
   private final IndexInput in;
   private final int bitsPerValue;
   private final int valueCount;
   private int position = -1;
+  private long currentValue;
+  private final long startPointer;
 
   // masks[n-1] masks for bottom n bits
   private final long[] masks;
@@ -39,6 +41,7 @@ final class PackedReaderIterator implements PackedInts.ReaderIterator {
     this.bitsPerValue = bitsPerValue;
     
     this.in = in;
+    startPointer = in.getFilePointer();
     masks = new long[bitsPerValue];
 
     long v = 1;
@@ -76,7 +79,7 @@ final class PackedReaderIterator implements PackedInts.ReaderIterator {
     }
     
     ++position;
-    return result;
+    return currentValue = result;
   }
 
   public void close() throws IOException {
@@ -106,6 +109,24 @@ final class PackedReaderIterator implements PackedInts.ReaderIterator {
       pendingBitsLeft = 64 - (int)(skip % 64);
     }
     position = ord-1;
-    return next();
+    return currentValue = next();
+  }
+  
+  public long seek(final int ord) throws IOException {
+    assert ord < valueCount : "ord must be less than valueCount";
+    if (ord < position) {
+      pendingBitsLeft = 0;
+      final long bitsToSkip = (((long) bitsPerValue) * (long) ord);
+      final long skip = bitsToSkip - pendingBitsLeft;
+      final long closestByte = (skip >> 6) << 3;
+      in.seek(startPointer + closestByte);
+      pending = in.readLong();
+      pendingBitsLeft = 64 - (int) (skip % 64);
+      position = ord - 1;
+      return currentValue = next();
+    } else if (ord == position) {
+      return currentValue;
+    }
+    return advance(ord);
   }
 }

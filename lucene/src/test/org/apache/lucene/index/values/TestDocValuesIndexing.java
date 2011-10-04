@@ -186,7 +186,8 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     case FIXED_INTS_32:
     case FIXED_INTS_64:
     case FIXED_INTS_8:
-      assertEquals(msg, valuesPerIndex-1, vE_2_merged.advance(valuesPerIndex-1));
+      maybeRandomSeek(vE_2_merged, merged.maxDoc());
+      assertEquals(msg, valuesPerIndex-1, vE_2_merged.seek(valuesPerIndex-1));
     }
     
     for (int i = 0; i < valuesPerIndex; i++) {
@@ -196,9 +197,10 @@ public class TestDocValuesIndexing extends LuceneTestCase {
       assertEquals(msg, i, vE_2.nextDoc());
       assertEquals(msg, i + valuesPerIndex, vE_2_merged.nextDoc());
     }
+    maybeRandomSeek(vE_1_merged, merged.maxDoc());
     assertEquals(msg, ValuesEnum.NO_MORE_DOCS, vE_1.nextDoc());
     assertEquals(msg, ValuesEnum.NO_MORE_DOCS, vE_2.nextDoc());
-    assertEquals(msg, ValuesEnum.NO_MORE_DOCS, vE_1_merged.advance(valuesPerIndex*2));
+    assertEquals(msg, ValuesEnum.NO_MORE_DOCS, vE_1_merged.seek(valuesPerIndex*2));
     assertEquals(msg, ValuesEnum.NO_MORE_DOCS, vE_2_merged.nextDoc());
 
     // close resources
@@ -261,7 +263,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
         }
 
         ValuesEnum intsEnum = getValuesEnum(intsReader);
-        assertTrue(intsEnum.advance(base) >= base);
+        assertTrue(intsEnum.seek(base) >= base);
 
         intsEnum = getValuesEnum(intsReader);
         LongsRef enumRef = intsEnum.getInt();
@@ -272,7 +274,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
             expected++;
           }
           assertEquals("advance failed at index: " + i + " of " + r.numDocs()
-              + " docs", i, intsEnum.advance(i));
+              + " docs", i, intsEnum.seek(i));
           assertEquals(val + " mod: " + mod + " index: " +  i, expected%mod, ints.getInt(i));
           assertEquals(expected%mod, enumRef.get());
 
@@ -290,7 +292,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
               0.0d, value, 0.0d);
         }
         ValuesEnum floatEnum = getValuesEnum(floatReader);
-        assertTrue(floatEnum.advance(base) >= base);
+        assertTrue(floatEnum.seek(base) >= base);
 
         floatEnum = getValuesEnum(floatReader);
         FloatsRef enumRef = floatEnum.getFloat();
@@ -299,8 +301,9 @@ public class TestDocValuesIndexing extends LuceneTestCase {
           while (deleted.get(expected)) {
             expected++;
           }
+          maybeRandomSeek(floatEnum, r.maxDoc());// do a random seek to test repositioning
           assertEquals("advance failed at index: " + i + " of " + r.numDocs()
-              + " docs base:" + base, i, floatEnum.advance(i));
+              + " docs base:" + base, i, floatEnum.seek(i));
           assertEquals(floatEnum.getClass() + " index " + i, 2.0 * expected,
               enumRef.get(), 0.00001);
           assertEquals("index " + i, 2.0 * expected, floats.getFloat(i),
@@ -320,7 +323,13 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     w.close();
     d.close();
   }
-
+  
+  public static void maybeRandomSeek(ValuesEnum valuesEnum, int maxOrd) throws IOException {
+    if(random.nextInt(5) == 0) {
+      valuesEnum.seek(random.nextInt(maxOrd));
+    }
+  }
+  
   public void runTestIndexBytes(IndexWriterConfig cfg, boolean withDeletions)
       throws CorruptIndexException, LockObtainFailedException, IOException {
     final Directory d = newDirectory();
@@ -374,7 +383,8 @@ public class TestDocValuesIndexing extends LuceneTestCase {
           assertEquals(0, br.length);
           // make sure we advance at least until base
           ValuesEnum bytesEnum = getValuesEnum(bytesReader);
-          final int advancedTo = bytesEnum.advance(0);
+          maybeRandomSeek(bytesEnum, r.maxDoc());
+          final int advancedTo = bytesEnum.seek(0);
           assertTrue(byteIndexValue.name() + " advanced failed base:" + base
               + " advancedTo: " + advancedTo, base <= advancedTo);
         }
@@ -393,9 +403,10 @@ public class TestDocValuesIndexing extends LuceneTestCase {
           upto += bytesSize;
         }
         BytesRef br = bytes.getBytes(i, new BytesRef());
+        maybeRandomSeek(bytesEnum, r.maxDoc());
         if (bytesEnum.docID() != i) {
           assertEquals("seek failed for index " + i + " " + msg, i, bytesEnum
-              .advance(i));
+              .seek(i));
         }
         assertTrue(msg, br.length > 0);
         for (int j = 0; j < br.length; j++, upto++) {

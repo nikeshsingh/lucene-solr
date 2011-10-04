@@ -294,7 +294,7 @@ class FixedStraightBytesImpl {
       public ValuesEnum getEnum(AttributeSource attrSource) throws IOException {
         return new SourceEnum(attrSource, type(), this, maxDoc) {
           @Override
-          public int advance(int target) throws IOException {
+          public int seek(int target) throws IOException {
             if (target >= numDocs) {
               return pos = NO_MORE_DOCS;
             }
@@ -381,7 +381,7 @@ class FixedStraightBytesImpl {
     }
 
     @Override
-    public int advance(int target) throws IOException {
+    public int seek(int target) throws IOException {
       if (target >= maxDoc || size == 0) {
         return pos = NO_MORE_DOCS;
       }
@@ -401,7 +401,7 @@ class FixedStraightBytesImpl {
       if (pos >= maxDoc) {
         return pos = NO_MORE_DOCS;
       }
-      return advance(pos + 1);
+      return seek(pos + 1);
     }
   }
 }

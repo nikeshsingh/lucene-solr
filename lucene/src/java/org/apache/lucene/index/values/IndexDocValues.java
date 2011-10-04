@@ -340,7 +340,7 @@ public abstract class IndexDocValues implements Closeable {
     public int nextDoc() throws IOException {
       if (pos == NO_MORE_DOCS)
         return NO_MORE_DOCS;
-      return advance(pos + 1);
+      return seek(pos + 1);
     }
   }
 

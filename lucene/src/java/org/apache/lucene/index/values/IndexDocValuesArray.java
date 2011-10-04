@@ -76,7 +76,7 @@ abstract class IndexDocValuesArray extends Source {
       return new SourceEnum(attrSource, type(), this, maxDocID + 1) {
 
         @Override
-        public int advance(int target) throws IOException {
+        public int seek(int target) throws IOException {
           if (target >= numDocs) {
             return pos = NO_MORE_DOCS;
           }
@@ -89,7 +89,7 @@ abstract class IndexDocValuesArray extends Source {
       return new SourceEnum(attrSource, type(), this, maxDocID + 1) {
 
         @Override
-        public int advance(int target) throws IOException {
+        public int seek(int target) throws IOException {
           if (target >= numDocs) {
             return pos = NO_MORE_DOCS;
           }
@@ -414,8 +414,8 @@ abstract class IndexDocValuesArray extends Source {
     }
 
     @Override
-    public int advance(int target) throws IOException {
-      final int advance = super.advance(target);
+    public int seek(int target) throws IOException {
+      final int advance = super.seek(target);
       if (advance != NO_MORE_DOCS) {
         intsRef.ints[0] = toLong(this.bytesRef);
       }
@@ -441,8 +441,8 @@ abstract class IndexDocValuesArray extends Source {
     }
     
     @Override
-    public int advance(int target) throws IOException {
-      final int retVal = super.advance(target);
+    public int seek(int target) throws IOException {
+      final int retVal = super.seek(target);
       if (retVal != NO_MORE_DOCS) {
         floatsRef.floats[floatsRef.offset] = toDouble(bytesRef);
       }
