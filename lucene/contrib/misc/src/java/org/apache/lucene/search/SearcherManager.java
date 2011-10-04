@@ -19,13 +19,11 @@ package org.apache.lucene.search;
 
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Semaphore;
 
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.NRTManager; // javadocs
 import org.apache.lucene.search.IndexSearcher; // javadocs
-import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 
 /** Utility class to safely share {@link IndexSearcher} instances
@@ -64,9 +62,7 @@ import org.apache.lucene.store.Directory;
 
 public class SearcherManager extends SearchManager {
 
-  private final SearcherWarmer warmer;
-  private final Semaphore reopening = new Semaphore(1);
-  private final ExecutorService es;
+
 
   /** Opens an initial searcher from the Directory.
    *
@@ -102,67 +98,9 @@ public class SearcherManager extends SearchManager {
    *  warm it yourself if necessary.
    */
   public SearcherManager(Directory dir, SearcherWarmer warmer, ExecutorService es) throws IOException {
-    this.es = es;
+    super(warmer, es);
     currentSearcher = new IndexSearcher(IndexReader.open(dir), this.es);
-    this.warmer = warmer;
   }
-
-  @Override
-  public boolean maybeReopen()
-    throws  IOException {
-
-    if (currentSearcher == null) {
-      throw new AlreadyClosedException("this SearcherManager is closed");
-    }
-
-    // Ensure only 1 thread does reopen at once; other
-    // threads just return immediately:
-    if (reopening.tryAcquire()) {
-      try {
-        IndexReader newReader = IndexReader.openIfChanged(currentSearcher.getIndexReader());
-        if (newReader != null) {
-          IndexSearcher newSearcher = new IndexSearcher(newReader, es);
-          boolean success = false;
-          try {
-            if (warmer != null) {
-              warmer.warm(newSearcher);
-            }
-            swapSearcher(newSearcher);
-            success = true;
-          } finally {
-            if (!success) {
-              release(newSearcher);
-            }
-          }
-          return true;
-        } else {
-          return false;
-        }
-      } finally {
-        reopening.release();
-      }
-    } else {
-      return false;
-    }
-  }
-
-  @Override
-  public void release(IndexSearcher searcher)
-    throws IOException {
-    searcher.getIndexReader().decRef();
-  }
-
-  // Replaces old searcher with new one - needs to be synced to make close() work
-  private synchronized void swapSearcher(IndexSearcher newSearcher)
-    throws IOException {
-    IndexSearcher oldSearcher = currentSearcher;
-    if (oldSearcher == null) {
-      throw new AlreadyClosedException("this SearcherManager is closed");
-    }
-    currentSearcher = newSearcher;
-    release(oldSearcher);
-  }
-
 
   @Override
   public synchronized void close() throws IOException {
@@ -172,5 +110,10 @@ public class SearcherManager extends SearchManager {
       //   if this is already closed then invoking this method has no effect.
       swapSearcher(null);
     }
+  }
+
+  @Override
+  protected IndexReader openIfChanged(IndexReader oldReader) throws IOException {
+    return IndexReader.openIfChanged(oldReader);
   }
 }

@@ -17,7 +17,6 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -31,7 +30,6 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.SearchManager;
 import org.apache.lucene.search.SearcherWarmer;
-import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.util.ThreadInterruptedException;
 
 // TODO
@@ -53,13 +51,11 @@ import org.apache.lucene.util.ThreadInterruptedException;
 
 public class NRTManager extends SearchManager {
   private final IndexWriter writer;
-  private final ExecutorService es;
   private final AtomicLong indexingGen;
   private final AtomicLong searchingGen;
-  private final SearcherWarmer warmer;
   private final Semaphore reopening = new Semaphore(1);
   private final List<WaitingListener> waitingListeners = new CopyOnWriteArrayList<WaitingListener>();
-  private final boolean applyDeletes;
+  private final boolean applyAllDeletes;
 
   /**
    * Create new NRTManager.
@@ -77,16 +73,14 @@ public class NRTManager extends SearchManager {
    *         provided IndexWriter's config.
    *
    *  <p><b>NOTE</b>: the provided {@link SearcherWarmer} is
-   *  not invoked for the initial searcher; you should
+   *  not invoked for the initial searcher; you shouldDeletes
    *  warm it yourself if necessary.
    */
   public NRTManager(IndexWriter writer, ExecutorService es,
       SearcherWarmer warmer, boolean applyDeletes) throws IOException {
-
+    super(warmer, es);
     this.writer = writer;
-    this.es = es;
-    this.warmer = warmer;
-    this.applyDeletes = applyDeletes;
+    this.applyAllDeletes = applyDeletes;
     indexingGen = new AtomicLong(1);
     searchingGen = new AtomicLong(-1);
     // Create initial reader:
@@ -184,12 +178,12 @@ public class NRTManager extends SearchManager {
     return indexingGen.get();
   }
 
-  public void maybeBlock(long targetGen) {
+  public void waitForGeneration(long targetGen) {
     if (targetGen > getCurrentSearchingGen()) {
       // Must wait
       // final long t0 = System.nanoTime();
       for (WaitingListener listener : waitingListeners) {
-        listener.waiting(applyDeletes, targetGen);
+        listener.waiting(applyAllDeletes, targetGen);
       }
       while (targetGen > getCurrentSearchingGen()) {
         // System.out.println(Thread.currentThread().getName() +
@@ -215,87 +209,41 @@ public class NRTManager extends SearchManager {
   /**
    * Call this when you need the NRT reader to reopen.
    * 
-   * @param applyDeletes
+   * @param applyAllDeletes
    *          If true, the newly opened reader will reflect all deletes
    */
   @Override
   public boolean maybeReopen() throws IOException {
     if (reopening.tryAcquire()) {
-      try {
-        // Mark gen as of when reopen started:
-        final long newSearcherGen = indexingGen.getAndIncrement();
-
-        if (currentSearcher.getIndexReader().isCurrent()) {
-          // System.out.println("reopen: skip: isCurrent both force gen=" +
-          // newSearcherGen + " vs current gen=" + searchingGen);
-          searchingGen.set(newSearcherGen);
-          synchronized (this) {
-            notifyAll();
-          }
-          // System.out.println("reopen: skip: return");
-          return false;
+     try {
+       // Mark gen as of when reopen started:
+      final long newSearcherGen = indexingGen.getAndIncrement();
+      if (currentSearcher.getIndexReader().isCurrent()) {
+        searchingGen.set(newSearcherGen);
+        synchronized (this) {
+          notifyAll();
         }
-
-        // System.out.println("indexingGen now " + indexingGen);
-
-        // .reopen() returns a new reference:
-
-        // Start from whichever searcher is most current:
-        final IndexSearcher startSearcher = currentSearcher;
-        final IndexReader nextReader = IndexReader.openIfChanged(startSearcher.getIndexReader(),
-            writer, applyDeletes);
-
-        if (nextReader != startSearcher.getIndexReader()) {
-          final IndexSearcher nextSearcher = new IndexSearcher(nextReader, es);
-          if (warmer != null) {
-            boolean success = false;
-            try {
-              warmer.warm(nextSearcher);
-              success = true;
-            } finally {
-              if (!success) {
-                nextReader.decRef();
-              }
-            }
-          }
-
-          boolean success = false;
-          try {
-            // Transfer reference to swapSearcher:
-            swapSearcher(nextSearcher, newSearcherGen);
-            success = true;
-          } finally {
-            if (!success) {
-              release(nextSearcher);
-            }
-          }
-          return true;
-        } else {
-          return false;
-        }
-      } finally {
+      }
+      return super.maybeReopen();
+      
+    } finally {
         reopening.release();
       }
     } else {
       return false;
     }
   }
+  
+  
 
   // Steals a reference from newSearcher:
   private synchronized void swapSearcher(IndexSearcher newSearcher,
       long newSearchingGen) throws IOException {
     try {
-
-      IndexSearcher oldSearcher = currentSearcher;
-      if (oldSearcher == null) {
-        throw new AlreadyClosedException("this SearcherManager is closed");
-      }
-      currentSearcher = newSearcher;
-      release(oldSearcher);
+      super.swapSearcher(newSearcher);
       assert newSearchingGen > searchingGen.get() : "newSearchingGen="
           + newSearchingGen + " searchingGen=" + searchingGen;
       searchingGen.set(newSearchingGen);
-
     } finally {
       notifyAll();
     }
@@ -312,5 +260,10 @@ public class NRTManager extends SearchManager {
   @Override
   public void close() throws IOException {
     swapSearcher(null, indexingGen.getAndIncrement());
+  }
+
+  @Override
+  protected IndexReader openIfChanged(IndexReader oldReader) throws IOException {
+    return IndexReader.openIfChanged(oldReader, writer, applyAllDeletes);
   }
 }
