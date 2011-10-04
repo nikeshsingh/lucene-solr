@@ -46,13 +46,13 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
     return mgr.acquire();
   }
 
-  private SearchManager mgr;
+  private SearcherManager mgr;
 
   @Override
   protected void doAfterWriter(ExecutorService es) throws Exception {
     // SearcherManager needs to see empty commit:
     writer.commit();
-    mgr = new SearcherManager(dir,
+    mgr = SearcherManager.open(dir,
                               new SearcherWarmer() {
                                 @Override
                                 public void warm(IndexSearcher s) throws IOException {
@@ -127,7 +127,7 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
     final CountDownLatch awaitEnterWarm = new CountDownLatch(1);
     final CountDownLatch awaitClose = new CountDownLatch(1);
 
-    final SearcherManager searcherManager = new SearcherManager(dir,
+    final SearcherManager searcherManager = SearcherManager.open(dir,
         new SearcherWarmer() {
           @Override
           public void warm(IndexSearcher s) throws IOException {

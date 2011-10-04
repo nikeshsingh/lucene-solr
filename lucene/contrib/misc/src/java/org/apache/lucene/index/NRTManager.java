@@ -17,23 +17,24 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.index.IndexReader; // javadocs
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.SearchManager;
+import org.apache.lucene.search.SearcherManager;
 import org.apache.lucene.search.SearcherWarmer;
 import org.apache.lucene.util.ThreadInterruptedException;
-
-// TODO
-//   - we could make this work also w/ "normal" reopen/commit?
 
 /**
  * Utility class to manage sharing near-real-time searchers
@@ -49,13 +50,15 @@ import org.apache.lucene.util.ThreadInterruptedException;
  * @lucene.experimental
  */
 
-public class NRTManager extends SearchManager {
+public class NRTManager implements Closeable {
   private final IndexWriter writer;
+  private final SearcherManager manager;
   private final AtomicLong indexingGen;
   private final AtomicLong searchingGen;
-  private final Semaphore reopening = new Semaphore(1);
   private final List<WaitingListener> waitingListeners = new CopyOnWriteArrayList<WaitingListener>();
   private final boolean applyAllDeletes;
+  private final Lock reopenLock = new ReentrantLock();
+  private final Condition newGeneration = reopenLock.newCondition();
 
   /**
    * Create new NRTManager.
@@ -71,6 +74,8 @@ public class NRTManager extends SearchManager {
    *         before going live.  If this is non-null then a
    *         merged segment warmer is installed on the
    *         provided IndexWriter's config.
+   *  @param applyDeletes if <code>true</code> the NRTManage will force applyDeletes 
+   *         during reopen operations. 
    *
    *  <p><b>NOTE</b>: the provided {@link SearcherWarmer} is
    *  not invoked for the initial searcher; you shouldDeletes
@@ -78,24 +83,12 @@ public class NRTManager extends SearchManager {
    */
   public NRTManager(IndexWriter writer, ExecutorService es,
       SearcherWarmer warmer, boolean applyDeletes) throws IOException {
-    super(warmer, es);
     this.writer = writer;
     this.applyAllDeletes = applyDeletes;
     indexingGen = new AtomicLong(1);
     searchingGen = new AtomicLong(-1);
-    // Create initial reader:
-    currentSearcher = new IndexSearcher(IndexReader.open(writer, true), es);
+    manager = SearcherManager.open(writer, applyDeletes, warmer, es);
     searchingGen.set(0);
-
-    if (this.warmer != null) {
-      writer.getConfig().setMergedSegmentWarmer(
-         new IndexWriter.IndexReaderWarmer() {
-           @Override
-           public void warm(IndexReader reader) throws IOException {
-             NRTManager.this.warmer.warm(new IndexSearcher(reader, NRTManager.this.es));
-           }
-         });
-    }
   }
 
   /** NRTManager invokes this interface to notify it when a
@@ -177,8 +170,12 @@ public class NRTManager extends SearchManager {
     // Return gen as of when indexing finished:
     return indexingGen.get();
   }
+  
+  public boolean waitForGeneration(long targetGen) {
+    return waitForGeneration(targetGen, -1, TimeUnit.NANOSECONDS);
+  }
 
-  public void waitForGeneration(long targetGen) {
+  public boolean waitForGeneration(long targetGen, long time, TimeUnit unit) {
     if (targetGen > getCurrentSearchingGen()) {
       // Must wait
       // final long t0 = System.nanoTime();
@@ -190,14 +187,29 @@ public class NRTManager extends SearchManager {
         // ": wait fresh searcher targetGen=" + targetGen + " vs searchingGen="
         // + getCurrentSearchingGen(requireDeletes) + " requireDeletes=" +
         // requireDeletes);
-        synchronized (this) {
-          try {
-            wait();
-          } catch (InterruptedException ie) {
-            throw new ThreadInterruptedException(ie);
-          }
+        if (!waitOnGenCondition(time, unit)) {
+          return false;
         }
       }
+    }
+    return true;
+  }
+  
+  private boolean waitOnGenCondition(long time, TimeUnit unit) {
+    try {
+      reopenLock.lockInterruptibly();
+      try {
+        if (time < 0) {
+          newGeneration.await();
+          return true;
+        } else {
+          return newGeneration.await(time, unit);
+        }
+      } finally {
+        reopenLock.unlock();
+      }
+    } catch (InterruptedException e) {
+      throw new ThreadInterruptedException(e);
     }
   }
 
@@ -206,47 +218,27 @@ public class NRTManager extends SearchManager {
     return searchingGen.get();
   }
 
-  /**
-   * Call this when you need the NRT reader to reopen.
-   * 
-   * @param applyAllDeletes
-   *          If true, the newly opened reader will reflect all deletes
-   */
-  @Override
   public boolean maybeReopen() throws IOException {
-    if (reopening.tryAcquire()) {
-     try {
-       // Mark gen as of when reopen started:
-      final long newSearcherGen = indexingGen.getAndIncrement();
-      if (currentSearcher.getIndexReader().isCurrent()) {
-        searchingGen.set(newSearcherGen);
-        synchronized (this) {
-          notifyAll();
+    if (reopenLock.tryLock()) {
+      try {
+        // Mark gen as of when reopen started:
+        final long newSearcherGen = indexingGen.getAndIncrement();
+        boolean setSearchGen = false;
+        if (manager.isSearcherCurrent()) {
+          setSearchGen = true;
+        } else {
+          setSearchGen = manager.maybeReopen();
         }
+        if (setSearchGen) {
+          searchingGen.set(newSearcherGen); // update searcher gen
+          newGeneration.signalAll(); // wake up threads if we have a new generation
+        }
+        return setSearchGen;
+      } finally {
+        reopenLock.unlock();
       }
-      return super.maybeReopen();
-      
-    } finally {
-        reopening.release();
-      }
-    } else {
-      return false;
     }
-  }
-  
-  
-
-  // Steals a reference from newSearcher:
-  private synchronized void swapSearcher(IndexSearcher newSearcher,
-      long newSearchingGen) throws IOException {
-    try {
-      super.swapSearcher(newSearcher);
-      assert newSearchingGen > searchingGen.get() : "newSearchingGen="
-          + newSearchingGen + " searchingGen=" + searchingGen;
-      searchingGen.set(newSearchingGen);
-    } finally {
-      notifyAll();
-    }
+    return false;
   }
 
   /**
@@ -257,13 +249,18 @@ public class NRTManager extends SearchManager {
    * <p>
    * <b>NOTE</b>: caller must separately close the writer.
    */
-  @Override
-  public void close() throws IOException {
-    swapSearcher(null, indexingGen.getAndIncrement());
+  public synchronized void close() throws IOException {
+    manager.close();
+    reopenLock.lock();
+    try {
+      searchingGen.set(Long.MAX_VALUE); // we are closed
+      newGeneration.signalAll();
+    } finally {
+      reopenLock.unlock();
+    }
   }
-
-  @Override
-  protected IndexReader openIfChanged(IndexReader oldReader) throws IOException {
-    return IndexReader.openIfChanged(oldReader, writer, applyAllDeletes);
+  
+  public SearcherManager getSearcherManager() {
+    return manager;
   }
 }

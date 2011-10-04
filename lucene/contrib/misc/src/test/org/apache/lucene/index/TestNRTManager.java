@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.SearcherManager;
 import org.apache.lucene.search.SearcherWarmer;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.store.Directory;
@@ -42,7 +43,7 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
       System.out.println("TEST: finalSearcher maxGen=" + maxGen);
     }
     nrt.waitForGeneration(maxGen);
-    return nrt.acquire();
+    return manager.acquire();
   }
 
   @Override
@@ -69,14 +70,14 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
         System.out.println(Thread.currentThread().getName() + ": nrt: verify " + id);
       }
       nrt.waitForGeneration(gen);
-      final IndexSearcher s = nrt.acquire();
+      final IndexSearcher s = manager.acquire();
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: got searcher=" + s);
       }
       try {
         assertEquals(docs.size(), s.search(new TermQuery(id), 10).totalHits);
       } finally {
-        nrt.release(s);
+        manager.release(s);
       }
     }
     
@@ -92,14 +93,14 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
         System.out.println(Thread.currentThread().getName() + ": nrt: verify " + id);
       }
       nrt.waitForGeneration(gen);
-      final IndexSearcher s = nrt.acquire();// nocommit get(gen, false);
+      final IndexSearcher s = manager.acquire();// nocommit get(gen, false);
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: got searcher=" + s);
       }
       try {
         assertEquals(docs.size(), s.search(new TermQuery(id), 10).totalHits);
       } finally {
-        nrt.release(s);
+        manager.release(s);
       }
     }
     lastGens.set(gen);
@@ -115,14 +116,14 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
         System.out.println(Thread.currentThread().getName() + ": nrt: verify " + id);
       }
       nrt.waitForGeneration(gen);
-      final IndexSearcher s = nrt.acquire();// nocommit get(gen, false);
+      final IndexSearcher s = manager.acquire();// nocommit get(gen, false);
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: got searcher=" + s);
       }
       try {
         assertEquals(1, s.search(new TermQuery(id), 10).totalHits);
       } finally {
-        nrt.release(s);
+        manager.release(s);
       }
     }
     lastGens.set(gen);
@@ -137,14 +138,14 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
         System.out.println(Thread.currentThread().getName() + ": nrt: verify " + id);
       }
       nrt.waitForGeneration(gen);
-      final IndexSearcher s = nrt.acquire();
+      final IndexSearcher s = manager.acquire();
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: got searcher=" + s);
       }
       try {
         assertEquals(1, s.search(new TermQuery(id), 10).totalHits);
       } finally {
-        nrt.release(s);
+        manager.release(s);
       }
     }
     lastGens.set(gen);
@@ -159,20 +160,21 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
         System.out.println(Thread.currentThread().getName() + ": nrt: verify del " + id);
       }
       nrt.waitForGeneration(gen);
-      final IndexSearcher s = nrt.acquire();
+      final IndexSearcher s = manager.acquire();
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: got searcher=" + s);
       }
       try {
         assertEquals(0, s.search(new TermQuery(id), 10).totalHits);
       } finally {
-        nrt.release(s);
+        manager.release(s);
       }
     }
     lastGens.set(gen);
   }
 
   private NRTManager nrt;
+  private SearcherManager manager;
   private NRTManagerReopenThread nrtThread;
 
   @Override
@@ -192,6 +194,8 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
                              s.search(new TermQuery(new Term("body", "united")), 10);
                            }
                          }, true);
+    manager = nrt.getSearcherManager();
+                         
     nrtThread = new NRTManagerReopenThread(nrt, maxReopenSec, minReopenSec);
     nrtThread.setName("NRT Reopen Thread");
     nrtThread.setPriority(Math.min(Thread.currentThread().getPriority()+2, Thread.MAX_PRIORITY));
@@ -220,12 +224,12 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
 
   @Override
   protected IndexSearcher getCurrentSearcher() throws Exception {
-    return nrt.acquire();
+    return manager.acquire();
   }
 
   @Override
   protected void releaseSearcher(IndexSearcher s) throws Exception {
-    nrt.release(s);
+    manager.release(s);
   }
 
   @Override

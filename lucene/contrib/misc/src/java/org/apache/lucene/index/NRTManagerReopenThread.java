@@ -80,6 +80,7 @@ import org.apache.lucene.util.ThreadInterruptedException;
  */
 
 public class NRTManagerReopenThread extends Thread implements NRTManager.WaitingListener, Closeable {
+  
   private final NRTManager manager;
   private final long targetMaxStaleNS;
   private final long targetMinStaleNS;
@@ -141,7 +142,7 @@ public class NRTManagerReopenThread extends Thread implements NRTManager.Waiting
         boolean hasWaiting = false;
 
         synchronized(this) {
-          // TODO: try to guestimate how long reopen might
+          // TODO: try to estimate how long reopen might
           // take based on past data?
 
           while (!finish) {
