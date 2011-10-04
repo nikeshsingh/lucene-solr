@@ -24,6 +24,7 @@ import java.util.concurrent.Semaphore;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.NRTManager; // javadocs
+import org.apache.lucene.search.IndexSearcher; // javadocs
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 
@@ -106,9 +107,6 @@ public class SearcherManager extends SearchManager {
     this.warmer = warmer;
   }
 
-  /* (non-Javadoc)
-   * @see org.apache.lucene.search.SearchManager#maybeReopen()
-   */
   @Override
   public boolean maybeReopen()
     throws  IOException {
@@ -121,21 +119,21 @@ public class SearcherManager extends SearchManager {
     // threads just return immediately:
     if (reopening.tryAcquire()) {
       try {
-        IndexReader newReader = currentSearcher.getIndexReader().reopen();
-        if (newReader != currentSearcher.getIndexReader()) {
+        IndexReader newReader = IndexReader.openIfChanged(currentSearcher.getIndexReader());
+        if (newReader != null) {
           IndexSearcher newSearcher = new IndexSearcher(newReader, es);
-          if (warmer != null) {
-            boolean success = false;
-            try {
+          boolean success = false;
+          try {
+            if (warmer != null) {
               warmer.warm(newSearcher);
-              success = true;
-            } finally {
-              if (!success) {
-                newReader.decRef();
-              }
+            }
+            swapSearcher(newSearcher);
+            success = true;
+          } finally {
+            if (!success) {
+              release(newSearcher);
             }
           }
-          swapSearcher(newSearcher);
           return true;
         } else {
           return false;
@@ -148,9 +146,6 @@ public class SearcherManager extends SearchManager {
     }
   }
 
-  /* (non-Javadoc)
-   * @see org.apache.lucene.search.SearchManager#release(org.apache.lucene.search.IndexSearcher)
-   */
   @Override
   public void release(IndexSearcher searcher)
     throws IOException {
@@ -168,11 +163,14 @@ public class SearcherManager extends SearchManager {
     release(oldSearcher);
   }
 
-  /* (non-Javadoc)
-   * @see org.apache.lucene.search.SearchManager#close()
-   */
+
   @Override
-  public void close() throws IOException {
-    swapSearcher(null);
+  public synchronized void close() throws IOException {
+    if (currentSearcher != null) {
+      // make sure we can call this more than once
+      // closeable javadoc says:
+      //   if this is already closed then invoking this method has no effect.
+      swapSearcher(null);
+    }
   }
 }

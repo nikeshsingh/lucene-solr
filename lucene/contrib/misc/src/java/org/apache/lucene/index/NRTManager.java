@@ -38,17 +38,16 @@ import org.apache.lucene.util.ThreadInterruptedException;
 //   - we could make this work also w/ "normal" reopen/commit?
 
 /**
- * Utility class to manage sharing near-real-time searchers across multiple
- * searching threads.
- * 
- * <p>
- * NOTE: to use this class, you must call reopen periodically. The
- * {@link NRTManagerReopenThread} is a simple class to do this on a periodic
- * basis. If you implement your own reopener, be sure to call
- * {@link #addWaitingListener} so your reopener is notified when a caller is
- * waiting for a specific generation searcher.
- * </p>
- * 
+ * Utility class to manage sharing near-real-time searchers
+ * across multiple searching threads.
+ *
+ * <p>NOTE: to use this class, you must call reopen
+ * periodically.  The {@link NRTManagerReopenThread} is a
+ * simple class to do this on a periodic basis.  If you
+ * implement your own reopener, be sure to call {@link
+ * #addWaitingListener} so your reopener is notified when a
+ * caller is waiting for a specific generation searcher. </p>
+ *
  * @lucene.experimental
  */
 
@@ -65,23 +64,21 @@ public class NRTManager extends SearchManager {
   /**
    * Create new NRTManager.
    * 
-   * @param writer
-   *          IndexWriter to open near-real-time readers
-   * @param es
-   *          optional ExecutorService so different segments can be searched
-   *          concurrently (see
-   *          {@link IndexSearcher#IndexSearcher(IndexReader,ExecutorService)}.
-   *          Pass null to search segments sequentially.
-   * @param warmer
-   *          optional {@link SearcherWarmer}. Pass null if you don't require
-   *          the searcher to warmed before going live. If this is non-null then
-   *          a merged segment warmer is installed on the provided IndexWriter's
-   *          config.
-   * 
-   *          <p>
-   *          <b>NOTE</b>: the provided {@link SearcherWarmer} is not invoked
-   *          for the initial searcher; you should warm it yourself if
-   *          necessary.
+   *  @param writer IndexWriter to open near-real-time
+   *         readers
+   *  @param es optional ExecutorService so different segments can
+   *         be searched concurrently (see {@link
+   *         IndexSearcher#IndexSearcher(IndexReader,ExecutorService)}.  Pass null
+   *         to search segments sequentially.
+   *  @param warmer optional {@link SearcherWarmer}.  Pass
+   *         null if you don't require the searcher to warmed
+   *         before going live.  If this is non-null then a
+   *         merged segment warmer is installed on the
+   *         provided IndexWriter's config.
+   *
+   *  <p><b>NOTE</b>: the provided {@link SearcherWarmer} is
+   *  not invoked for the initial searcher; you should
+   *  warm it yourself if necessary.
    */
   public NRTManager(IndexWriter writer, ExecutorService es,
       SearcherWarmer warmer, boolean applyDeletes) throws IOException {
@@ -98,64 +95,54 @@ public class NRTManager extends SearchManager {
 
     if (this.warmer != null) {
       writer.getConfig().setMergedSegmentWarmer(
-          new IndexWriter.IndexReaderWarmer() {
-            @Override
-            public void warm(IndexReader reader) throws IOException {
-              NRTManager.this.warmer.warm(new IndexSearcher(reader,
-                  NRTManager.this.es));
-            }
-          });
+         new IndexWriter.IndexReaderWarmer() {
+           @Override
+           public void warm(IndexReader reader) throws IOException {
+             NRTManager.this.warmer.warm(new IndexSearcher(reader, NRTManager.this.es));
+           }
+         });
     }
   }
 
-  /**
-   * NRTManager invokes this interface to notify it when a caller is waiting for
-   * a specific generation searcher to be visible.
-   */
+  /** NRTManager invokes this interface to notify it when a
+   *  caller is waiting for a specific generation searcher
+   *  to be visible. */
   public static interface WaitingListener {
     public void waiting(boolean requiresDeletes, long targetGen);
   }
 
-  /**
-   * Adds a listener, to be notified when a caller is waiting for a specific
-   * generation searcher to be visible.
-   */
+  /** Adds a listener, to be notified when a caller is
+   *  waiting for a specific generation searcher to be
+   *  visible. */
   public void addWaitingListener(WaitingListener l) {
     waitingListeners.add(l);
   }
 
-  /**
-   * Remove a listener added with {@link #addWaitingListener}.
-   */
+  /** Remove a listener added with {@link
+   *  #addWaitingListener}. */
   public void removeWaitingListener(WaitingListener l) {
     waitingListeners.remove(l);
   }
 
-  public long updateDocument(Term t, Iterable<? extends IndexableField> d,
-      Analyzer a) throws IOException {
+  public long updateDocument(Term t, Iterable<? extends IndexableField> d, Analyzer a) throws IOException {
     writer.updateDocument(t, d, a);
     // Return gen as of when indexing finished:
     return indexingGen.get();
   }
 
-  public long updateDocument(Term t, Iterable<? extends IndexableField> d)
-      throws IOException {
+  public long updateDocument(Term t, Iterable<? extends IndexableField> d) throws IOException {
     writer.updateDocument(t, d);
     // Return gen as of when indexing finished:
     return indexingGen.get();
   }
 
-  public long updateDocuments(Term t,
-      Iterable<? extends Iterable<? extends IndexableField>> docs, Analyzer a)
-      throws IOException {
+  public long updateDocuments(Term t, Iterable<? extends Iterable<? extends IndexableField>> docs, Analyzer a) throws IOException {
     writer.updateDocuments(t, docs, a);
     // Return gen as of when indexing finished:
     return indexingGen.get();
   }
 
-  public long updateDocuments(Term t,
-      Iterable<? extends Iterable<? extends IndexableField>> docs)
-      throws IOException {
+  public long updateDocuments(Term t, Iterable<? extends Iterable<? extends IndexableField>> docs) throws IOException {
     writer.updateDocuments(t, docs);
     // Return gen as of when indexing finished:
     return indexingGen.get();
@@ -173,31 +160,25 @@ public class NRTManager extends SearchManager {
     return indexingGen.get();
   }
 
-  public long addDocument(Iterable<? extends IndexableField> d, Analyzer a)
-      throws IOException {
+  public long addDocument(Iterable<? extends IndexableField> d, Analyzer a) throws IOException {
     writer.addDocument(d, a);
     // Return gen as of when indexing finished:
     return indexingGen.get();
   }
 
-  public long addDocuments(
-      Iterable<? extends Iterable<? extends IndexableField>> docs, Analyzer a)
-      throws IOException {
+  public long addDocuments(Iterable<? extends Iterable<? extends IndexableField>> docs, Analyzer a) throws IOException {
     writer.addDocuments(docs, a);
     // Return gen as of when indexing finished:
     return indexingGen.get();
   }
 
-  public long addDocument(Iterable<? extends IndexableField> d)
-      throws IOException {
+  public long addDocument(Iterable<? extends IndexableField> d) throws IOException {
     writer.addDocument(d);
     // Return gen as of when indexing finished:
     return indexingGen.get();
   }
 
-  public long addDocuments(
-      Iterable<? extends Iterable<? extends IndexableField>> docs)
-      throws IOException {
+  public long addDocuments(Iterable<? extends Iterable<? extends IndexableField>> docs) throws IOException {
     writer.addDocuments(docs);
     // Return gen as of when indexing finished:
     return indexingGen.get();
@@ -261,7 +242,7 @@ public class NRTManager extends SearchManager {
 
         // Start from whichever searcher is most current:
         final IndexSearcher startSearcher = currentSearcher;
-        final IndexReader nextReader = startSearcher.getIndexReader().reopen(
+        final IndexReader nextReader = IndexReader.openIfChanged(startSearcher.getIndexReader(),
             writer, applyDeletes);
 
         if (nextReader != startSearcher.getIndexReader()) {
