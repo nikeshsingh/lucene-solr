@@ -34,6 +34,7 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.SearcherManager;
 import org.apache.lucene.search.SearcherWarmer;
+import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.ThreadInterruptedException;
 
 /**
@@ -52,11 +53,10 @@ import org.apache.lucene.util.ThreadInterruptedException;
 
 public class NRTManager implements Closeable {
   private final IndexWriter writer;
-  private final SearcherManager manager;
+  private final SearcherRef withoutDeletes;
+  private final SearcherRef withDeltes;
   private final AtomicLong indexingGen;
-  private final AtomicLong searchingGen;
   private final List<WaitingListener> waitingListeners = new CopyOnWriteArrayList<WaitingListener>();
-  private final boolean applyAllDeletes;
   private final Lock reopenLock = new ReentrantLock();
   private final Condition newGeneration = reopenLock.newCondition();
 
@@ -82,15 +82,17 @@ public class NRTManager implements Closeable {
    *  warm it yourself if necessary.
    */
   public NRTManager(IndexWriter writer, ExecutorService es,
-      SearcherWarmer warmer, boolean applyDeletes) throws IOException {
+      SearcherWarmer warmer, boolean alwaysApplyDeletes) throws IOException {
     this.writer = writer;
-    this.applyAllDeletes = applyDeletes;
+    if (alwaysApplyDeletes) {
+      withoutDeletes = withDeltes = new SearcherRef(true, 0,  SearcherManager.open(writer, true, warmer, es));
+    } else {
+      withDeltes = new SearcherRef(true, 0,  SearcherManager.open(writer, true, warmer, es));
+      withoutDeletes = new SearcherRef(false, 0,  SearcherManager.open(writer, false, warmer, es));
+    }
     indexingGen = new AtomicLong(1);
-    searchingGen = new AtomicLong(-1);
-    manager = SearcherManager.open(writer, applyDeletes, warmer, es);
-    searchingGen.set(0);
   }
-
+  
   /** NRTManager invokes this interface to notify it when a
    *  caller is waiting for a specific generation searcher
    *  to be visible. */
@@ -170,29 +172,30 @@ public class NRTManager implements Closeable {
     // Return gen as of when indexing finished:
     return indexingGen.get();
   }
+ 
   
-  public boolean waitForGeneration(long targetGen) {
-    return waitForGeneration(targetGen, -1, TimeUnit.NANOSECONDS);
+  public SearcherManager waitForGeneration(long targetGen, boolean applyAllDeletes) {
+    return waitForGeneration(targetGen, applyAllDeletes, -1,  TimeUnit.NANOSECONDS);
   }
 
-  public boolean waitForGeneration(long targetGen, long time, TimeUnit unit) {
-    if (targetGen > getCurrentSearchingGen()) {
+  public SearcherManager waitForGeneration(long targetGen, boolean applyAllDeletes, long time, TimeUnit unit) {
+    if (targetGen > getCurrentSearchingGen(applyAllDeletes)) {
       // Must wait
       // final long t0 = System.nanoTime();
       for (WaitingListener listener : waitingListeners) {
         listener.waiting(applyAllDeletes, targetGen);
       }
-      while (targetGen > getCurrentSearchingGen()) {
+      while (targetGen > getCurrentSearchingGen(applyAllDeletes)) {
         // System.out.println(Thread.currentThread().getName() +
         // ": wait fresh searcher targetGen=" + targetGen + " vs searchingGen="
         // + getCurrentSearchingGen(requireDeletes) + " requireDeletes=" +
         // requireDeletes);
         if (!waitOnGenCondition(time, unit)) {
-          return false;
+          return getSearcherManager(applyAllDeletes);
         }
       }
     }
-    return true;
+    return getSearcherManager(applyAllDeletes);
   }
   
   private boolean waitOnGenCondition(long time, TimeUnit unit) {
@@ -214,23 +217,28 @@ public class NRTManager implements Closeable {
   }
 
   /** Returns generation of current searcher. */
-  public long getCurrentSearchingGen() {
-    return searchingGen.get();
+  public long getCurrentSearchingGen(boolean applyAllDeletes) {
+    if (applyAllDeletes) {
+      return withDeltes.generation;
+    } else {
+      return Math.max(withoutDeletes.generation, withDeltes.generation);
+    }
   }
 
-  public boolean maybeReopen() throws IOException {
+  public boolean maybeReopen(boolean applyAllDeletes) throws IOException {
     if (reopenLock.tryLock()) {
       try {
+        SearcherRef reference = applyAllDeletes ? withDeltes : withoutDeletes;
         // Mark gen as of when reopen started:
         final long newSearcherGen = indexingGen.getAndIncrement();
         boolean setSearchGen = false;
-        if (manager.isSearcherCurrent()) {
+        if (reference.manager.isSearcherCurrent()) {
           setSearchGen = true;
         } else {
-          setSearchGen = manager.maybeReopen();
+          setSearchGen = reference.manager.maybeReopen();
         }
         if (setSearchGen) {
-          searchingGen.set(newSearcherGen); // update searcher gen
+          reference.generation = newSearcherGen;// update searcher gen
           newGeneration.signalAll(); // wake up threads if we have a new generation
         }
         return setSearchGen;
@@ -250,17 +258,50 @@ public class NRTManager implements Closeable {
    * <b>NOTE</b>: caller must separately close the writer.
    */
   public synchronized void close() throws IOException {
-    manager.close();
     reopenLock.lock();
     try {
-      searchingGen.set(Long.MAX_VALUE); // we are closed
+      IOUtils.close(withDeltes, withoutDeletes);
       newGeneration.signalAll();
     } finally {
       reopenLock.unlock();
     }
   }
   
-  public SearcherManager getSearcherManager() {
-    return manager;
+  public IndexSearcher acquireLatest() {
+    return getSearcherManager(false).acquire();
+  }
+  
+  public void release(IndexSearcher searcher) throws IOException {
+    getSearcherManager(false).release(searcher);
+  }
+  
+  public SearcherManager getSearcherManager(boolean applyAllDeletes) {
+    if (applyAllDeletes) {
+      return withDeltes.manager;
+    } else {
+      if (withDeltes.generation > withoutDeletes.generation) {
+        return withDeltes.manager;
+      } else {
+        return withoutDeletes.manager;
+      }
+    }
+  }
+  
+  static class SearcherRef implements Closeable {
+    final boolean applyDeletes;
+    volatile long generation;
+    final SearcherManager manager;
+
+    SearcherRef(boolean applyDeletes, long generation, SearcherManager manager) {
+      super();
+      this.applyDeletes = applyDeletes;
+      this.generation = generation;
+      this.manager = manager;
+    }
+    
+    public void close() throws IOException {
+      generation = Long.MAX_VALUE;
+      manager.close();
+    }
   }
 }

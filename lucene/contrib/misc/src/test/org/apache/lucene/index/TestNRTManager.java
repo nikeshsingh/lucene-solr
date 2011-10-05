@@ -42,7 +42,7 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
     if (VERBOSE) {
       System.out.println("TEST: finalSearcher maxGen=" + maxGen);
     }
-    nrt.waitForGeneration(maxGen);
+    final SearcherManager manager = nrt.waitForGeneration(maxGen, true);
     return manager.acquire();
   }
 
@@ -69,7 +69,7 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: verify " + id);
       }
-      nrt.waitForGeneration(gen);
+      SearcherManager manager = nrt.waitForGeneration(gen, true);
       final IndexSearcher s = manager.acquire();
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: got searcher=" + s);
@@ -92,7 +92,7 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: verify " + id);
       }
-      nrt.waitForGeneration(gen);
+      final SearcherManager manager = nrt.waitForGeneration(gen, false);
       final IndexSearcher s = manager.acquire();// nocommit get(gen, false);
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: got searcher=" + s);
@@ -115,8 +115,8 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: verify " + id);
       }
-      nrt.waitForGeneration(gen);
-      final IndexSearcher s = manager.acquire();// nocommit get(gen, false);
+      final SearcherManager manager = nrt.waitForGeneration(gen, false);
+      final IndexSearcher s = manager.acquire();
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: got searcher=" + s);
       }
@@ -137,7 +137,7 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: verify " + id);
       }
-      nrt.waitForGeneration(gen);
+      final SearcherManager manager = nrt.waitForGeneration(gen, true);
       final IndexSearcher s = manager.acquire();
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: got searcher=" + s);
@@ -159,7 +159,7 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: verify del " + id);
       }
-      nrt.waitForGeneration(gen);
+      final SearcherManager manager = nrt.waitForGeneration(gen, true);
       final IndexSearcher s = manager.acquire();
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: got searcher=" + s);
@@ -174,9 +174,7 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
   }
 
   private NRTManager nrt;
-  private SearcherManager manager;
   private NRTManagerReopenThread nrtThread;
-
   @Override
   protected void doAfterWriter(ExecutorService es) throws Exception {
     final double minReopenSec = 0.01 + 0.05 * random.nextDouble();
@@ -193,8 +191,7 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
                              TestNRTManager.this.warmCalled = true;
                              s.search(new TermQuery(new Term("body", "united")), 10);
                            }
-                         }, true);
-    manager = nrt.getSearcherManager();
+                         }, false);
                          
     nrtThread = new NRTManagerReopenThread(nrt, maxReopenSec, minReopenSec);
     nrtThread.setName("NRT Reopen Thread");
@@ -224,12 +221,12 @@ public class TestNRTManager extends ThreadedIndexingAndSearchingTestCase {
 
   @Override
   protected IndexSearcher getCurrentSearcher() throws Exception {
-    return manager.acquire();
+    return nrt.acquireLatest();
   }
 
   @Override
   protected void releaseSearcher(IndexSearcher s) throws Exception {
-    manager.release(s);
+    nrt.release(s);
   }
 
   @Override
