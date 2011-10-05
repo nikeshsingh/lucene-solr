@@ -69,6 +69,7 @@ class VarDerefBytesImpl {
     // some last docs that we didn't see
     @Override
     public void finishInternal(int docCount) throws IOException {
+      fillDefault(docCount);
       final int size = hash.size();
       final long[] addresses = new long[size];
       final IndexOutput datOut = getOrCreateDataOut();

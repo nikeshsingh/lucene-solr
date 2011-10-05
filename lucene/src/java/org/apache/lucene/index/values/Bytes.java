@@ -461,12 +461,6 @@ public final class Bytes {
         return;
       }
       checkSize(bytes);
-      if (docID >= docToEntry.length) {
-        final int size = docToEntry.length;
-        docToEntry = ArrayUtil.grow(docToEntry, 1 + docID);
-        bytesUsed.addAndGet((docToEntry.length - size)
-            * RamUsageEstimator.NUM_BYTES_INT);
-      }
       fillDefault(docID);
       int ord = hash.add(bytes);
       if (ord < 0) {
@@ -476,7 +470,14 @@ public final class Bytes {
       docToEntry[docID] = ord;
       lastDocId = docID;
     }
+    
     protected void fillDefault(int docID) {
+      if (docID >= docToEntry.length) {
+        final int size = docToEntry.length;
+        docToEntry = ArrayUtil.grow(docToEntry, 1 + docID);
+        bytesUsed.addAndGet((docToEntry.length - size)
+            * RamUsageEstimator.NUM_BYTES_INT);
+      }
       assert size >= 0;
       BytesRef ref = new BytesRef(size);
       ref.length = size;
