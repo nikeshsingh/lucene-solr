@@ -21,15 +21,15 @@ import java.io.IOException;
 
 import org.apache.lucene.index.values.Bytes.BytesReaderBase;
 import org.apache.lucene.index.values.Bytes.DerefBytesSourceBase;
-import org.apache.lucene.index.values.Bytes.DerefBytesEnumBase;
 import org.apache.lucene.index.values.Bytes.DerefBytesWriterBase;
+import org.apache.lucene.index.values.DirectSource;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
-import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Counter;
+import org.apache.lucene.util.packed.PackedInts;
 
 // Stores variable-length byte[] by deref, ie when two docs
 // have the same value, they store only 1 byte[] and both
@@ -57,6 +57,7 @@ class VarDerefBytesImpl {
     public Writer(Directory dir, String id, Counter bytesUsed, IOContext context)
         throws IOException {
       super(dir, id, CODEC_NAME, VERSION_CURRENT, bytesUsed, context);
+      size = 0;
     }
     
     @Override
@@ -69,21 +70,21 @@ class VarDerefBytesImpl {
     @Override
     public void finishInternal(int docCount) throws IOException {
       final int size = hash.size();
-      final long[] addresses = new long[size+1];
+      final long[] addresses = new long[size];
       final IndexOutput datOut = getOrCreateDataOut();
-      int addr = 1;
+      int addr = 0;
       final BytesRef bytesRef = new BytesRef();
       for (int i = 0; i < size; i++) {
         hash.get(i, bytesRef);
-        addresses[i+1] = addr;
+        addresses[i] = addr;
         addr += writePrefixLength(datOut, bytesRef) + bytesRef.length;
         datOut.writeBytes(bytesRef.bytes, bytesRef.offset, bytesRef.length);
       }
 
       final IndexOutput idxOut = getOrCreateIndexOut();
       // write the max address to read directly on source load
-      idxOut.writeLong(addr - 1);
-      writeIndex(idxOut, docCount, addresses[size], addresses, docToEntry);
+      idxOut.writeLong(addr);
+      writeIndex(idxOut, docCount, addresses[addresses.length-1], addresses, docToEntry);
     }
   }
 
@@ -108,48 +109,48 @@ class VarDerefBytesImpl {
 
       @Override
       public BytesRef getBytes(int docID, BytesRef bytesRef) {
-        long address = addresses.get(docID);
-        bytesRef.length = 0;
-        return address == 0 ? bytesRef : data.fillSliceWithPrefix(bytesRef,
-            --address);
-      }
-    }
-
-    @Override
-    public ValuesEnum getEnum(AttributeSource source) throws IOException {
-      return new VarDerefBytesEnum(source, cloneData(), cloneIndex());
-    }
-
-    final static class VarDerefBytesEnum extends DerefBytesEnumBase {
-      
-      public VarDerefBytesEnum(AttributeSource source, IndexInput datIn,
-          IndexInput idxIn) throws IOException {
-        super(source, datIn, idxIn, -1, ValueType.BYTES_VAR_DEREF);
-      }
-
-      @Override
-      protected void fill(long address, BytesRef ref) throws IOException {
-        datIn.seek(fp + --address);
-        final byte sizeByte = datIn.readByte();
-        final int size;
-        if ((sizeByte & 128) == 0) {
-          // length is 1 byte
-          size = sizeByte;
-        } else {
-          size = ((sizeByte & 0x7f) << 8) | ((datIn.readByte() & 0xff));
-        }
-        if (ref.bytes.length < size) {
-          ref.grow(size);
-        }
-        ref.length = size;
-        ref.offset = 0;
-        datIn.readBytes(ref.bytes, 0, size);
+        return data.fillSliceWithPrefix(bytesRef,
+            addresses.get(docID));
       }
     }
 
     @Override
     public ValueType type() {
       return ValueType.BYTES_VAR_DEREF;
+    }
+
+    @Override
+    public org.apache.lucene.index.values.IndexDocValues.Source getDirectSource()
+        throws IOException {
+      return new DirectDerefVarSource(cloneData(), cloneIndex(), type());
+    }
+  }
+  
+  public final static class DirectDerefVarSource extends DirectSource {
+
+    private PackedInts.SeekableReaderIterator index;
+
+    DirectDerefVarSource(IndexInput data, IndexInput index, ValueType type)
+        throws IOException {
+      super(data, type);
+      this.index = PackedInts.getSeekableReaderIterator(index);
+    }
+
+    @Override
+    protected void offsetAndSize(int docID, OffsetAndSize offsetAndSize)
+        throws IOException {
+      offsetAndSize.offset = index.seek(docID);
+      data.seek(baseOffset + offsetAndSize.offset);
+      final byte sizeByte = data.readByte();
+      offsetAndSize.offset++;
+      if ((sizeByte & 128) == 0) {
+        // length is 1 byte
+        offsetAndSize.size = sizeByte;
+      } else {
+        offsetAndSize.size = ((sizeByte & 0x7f) << 8) | ((data.readByte() & 0xff));
+        offsetAndSize.offset++;
+      }
+      
     }
   }
 }

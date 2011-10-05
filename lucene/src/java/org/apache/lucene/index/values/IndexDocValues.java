@@ -64,27 +64,6 @@ public abstract class IndexDocValues implements Closeable {
   private SourceCache cache = new SourceCache.DirectSourceCache();
 
   /**
-   * Returns an iterator that steps through all documents values for this
-   * {@link IndexDocValues} field instance. {@link ValuesEnum} will skip document
-   * without a value if applicable.
-   */
-  public ValuesEnum getEnum() throws IOException {
-    return getEnum(null);
-  }
-
-  /**
-   * Returns an iterator that steps through all documents values for this
-   * {@link IndexDocValues} field instance. {@link ValuesEnum} will skip document
-   * without a value if applicable.
-   * <p>
-   * If an {@link AttributeSource} is supplied to this method the
-   * {@link ValuesEnum} will use the given source to access implementation
-   * related attributes.
-   */
-  public abstract ValuesEnum getEnum(AttributeSource attrSource)
-      throws IOException;
-
-  /**
    * Loads a new {@link Source} instance for this {@link IndexDocValues} field
    * instance. Source instances returned from this method are not cached. It is
    * the callers responsibility to maintain the instance and release its
@@ -118,6 +97,8 @@ public abstract class IndexDocValues implements Closeable {
   public Source getSource() throws IOException {
     return cache.load(this);
   }
+  
+  public abstract Source getDirectSource() throws IOException;
 
   /**
    * Returns the {@link ValueType} of this {@link IndexDocValues} instance
@@ -194,6 +175,7 @@ public abstract class IndexDocValues implements Closeable {
      * Returns a {@link BytesRef} for the given document id or throws an
      * {@link UnsupportedOperationException} if this source doesn't support
      * <tt>byte[]</tt> values.
+     * @throws IOException 
      * 
      * @throws UnsupportedOperationException
      *           if this source doesn't support <tt>byte[]</tt> values.
@@ -209,14 +191,7 @@ public abstract class IndexDocValues implements Closeable {
     public int getValueCount() {
       throw new UnsupportedOperationException();
     }
-
-    /**
-     * Returns a {@link ValuesEnum} for this source.
-     */
-    public ValuesEnum getEnum() throws IOException {
-      return getEnum(null);
-    }
-
+    
     /**
      * Returns the {@link ValueType} of this source.
      * 
@@ -224,13 +199,6 @@ public abstract class IndexDocValues implements Closeable {
      */
     public abstract ValueType type();
 
-    /**
-     * Returns a {@link ValuesEnum} for this source which uses the given
-     * {@link AttributeSource}.
-     */
-    public abstract ValuesEnum getEnum(AttributeSource attrSource)
-        throws IOException;
-    
     /**
      * Returns <code>true</code> iff this {@link Source} exposes an array via
      * {@link #getArray()} otherwise <code>false</code>.
@@ -248,51 +216,6 @@ public abstract class IndexDocValues implements Closeable {
      */
     public Object getArray() {
       return null;
-    }
-  }
-
-  /**
-   * {@link ValuesEnum} utility for {@link Source} implemenations.
-   * 
-   */
-  public abstract static class SourceEnum extends ValuesEnum {
-    protected final Source source;
-    protected final int numDocs;
-    protected int pos = -1;
-
-    /**
-     * Creates a new {@link SourceEnum}
-     * 
-     * @param attrs
-     *          the {@link AttributeSource} for this enum
-     * @param type
-     *          the enums {@link ValueType}
-     * @param source
-     *          the source this enum operates on
-     * @param numDocs
-     *          the number of documents within the source
-     */
-    protected SourceEnum(AttributeSource attrs, ValueType type, Source source,
-        int numDocs) {
-      super(attrs, type);
-      this.source = source;
-      this.numDocs = numDocs;
-    }
-
-    @Override
-    public void close() throws IOException {
-    }
-
-    @Override
-    public int docID() {
-      return pos;
-    }
-
-    @Override
-    public int nextDoc() throws IOException {
-      if (pos == NO_MORE_DOCS)
-        return NO_MORE_DOCS;
-      return seek(pos + 1);
     }
   }
 }

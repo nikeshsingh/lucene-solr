@@ -22,7 +22,6 @@ import org.apache.lucene.index.values.IndexDocValues.Source;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
-import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Counter;
 
@@ -101,11 +100,6 @@ public class Floats {
       }
     }
     
-    public ValuesEnum getEnum(AttributeSource source) throws IOException {
-      IndexInput indexInput = (IndexInput) datIn.clone();
-      return arrayTemplate.getDirectEnum(source, indexInput, maxDoc);
-    }
-
     @Override
     public ValueType type() {
       return arrayTemplate.type();

@@ -21,15 +21,15 @@ import java.io.IOException;
 
 import org.apache.lucene.index.values.Bytes.BytesReaderBase;
 import org.apache.lucene.index.values.Bytes.DerefBytesSourceBase;
-import org.apache.lucene.index.values.Bytes.DerefBytesEnumBase;
 import org.apache.lucene.index.values.Bytes.DerefBytesWriterBase;
+import org.apache.lucene.index.values.DirectSource;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
-import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Counter;
+import org.apache.lucene.util.packed.PackedInts;
 
 // Stores fixed-length byte[] by deref, ie when two docs
 // have the same value, they store only 1 byte[]
@@ -91,38 +91,39 @@ class FixedDerefBytesImpl {
       @Override
       public BytesRef getBytes(int docID, BytesRef bytesRef) {
         final int id = (int) addresses.get(docID);
-        if (id == 0) {
-          bytesRef.length = 0;
-          return bytesRef;
-        }
-        return data.fillSlice(bytesRef, ((id - 1) * size), size);
+        return data.fillSlice(bytesRef, (id * size), size);
       }
 
-    }
-
-    @Override
-    public ValuesEnum getEnum(AttributeSource source) throws IOException {
-        return new DerefBytesEnum(source, cloneData(), cloneIndex(), size);
-    }
-
-    final static class DerefBytesEnum extends DerefBytesEnumBase {
-
-      public DerefBytesEnum(AttributeSource source, IndexInput datIn,
-          IndexInput idxIn, int size) throws IOException {
-        super(source, datIn, idxIn, size, ValueType.BYTES_FIXED_DEREF);
-      }
-
-      protected void fill(long address, BytesRef ref) throws IOException {
-        datIn.seek(fp + ((address - 1) * size));
-        datIn.readBytes(ref.bytes, 0, size);
-        ref.length = size;
-        ref.offset = 0;
-      }
     }
 
     @Override
     public ValueType type() {
       return ValueType.BYTES_FIXED_DEREF;
+    }
+
+    @Override
+    public org.apache.lucene.index.values.IndexDocValues.Source getDirectSource()
+        throws IOException {
+      return new DirectFixedDerefSource(cloneData(), cloneIndex(), size, type());
+    }
+  }
+  
+  public final static class DirectFixedDerefSource extends DirectSource {
+    private PackedInts.SeekableReaderIterator index;
+    private final int size;
+
+    DirectFixedDerefSource(IndexInput data, IndexInput index, int size, ValueType type)
+        throws IOException {
+      super(data, type);
+      this.size = size;
+      this.index = PackedInts.getSeekableReaderIterator(index);
+    }
+
+    @Override
+    protected void offsetAndSize(int docID, OffsetAndSize offsetAndSize)
+        throws IOException {
+        offsetAndSize.offset = index.seek(docID) * size;
+        offsetAndSize.size = size;  
     }
   }
 

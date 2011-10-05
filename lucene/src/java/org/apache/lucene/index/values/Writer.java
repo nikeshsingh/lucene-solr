@@ -19,6 +19,7 @@ package org.apache.lucene.index.values;
 import java.io.IOException;
 
 import org.apache.lucene.index.codecs.DocValuesConsumer;
+import org.apache.lucene.index.values.IndexDocValues.Source;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.Bits;
@@ -38,7 +39,7 @@ import org.apache.lucene.util.Counter;
  * @lucene.experimental
  */
 public abstract class Writer extends DocValuesConsumer {
-
+  protected Source currentMergeSource;
   /**
    * Creates a new {@link Writer}.
    * 
@@ -100,7 +101,7 @@ public abstract class Writer extends DocValuesConsumer {
   /**
    * Records a value from the given document id. The methods implementation
    * obtains the value for the document id from the last {@link ValuesEnum}
-   * set to {@link #setNextEnum(ValuesEnum)}.
+   * set to {@link #setNextMergeSource(Source)}.
    * <p>
    * This method is used during merging to provide implementation agnostic
    * default merge implementation.
@@ -113,16 +114,18 @@ public abstract class Writer extends DocValuesConsumer {
    * the {@link Writer} implementation. The given document ID must always be
    * greater than the previous ID or <tt>0</tt> if called the first time.
    */
-  protected abstract void mergeDoc(int docID) throws IOException;
+  protected abstract void mergeDoc(int docID, int sourceDoc) throws IOException;
 
   /**
    * Sets the next {@link ValuesEnum} to consume values from on calls to
    * {@link #mergeDoc(int)}
    * 
-   * @param valuesEnum
+   * @param mergeSource
    *          the next {@link ValuesEnum}, this must not be null
    */
-  protected abstract void setNextEnum(ValuesEnum valuesEnum);
+  protected void setNextMergeSource(Source mergeSource) {
+    currentMergeSource = mergeSource;
+  }
 
   /**
    * Finish writing and close any files and resources used by this Writer.
@@ -140,34 +143,20 @@ public abstract class Writer extends DocValuesConsumer {
     // simply override this and decide if they want to merge
     // segments using this generic implementation or if a bulk merge is possible
     // / feasible.
-    final ValuesEnum valEnum = state.reader.getEnum();
-    assert valEnum != null;
-    try {
-      setNextEnum(valEnum); // set the current enum we are working on - the
-      // impl. will get the correct reference for the type
-      // it supports
-      int docID = state.docBase;
-      final Bits liveDocs = state.liveDocs;
-      final int docCount = state.docCount;
-      int currentDocId;
-      if ((currentDocId = valEnum.seek(0)) != ValuesEnum.NO_MORE_DOCS) {
-        for (int i = 0; i < docCount; i++) {
-          if (liveDocs == null || liveDocs.get(i)) {
-            if (currentDocId < i) {
-              if ((currentDocId = valEnum.seek(i)) == ValuesEnum.NO_MORE_DOCS) {
-                break; // advance can jump over default values
-              }
-            }
-            if (currentDocId == i) { // we are on the doc to merge
-              mergeDoc(docID);
-            }
-            ++docID;
-          }
-        }
+    final Source source = state.reader.getDirectSource();
+    assert source != null;
+    setNextMergeSource(source); // set the current enum we are working on - the
+    // impl. will get the correct reference for the type
+    // it supports
+    int docID = state.docBase;
+    final Bits liveDocs = state.liveDocs;
+    final int docCount = state.docCount;
+    for (int i = 0; i < docCount; i++) {
+      if (liveDocs == null || liveDocs.get(i)) {
+        mergeDoc(docID++, i);
       }
-    } finally {
-      valEnum.close();
     }
+    
   }
 
   /**

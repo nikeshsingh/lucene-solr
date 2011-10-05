@@ -24,11 +24,11 @@ import java.io.IOException;
 import org.apache.lucene.index.values.Bytes.BytesSourceBase;
 import org.apache.lucene.index.values.Bytes.BytesReaderBase;
 import org.apache.lucene.index.values.Bytes.BytesWriterBase;
+import org.apache.lucene.index.values.DirectSource;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
-import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.ByteBlockPool.DirectTrackingAllocator;
 import org.apache.lucene.util.BytesRef;
@@ -175,8 +175,9 @@ class FixedStraightBytesImpl {
     }
     
     @Override
-    protected void mergeDoc(int docID) throws IOException {
+    protected void mergeDoc(int docID, int sourceDoc) throws IOException {
       assert lastDocID < docID;
+      currentMergeSource.getBytes(sourceDoc, bytesRef);
       if (size == -1) {
         size = bytesRef.length;
         datOut.writeInt(size);
@@ -263,11 +264,9 @@ class FixedStraightBytesImpl {
     
     // specialized version for single bytes
     private static class SingleByteSource extends Source {
-      private final int maxDoc;
       private final byte[] data;
 
       public SingleByteSource(IndexInput datIn, int maxDoc) throws IOException {
-        this.maxDoc = maxDoc;
         try {
           data = new byte[maxDoc];
           datIn.readBytes(data, 0, data.length, false);
@@ -288,22 +287,6 @@ class FixedStraightBytesImpl {
       @Override
       public ValueType type() {
         return ValueType.BYTES_FIXED_STRAIGHT;
-      }
-
-      @Override
-      public ValuesEnum getEnum(AttributeSource attrSource) throws IOException {
-        return new SourceEnum(attrSource, type(), this, maxDoc) {
-          @Override
-          public int seek(int target) throws IOException {
-            if (target >= numDocs) {
-              return pos = NO_MORE_DOCS;
-            }
-            bytesRef.length = 1;
-            bytesRef.bytes = data;
-            bytesRef.offset = target;
-            return pos = target;
-          }
-        };
       }
 
     }
@@ -335,73 +318,32 @@ class FixedStraightBytesImpl {
       }
     }
 
-    @Override
-    public ValuesEnum getEnum(AttributeSource source) throws IOException {
-      return new FixedStraightBytesEnum(source, cloneData(), size, maxDoc);
-    }
-
    
 
     @Override
     public ValueType type() {
       return ValueType.BYTES_FIXED_STRAIGHT;
     }
+
+    @Override
+    public Source getDirectSource() throws IOException {
+      return new DirectFixedSource(cloneData(), size, type());
+    }
   }
   
-  static class FixedStraightBytesEnum extends ValuesEnum {
-    private final IndexInput datIn;
+  public final static class DirectFixedSource extends DirectSource {
     private final int size;
-    private final int maxDoc;
-    private int pos = -1;
-    private final long fp;
 
-    public FixedStraightBytesEnum(AttributeSource source, IndexInput datIn,
-        int size, int maxDoc) throws IOException {
-      super(source, ValueType.BYTES_FIXED_STRAIGHT);
-      this.datIn = datIn;
+    DirectFixedSource(IndexInput input, int size, ValueType type) {
+      super(input, type);
       this.size = size;
-      this.maxDoc = maxDoc;
-      bytesRef.grow(size);
-      bytesRef.length = size;
-      bytesRef.offset = 0;
-      fp = datIn.getFilePointer();
     }
-
-    protected void copyFrom(ValuesEnum valuesEnum) {
-      super.copyFrom(valuesEnum);
-      if (bytesRef.bytes.length < size) {
-        bytesRef.grow(size);
-      }
-      bytesRef.length = size;
-      bytesRef.offset = 0;
-    }
-
-    public void close() throws IOException {
-      datIn.close();
-    }
-
     @Override
-    public int seek(int target) throws IOException {
-      if (target >= maxDoc || size == 0) {
-        return pos = NO_MORE_DOCS;
-      }
-      if ((target - 1) != pos) // pos inc == 1
-        datIn.seek(fp + target * size);
-      datIn.readBytes(bytesRef.bytes, 0, size);
-      return pos = target;
+    protected void offsetAndSize(int docID, OffsetAndSize offsetAndSize)
+        throws IOException {
+      offsetAndSize.offset = size * docID;
+      offsetAndSize.size = size;
     }
 
-    @Override
-    public int docID() {
-      return pos;
-    }
-
-    @Override
-    public int nextDoc() throws IOException {
-      if (pos >= maxDoc) {
-        return pos = NO_MORE_DOCS;
-      }
-      return seek(pos + 1);
-    }
   }
 }

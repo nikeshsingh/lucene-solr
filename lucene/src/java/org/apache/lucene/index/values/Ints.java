@@ -164,22 +164,6 @@ public final class Ints {
     }
 
     @Override
-    public ValuesEnum getEnum(AttributeSource source) throws IOException {
-      final IndexInput input = cloneData();
-      boolean success = false;
-      try {
-        final ValuesEnum valuesEnum = arrayTemplate.getDirectEnum(source,
-            input, maxDoc);
-        success = true;
-        return valuesEnum;
-      } finally {
-        if (!success) {
-          IOUtils.closeWhileHandlingException(input);
-        }
-      }
-    }
-
-    @Override
     public ValueType type() {
       return type;
     }

@@ -24,14 +24,12 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.values.IndexDocValues.Source;
-import org.apache.lucene.index.values.IndexDocValues.SourceEnum;
 import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.ArrayUtil;
-import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefHash;
@@ -231,24 +229,6 @@ public final class Bytes {
      */
     protected abstract int maxDoc();
 
-    @Override
-    public ValuesEnum getEnum(AttributeSource attrSource) throws IOException {
-      return new SourceEnum(attrSource, type(), this, maxDoc()) {
-        @Override
-        public int seek(int target) throws IOException {
-          if (target >= numDocs) {
-            return pos = NO_MORE_DOCS;
-          }
-          while (source.getBytes(target, bytesRef).length == 0) {
-            if (++target >= numDocs) {
-              return pos = NO_MORE_DOCS;
-            }
-          }
-          return pos = target;
-        }
-      };
-    }
-
   }
   
   static abstract class DerefBytesSourceBase extends BytesSourceBase {
@@ -276,7 +256,7 @@ public final class Bytes {
     private final String id;
     private IndexOutput idxOut;
     private IndexOutput datOut;
-    protected BytesRef bytesRef;
+    protected BytesRef bytesRef = new BytesRef();
     private final Directory dir;
     private final String codecName;
     private final int version;
@@ -344,8 +324,8 @@ public final class Bytes {
     public abstract void finish(int docCount) throws IOException;
 
     @Override
-    protected void mergeDoc(int docID) throws IOException {
-      add(docID, bytesRef);
+    protected void mergeDoc(int docID, int sourceDoc) throws IOException {
+      add(docID, currentMergeSource.getBytes(sourceDoc, bytesRef));
     }
 
     @Override
@@ -354,11 +334,6 @@ public final class Bytes {
       if ((ref = docValues.getBytes()) != null) {
         add(docID, ref);
       }
-    }
-
-    @Override
-    protected void setNextEnum(ValuesEnum valuesEnum) {
-      bytesRef = valuesEnum.bytes();
     }
 
     @Override
@@ -447,6 +422,7 @@ public final class Bytes {
   
   static abstract class DerefBytesWriterBase extends BytesWriterBase {
     protected int size = -1;
+    protected int lastDocId = -1;
     protected int[] docToEntry;
     protected final BytesRefHash hash;
     
@@ -485,17 +461,32 @@ public final class Bytes {
         return;
       }
       checkSize(bytes);
-      int ord = hash.add(bytes);
-      if (ord < 0) {
-        ord = (-ord) - 1;
-      }
       if (docID >= docToEntry.length) {
         final int size = docToEntry.length;
         docToEntry = ArrayUtil.grow(docToEntry, 1 + docID);
         bytesUsed.addAndGet((docToEntry.length - size)
             * RamUsageEstimator.NUM_BYTES_INT);
       }
-      docToEntry[docID] = 1 + ord;
+      fillDefault(docID);
+      int ord = hash.add(bytes);
+      if (ord < 0) {
+        ord = (-ord) - 1;
+      }
+      
+      docToEntry[docID] = ord;
+      lastDocId = docID;
+    }
+    protected void fillDefault(int docID) {
+      assert size >= 0;
+      BytesRef ref = new BytesRef(size);
+      ref.length = size;
+      int ord = hash.add(ref);
+      if (ord < 0) {
+        ord = (-ord) - 1;
+      }
+      for (int i = lastDocId+1; i < docID; i++) {
+        docToEntry[i] = ord;
+      }
     }
     
     protected void checkSize(BytesRef bytes) {
@@ -589,78 +580,4 @@ public final class Bytes {
     }
     
   }
-  
-  abstract static class DerefBytesEnumBase extends ValuesEnum {
-    private final PackedInts.SeekableReaderIterator idx;
-    private final int valueCount;
-    private int pos = -1;
-    protected final IndexInput datIn;
-    protected final long fp;
-    protected final int size;
-
-    protected DerefBytesEnumBase(AttributeSource source, IndexInput datIn,
-        IndexInput idxIn, int size, ValueType enumType) throws IOException {
-      super(source, enumType);
-      this.datIn = datIn;
-      this.size = size;
-      idx = PackedInts.getSeekableReaderIterator(idxIn);
-      fp = datIn.getFilePointer();
-      if (size > 0) {
-        bytesRef.grow(this.size);
-        bytesRef.length = this.size;
-      }
-      bytesRef.offset = 0;
-      valueCount = idx.size();
-    }
-
-    protected void copyFrom(ValuesEnum valuesEnum) {
-      bytesRef = valuesEnum.bytesRef;
-      if (bytesRef.bytes.length < size) {
-        bytesRef.grow(size);
-      }
-      bytesRef.length = size;
-      bytesRef.offset = 0;
-    }
-
-    @Override
-    public int seek(int target) throws IOException {
-      if (target < valueCount) {
-        long address;
-        while ((address = idx.seek(target)) == 0) {
-          if (++target >= valueCount) {
-            return pos = NO_MORE_DOCS;
-          }
-        }
-        pos = idx.ord();
-        fill(address, bytesRef);
-        return pos;
-      }
-      return pos = NO_MORE_DOCS;
-    }
-
-    @Override
-    public int nextDoc() throws IOException {
-      if (pos >= valueCount) {
-        return pos = NO_MORE_DOCS;
-      }
-      return seek(pos + 1);
-    }
-
-    public void close() throws IOException {
-      try {
-        datIn.close();
-      } finally {
-        idx.close();
-      }
-    }
-
-    protected abstract void fill(long address, BytesRef ref) throws IOException;
-
-    @Override
-    public int docID() {
-      return pos;
-    }
-
-  }
-
 }
