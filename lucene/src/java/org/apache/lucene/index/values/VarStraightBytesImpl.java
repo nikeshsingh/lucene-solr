@@ -251,7 +251,7 @@ class VarStraightBytesImpl {
       public ValuesEnum getEnum(AttributeSource attrSource) throws IOException {
         return new SourceEnum(attrSource, type(), this, maxDoc()) {
           @Override
-          public int advance(int target) throws IOException {
+          public int seek(int target) throws IOException {
             if (target >= numDocs) {
               return pos = NO_MORE_DOCS;
             }
@@ -268,7 +268,7 @@ class VarStraightBytesImpl {
     }
 
     private class VarStraightBytesEnum extends ValuesEnum {
-      private final PackedInts.ReaderIterator addresses;
+      private final PackedInts.SeekableReaderIterator addresses;
       private final IndexInput datIn;
       private final IndexInput idxIn;
       private final long fp;
@@ -281,7 +281,7 @@ class VarStraightBytesImpl {
         super(source, ValueType.BYTES_VAR_STRAIGHT);
         totBytes = idxIn.readVLong();
         fp = datIn.getFilePointer();
-        addresses = PackedInts.getReaderIterator(idxIn);
+        addresses = PackedInts.getSeekableReaderIterator(idxIn);
         this.datIn = datIn;
         this.idxIn = idxIn;
         nextAddress = addresses.next();
@@ -294,11 +294,11 @@ class VarStraightBytesImpl {
       }
 
       @Override
-      public int advance(final int target) throws IOException {
+      public int seek(final int target) throws IOException {
         if (target >= maxDoc) {
           return pos = NO_MORE_DOCS;
         }
-        final long addr = pos+1 == target ? nextAddress : addresses.advance(target);
+        final long addr = pos+1 == target ? nextAddress : addresses.seek(target);
         if (addr == totBytes) { // empty values at the end
           bytesRef.length = 0;
           bytesRef.offset = 0;
@@ -322,7 +322,7 @@ class VarStraightBytesImpl {
 
       @Override
       public int nextDoc() throws IOException {
-        return advance(pos + 1);
+        return seek(pos + 1);
       }
     }
 

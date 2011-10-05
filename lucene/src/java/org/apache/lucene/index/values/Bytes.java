@@ -235,7 +235,7 @@ public final class Bytes {
     public ValuesEnum getEnum(AttributeSource attrSource) throws IOException {
       return new SourceEnum(attrSource, type(), this, maxDoc()) {
         @Override
-        public int advance(int target) throws IOException {
+        public int seek(int target) throws IOException {
           if (target >= numDocs) {
             return pos = NO_MORE_DOCS;
           }
@@ -591,7 +591,7 @@ public final class Bytes {
   }
   
   abstract static class DerefBytesEnumBase extends ValuesEnum {
-    private final PackedInts.ReaderIterator idx;
+    private final PackedInts.SeekableReaderIterator idx;
     private final int valueCount;
     private int pos = -1;
     protected final IndexInput datIn;
@@ -603,7 +603,7 @@ public final class Bytes {
       super(source, enumType);
       this.datIn = datIn;
       this.size = size;
-      idx = PackedInts.getReaderIterator(idxIn);
+      idx = PackedInts.getSeekableReaderIterator(idxIn);
       fp = datIn.getFilePointer();
       if (size > 0) {
         bytesRef.grow(this.size);
@@ -623,10 +623,10 @@ public final class Bytes {
     }
 
     @Override
-    public int advance(int target) throws IOException {
+    public int seek(int target) throws IOException {
       if (target < valueCount) {
         long address;
-        while ((address = idx.advance(target)) == 0) {
+        while ((address = idx.seek(target)) == 0) {
           if (++target >= valueCount) {
             return pos = NO_MORE_DOCS;
           }
@@ -643,7 +643,7 @@ public final class Bytes {
       if (pos >= valueCount) {
         return pos = NO_MORE_DOCS;
       }
-      return advance(pos + 1);
+      return seek(pos + 1);
     }
 
     public void close() throws IOException {

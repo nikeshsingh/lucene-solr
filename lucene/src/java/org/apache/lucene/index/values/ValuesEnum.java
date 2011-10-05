@@ -41,7 +41,8 @@ import org.apache.lucene.util.LongsRef;
  * 
  * @lucene.experimental
  */
-public abstract class ValuesEnum extends DocIdSetIterator {
+public abstract class ValuesEnum extends DocIdSetIterator{
+  
   private AttributeSource source;
   private final ValueType enumType;
   protected BytesRef bytesRef = new BytesRef(1);
@@ -63,6 +64,22 @@ public abstract class ValuesEnum extends DocIdSetIterator {
     this.source = source;
     this.enumType = enumType;
   }
+  
+  @Override
+  public int advance(int target) throws IOException {
+    return seek(target);
+  }
+  
+  /**
+   * Seeks to the first document id greater or equal to the <i>target</i>.
+   * 
+   * @param target
+   *          the doc id to seek to
+   * @return the current document number or {@link #NO_MORE_DOCS} if there is no
+   *         document id greater or equal to the given <i>target</i>
+   * @throws IOException
+   */
+  public abstract int seek(int target) throws IOException;
 
   /**
    * Returns the type of this enum
@@ -142,7 +159,7 @@ public abstract class ValuesEnum extends DocIdSetIterator {
       }
 
       @Override
-      public int advance(int target) throws IOException {
+      public int seek(int target) throws IOException {
         return NO_MORE_DOCS;
       }
 

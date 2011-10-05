@@ -150,11 +150,11 @@ public abstract class Writer extends DocValuesConsumer {
       final Bits liveDocs = state.liveDocs;
       final int docCount = state.docCount;
       int currentDocId;
-      if ((currentDocId = valEnum.advance(0)) != ValuesEnum.NO_MORE_DOCS) {
+      if ((currentDocId = valEnum.seek(0)) != ValuesEnum.NO_MORE_DOCS) {
         for (int i = 0; i < docCount; i++) {
           if (liveDocs == null || liveDocs.get(i)) {
             if (currentDocId < i) {
-              if ((currentDocId = valEnum.advance(i)) == ValuesEnum.NO_MORE_DOCS) {
+              if ((currentDocId = valEnum.seek(i)) == ValuesEnum.NO_MORE_DOCS) {
                 break; // advance can jump over default values
               }
             }

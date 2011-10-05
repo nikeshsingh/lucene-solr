@@ -268,7 +268,7 @@ class PackedIntValues {
     public ValuesEnum getEnum(AttributeSource attrSource) throws IOException {
       return new SourceEnum(attrSource, type(), this, values.size()) {
         @Override
-        public int advance(int target) throws IOException {
+        public int seek(int target) throws IOException {
           if (target >= numDocs)
             return pos = NO_MORE_DOCS;
           intsRef.ints[intsRef.offset] = source.getInt(target);
@@ -284,7 +284,7 @@ class PackedIntValues {
   }
 
   private static final class PackedIntsEnumImpl extends ValuesEnum {
-    private final PackedInts.ReaderIterator ints;
+    private final PackedInts.SeekableReaderIterator ints;
     private long minValue;
     private final IndexInput dataIn;
     private final long defaultValue;
@@ -298,7 +298,7 @@ class PackedIntValues {
       this.dataIn = dataIn;
       minValue = dataIn.readLong();
       defaultValue = dataIn.readLong();
-      this.ints = PackedInts.getReaderIterator(dataIn);
+      this.ints = PackedInts.getSeekableReaderIterator(dataIn);
       maxDoc = ints.size();
     }
 
@@ -309,11 +309,11 @@ class PackedIntValues {
     }
 
     @Override
-    public int advance(int target) throws IOException {
+    public int seek(int target) throws IOException {
       if (target >= maxDoc) {
         return pos = NO_MORE_DOCS;
       }
-      final long val = ints.advance(target);
+      final long val = ints.seek(target);
       intsRef.ints[intsRef.offset] = val == defaultValue ? 0 : minValue + val;
       return pos = target;
     }
@@ -328,7 +328,7 @@ class PackedIntValues {
       if (pos >= maxDoc) {
         return pos = NO_MORE_DOCS;
       }
-      return advance(pos + 1);
+      return seek(pos + 1);
     }
   }
 

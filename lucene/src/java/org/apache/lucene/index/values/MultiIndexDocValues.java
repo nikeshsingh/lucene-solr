@@ -131,15 +131,13 @@ public class MultiIndexDocValues extends IndexDocValues {
     }
 
     @Override
-    public int advance(int target) throws IOException {
-      assert target > currentDoc : "target " + target
-          + " must be > than the current doc " + currentDoc;
+    public int seek(int target) throws IOException {
       int relativeDoc = target - currentStart;
       do {
         if (target >= maxDoc) {// we are beyond max doc
           return currentDoc = NO_MORE_DOCS;
         }
-        if (target >= currentMax) {
+        if (target >= currentMax || target < currentStart) {
           final int idx = ReaderUtil.subIndex(target, starts);
           currentEnum.close();
           currentEnum = docValuesIdx[idx].docValues.getEnum();
@@ -150,7 +148,7 @@ public class MultiIndexDocValues extends IndexDocValues {
         }
         target = currentMax; // make sure that we advance to the next enum if the current is exhausted
 
-      } while ((relativeDoc = currentEnum.advance(relativeDoc)) == NO_MORE_DOCS);
+      } while ((relativeDoc = currentEnum.seek(relativeDoc)) == NO_MORE_DOCS);
       return currentDoc = currentStart + relativeDoc;
     }
 
@@ -161,7 +159,7 @@ public class MultiIndexDocValues extends IndexDocValues {
 
     @Override
     public int nextDoc() throws IOException {
-      return advance(currentDoc + 1);
+      return seek(currentDoc + 1);
     }
   }
 
