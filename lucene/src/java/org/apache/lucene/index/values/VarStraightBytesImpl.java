@@ -236,7 +236,6 @@ class VarStraightBytesImpl {
     }
 
     private class Source extends DerefBytesSourceBase {
-
       public Source(IndexInput datIn, IndexInput idxIn) throws IOException {
         super(datIn, idxIn, idxIn.readVLong(), ValueType.BYTES_VAR_STRAIGHT);
       }
@@ -244,10 +243,9 @@ class VarStraightBytesImpl {
       @Override
       public BytesRef getBytes(int docID, BytesRef bytesRef) {
         final long address = addresses.get(docID);
-        final int length = (int) (addresses.get(docID+1) - address); 
-        return data.fillSlice(bytesRef, address, length);
+        return data.fillSlice(bytesRef, address,
+            (int) (addresses.get(docID + 1) - address));
       }
-      
     }
 
     @Override

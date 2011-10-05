@@ -50,7 +50,6 @@ public abstract class DirectSource extends Source{
         break;
       default:
         toNumeric = new LongToLong();
-
       }
     }
 
