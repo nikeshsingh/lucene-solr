@@ -19,8 +19,7 @@ package org.apache.lucene.search;
 
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.Semaphore;
 
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.IndexReader;
@@ -70,7 +69,7 @@ public abstract class SearcherManager {
   protected volatile IndexSearcher currentSearcher;
   protected final ExecutorService es;
   protected final SearcherWarmer warmer;
-  protected final Lock reopenLock = new ReentrantLock();
+  protected final Semaphore reopenLock = new Semaphore(1);
 
   public SearcherManager(IndexReader openedReader, SearcherWarmer warmer,
       ExecutorService es) throws IOException {
@@ -99,14 +98,10 @@ public abstract class SearcherManager {
    * </p>
    */
   public boolean maybeReopen() throws IOException {
-
-    if (currentSearcher == null) {
-      throw new AlreadyClosedException("this SearcherManager is closed");
-    }
-
+    ensureOpen();
     // Ensure only 1 thread does reopen at once; other
     // threads just return immediately:
-    if (reopenLock.tryLock()) {
+    if (reopenLock.tryAcquire()) {
       try {
         IndexReader newReader = openIfChanged(currentSearcher.getIndexReader());
         if (newReader != null) {
@@ -128,10 +123,16 @@ public abstract class SearcherManager {
           return false;
         }
       } finally {
-        reopenLock.unlock();
+        reopenLock.release();
       }
     } else {
       return false;
+    }
+  }
+
+  private void ensureOpen() {
+    if (currentSearcher == null) {
+      throw new AlreadyClosedException("this SearcherManager is closed");
     }
   }
   
@@ -146,10 +147,8 @@ public abstract class SearcherManager {
   }
 
   protected void swapSearcher(IndexSearcher newSearcher) throws IOException {
-    IndexSearcher oldSearcher = currentSearcher;
-    if (oldSearcher == null) {
-      throw new AlreadyClosedException("this SearcherManager is closed");
-    }
+    ensureOpen();
+    final IndexSearcher oldSearcher = currentSearcher;
     currentSearcher = newSearcher;
     release(oldSearcher);
   }
@@ -170,7 +169,7 @@ public abstract class SearcherManager {
    * process in other threads won't be affected, and they should still call
    * {@link #release} after they are done.
    */
-  public void close() throws IOException {
+  public synchronized void close() throws IOException {
     if (currentSearcher != null) {
       // make sure we can call this more than once
       // closeable javadoc says:
