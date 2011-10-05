@@ -18,14 +18,12 @@ package org.apache.lucene.index.codecs;
  */
 
 import java.io.IOException;
-import java.util.Comparator;
 
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.PerDocWriteState;
 import org.apache.lucene.index.values.Writer;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
-import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Counter;
 
 /**
@@ -55,14 +53,10 @@ public abstract class DocValuesWriterBase extends PerDocConsumer {
   public DocValuesConsumer addValuesField(FieldInfo field) throws IOException {
     return Writer.create(field.getDocValues(),
         docValuesId(segmentName, codecId, field.number),
-        getDirectory(), getComparator(), bytesUsed, context);
+        getDirectory(), bytesUsed, context);
   }
 
   public static String docValuesId(String segmentsName, int codecID, int fieldId) {
     return segmentsName + "_" + codecID + "-" + fieldId;
-  }
-  
-  public Comparator<BytesRef> getComparator() throws IOException {
-    return BytesRef.getUTF8SortedAsUnicodeComparator();
   }
 }

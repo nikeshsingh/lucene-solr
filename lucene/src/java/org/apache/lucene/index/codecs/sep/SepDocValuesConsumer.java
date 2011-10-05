@@ -56,8 +56,6 @@ public class SepDocValuesConsumer extends DocValuesWriterBase {
         switch (fieldInfo.getDocValues()) {
           case BYTES_FIXED_DEREF:
           case BYTES_VAR_DEREF:
-          case BYTES_VAR_SORTED:
-          case BYTES_FIXED_SORTED:
           case BYTES_VAR_STRAIGHT:
             files.add(IndexFileNames.segmentFileName(filename, "",
                 Writer.INDEX_EXTENSION));

@@ -317,10 +317,8 @@ public class IndexDocValuesField extends Field implements PerDocFieldValues {
     final String value;
     switch (type) {
     case BYTES_FIXED_DEREF:
-    case BYTES_FIXED_SORTED:
     case BYTES_FIXED_STRAIGHT:
     case BYTES_VAR_DEREF:
-    case BYTES_VAR_SORTED:
     case BYTES_VAR_STRAIGHT:
       value = "bytes:bytes.utf8ToString();";
       break;
@@ -353,10 +351,8 @@ public class IndexDocValuesField extends Field implements PerDocFieldValues {
     final IndexDocValuesField valField = new IndexDocValuesField(field.name(), field.fieldType(), field.stringValue());
     switch (type) {
     case BYTES_FIXED_DEREF:
-    case BYTES_FIXED_SORTED:
     case BYTES_FIXED_STRAIGHT:
     case BYTES_VAR_DEREF:
-    case BYTES_VAR_SORTED:
     case BYTES_VAR_STRAIGHT:
       BytesRef ref = field.isBinary() ? field.binaryValue() : new BytesRef(field.stringValue());
       valField.setBytes(ref, type);

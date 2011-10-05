@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.util.Comparator;
 
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.values.IndexDocValues.SortedSource;
 import org.apache.lucene.index.values.IndexDocValues.Source;
 import org.apache.lucene.util.BytesRef;
 
@@ -63,16 +62,6 @@ public abstract class SourceCache {
   public abstract Source load(IndexDocValues values) throws IOException;
 
   /**
-   * Atomically loads a {@link SortedSource} into the cache from the given
-   * {@link IndexDocValues} and returns it iff no other {@link SortedSource} has
-   * already been cached. Otherwise the cached source is returned.
-   * <p>
-   * This method will not return <code>null</code>
-   */
-  public abstract SortedSource loadSorted(IndexDocValues values,
-      Comparator<BytesRef> comp) throws IOException;
-
-  /**
    * Atomically invalidates the cached {@link Source} and {@link SortedSource}
    * instances if any and empties the cache.
    */
@@ -94,7 +83,6 @@ public abstract class SourceCache {
    */
   public static final class DirectSourceCache extends SourceCache {
     private Source ref;
-    private SortedSource sortedRef;
 
     public synchronized Source load(IndexDocValues values) throws IOException {
       if (ref == null) {
@@ -103,17 +91,8 @@ public abstract class SourceCache {
       return ref;
     }
 
-    public synchronized SortedSource loadSorted(IndexDocValues values,
-        Comparator<BytesRef> comp) throws IOException {
-      if (sortedRef == null) {
-        sortedRef = values.loadSorted(comp);
-      }
-      return sortedRef;
-    }
-
     public synchronized void invalidate(IndexDocValues values) {
       ref = null;
-      sortedRef = null;
     }
   }
 

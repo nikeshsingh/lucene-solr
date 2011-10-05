@@ -20,7 +20,6 @@ package org.apache.lucene.index.codecs;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -33,7 +32,6 @@ import org.apache.lucene.index.values.Ints;
 import org.apache.lucene.index.values.ValueType;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
-import org.apache.lucene.util.BytesRef;
 
 /**
  * Abstract base class for PerDocValues implementations
@@ -59,10 +57,6 @@ public abstract class DocValuesReaderBase extends PerDocValues {
     return docValues().keySet();
   }
 
-  public Comparator<BytesRef> getComparator() throws IOException {
-    return BytesRef.getUTF8SortedAsUnicodeComparator();
-  }
-  
   // Only opens files... doesn't actually load any values
   protected TreeMap<String, IndexDocValues> load(FieldInfos fieldInfos,
       String segment, int docCount, Directory dir, int codecId, IOContext context)
@@ -125,17 +119,13 @@ public abstract class DocValuesReaderBase extends PerDocValues {
     case FLOAT_64:
       return Floats.getValues(dir, id, docCount, context);
     case BYTES_FIXED_STRAIGHT:
-      return Bytes.getValues(dir, id, Bytes.Mode.STRAIGHT, true, docCount, getComparator(), context);
+      return Bytes.getValues(dir, id, Bytes.Mode.STRAIGHT, true, docCount, context);
     case BYTES_FIXED_DEREF:
-      return Bytes.getValues(dir, id, Bytes.Mode.DEREF, true, docCount, getComparator(), context);
-    case BYTES_FIXED_SORTED:
-      return Bytes.getValues(dir, id, Bytes.Mode.SORTED, true, docCount, getComparator(), context);
+      return Bytes.getValues(dir, id, Bytes.Mode.DEREF, true, docCount, context);
     case BYTES_VAR_STRAIGHT:
-      return Bytes.getValues(dir, id, Bytes.Mode.STRAIGHT, false, docCount, getComparator(), context);
+      return Bytes.getValues(dir, id, Bytes.Mode.STRAIGHT, false, docCount, context);
     case BYTES_VAR_DEREF:
-      return Bytes.getValues(dir, id, Bytes.Mode.DEREF, false, docCount, getComparator(), context);
-    case BYTES_VAR_SORTED:
-      return Bytes.getValues(dir, id, Bytes.Mode.SORTED, false, docCount, getComparator(), context);
+      return Bytes.getValues(dir, id, Bytes.Mode.DEREF, false, docCount, context);
     default:
       throw new IllegalStateException("unrecognized index values mode " + type);
     }

@@ -18,9 +18,7 @@ package org.apache.lucene.index.values;
  */
 
 import java.io.IOException;
-import java.util.Comparator;
 
-import org.apache.lucene.index.values.IndexDocValues.SortedSource;
 import org.apache.lucene.index.values.IndexDocValues.Source;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
@@ -46,22 +44,14 @@ public class TestDocValues extends LuceneTestCase {
     runTestBytes(Bytes.Mode.DEREF, false);
   }
 
-  public void testBytesSorted() throws IOException {
-    runTestBytes(Bytes.Mode.SORTED, true);
-    runTestBytes(Bytes.Mode.SORTED, false);
-  }
-  
   public void runTestBytes(final Bytes.Mode mode, final boolean fixedSize)
       throws IOException {
 
     final BytesRef bytesRef = new BytesRef();
 
-    final Comparator<BytesRef> comp = mode == Bytes.Mode.SORTED ? BytesRef
-        .getUTF8SortedAsUnicodeComparator() : null;
-
     Directory dir = newDirectory();
     final Counter trackBytes = Counter.newCounter();
-    Writer w = Bytes.getWriter(dir, "test", mode, comp, fixedSize, trackBytes, newIOContext(random));
+    Writer w = Bytes.getWriter(dir, "test", mode, fixedSize, trackBytes, newIOContext(random));
     int maxDoc = 220;
     final String[] values = new String[maxDoc];
     final int fixedLength = 1 + atLeast(50);
@@ -81,7 +71,7 @@ public class TestDocValues extends LuceneTestCase {
     w.finish(maxDoc);
     assertEquals(0, trackBytes.get());
 
-    IndexDocValues r = Bytes.getValues(dir, "test", mode, fixedSize, maxDoc, comp, newIOContext(random));
+    IndexDocValues r = Bytes.getValues(dir, "test", mode, fixedSize, maxDoc, newIOContext(random));
     for (int iter = 0; iter < 2; iter++) {
       ValuesEnum bytesEnum = getEnum(r);
       assertNotNull("enum is null", bytesEnum);
@@ -103,68 +93,15 @@ public class TestDocValues extends LuceneTestCase {
     // Verify we can load source twice:
     for (int iter = 0; iter < 2; iter++) {
       Source s;
-      IndexDocValues.SortedSource ss;
-      if (mode == Bytes.Mode.SORTED) {
-        // default is unicode so we can simply pass null here
-        s = ss = getSortedSource(r, random.nextBoolean() ? comp : null);  
-      } else {
         s = getSource(r);
-        ss = null;
-      }
       for (int i = 0; i < 100; i++) {
         final int idx = 2 * i;
         assertNotNull("doc " + idx + "; value=" + values[idx], s.getBytes(idx,
             bytesRef));
         assertEquals("doc " + idx, values[idx], s.getBytes(idx, bytesRef)
             .utf8ToString());
-        if (ss != null) {
-          assertEquals("doc " + idx, values[idx], ss.getByOrd(ss.ord(idx),
-              bytesRef).utf8ToString());
-         int ord = ss
-              .getByValue(new BytesRef(values[idx]));
-          assertTrue(ord >= 0);
-          assertEquals(ss.ord(idx), ord);
-        }
       }
 
-      // Lookup random strings:
-      if (mode == Bytes.Mode.SORTED) {
-        final int numValues = ss.getValueCount();
-        for (int i = 0; i < 1000; i++) {
-          BytesRef bytesValue = new BytesRef(_TestUtil.randomFixedByteLengthUnicodeString(random, fixedSize? fixedLength : 1 + random.nextInt(39)));
-          int ord = ss.getByValue(bytesValue);
-          if (ord >= 0) {
-            assertTrue(bytesValue
-                .bytesEquals(ss.getByOrd(ord, bytesRef)));
-            int count = 0;
-            for (int k = 0; k < 100; k++) {
-              if (bytesValue.utf8ToString().equals(values[2 * k])) {
-                assertEquals(ss.ord(2 * k), ord);
-                count++;
-              }
-            }
-            assertTrue(count > 0);
-          } else {
-            assert ord < 0;
-            int insertIndex = (-ord)-1;
-            if (insertIndex == 0) {
-              final BytesRef firstRef = ss.getByOrd(1, bytesRef);
-              // random string was before our first
-              assertTrue(firstRef.compareTo(bytesValue) > 0);
-            } else if (insertIndex == numValues) {
-              final BytesRef lastRef = ss.getByOrd(numValues-1, bytesRef);
-              // random string was after our last
-              assertTrue(lastRef.compareTo(bytesValue) < 0);
-            } else {
-              final BytesRef before = (BytesRef) ss.getByOrd(insertIndex-1, bytesRef)
-              .clone();
-              BytesRef after = ss.getByOrd(insertIndex, bytesRef);
-              assertTrue(comp.compare(before, bytesValue) < 0);
-              assertTrue(comp.compare(bytesValue, after) < 0);
-            }
-          }
-        }
-      }
     }
 
     r.close();
@@ -481,12 +418,5 @@ public class TestDocValues extends LuceneTestCase {
   private Source getSource(IndexDocValues values) throws IOException {
     // getSource uses cache internally
     return random.nextBoolean() ? values.load() : values.getSource();
-  }
-
-  private SortedSource getSortedSource(IndexDocValues values,
-      Comparator<BytesRef> comparator) throws IOException {
-    // getSortedSource uses cache internally
-    return random.nextBoolean() ? values.loadSorted(comparator) : values
-        .getSortedSorted(comparator);
   }
 }

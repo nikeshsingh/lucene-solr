@@ -20,11 +20,9 @@ package org.apache.lucene.index.values;
 /** Base class for specific Bytes Reader/Writer implementations */
 import java.io.IOException;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.lucene.index.IndexFileNames;
-import org.apache.lucene.index.values.IndexDocValues.SortedSource;
 import org.apache.lucene.index.values.IndexDocValues.Source;
 import org.apache.lucene.index.values.IndexDocValues.SourceEnum;
 import org.apache.lucene.store.DataOutput;
@@ -84,10 +82,6 @@ public final class Bytes {
      * Mode for dereferenced stored bytes
      */
     DEREF,
-    /**
-     * Mode for sorted stored bytes
-     */
-    SORTED
   };
 
   /**
@@ -116,30 +110,22 @@ public final class Bytes {
    * @throws IOException
    *           if the files for the writer can not be created.
    */
-  public static Writer getWriter(Directory dir, String id, Mode mode,
-      Comparator<BytesRef> comp, boolean fixedSize, Counter bytesUsed, IOContext context)
+  public static Writer getWriter(Directory dir, String id, Mode mode, boolean fixedSize, Counter bytesUsed, IOContext context)
       throws IOException {
     // TODO -- i shouldn't have to specify fixed? can
     // track itself & do the write thing at write time?
-    if (comp == null) {
-      comp = BytesRef.getUTF8SortedAsUnicodeComparator();
-    }
 
     if (fixedSize) {
       if (mode == Mode.STRAIGHT) {
         return new FixedStraightBytesImpl.Writer(dir, id, bytesUsed, context);
       } else if (mode == Mode.DEREF) {
         return new FixedDerefBytesImpl.Writer(dir, id, bytesUsed, context);
-      } else if (mode == Mode.SORTED) {
-        return new FixedSortedBytesImpl.Writer(dir, id, comp, bytesUsed, context);
       }
     } else {
       if (mode == Mode.STRAIGHT) {
         return new VarStraightBytesImpl.Writer(dir, id, bytesUsed, context);
       } else if (mode == Mode.DEREF) {
         return new VarDerefBytesImpl.Writer(dir, id, bytesUsed, context);
-      } else if (mode == Mode.SORTED) {
-        return new VarSortedBytesImpl.Writer(dir, id, comp, bytesUsed, context);
       }
     }
 
@@ -169,7 +155,7 @@ public final class Bytes {
    *           if an {@link IOException} occurs
    */
   public static IndexDocValues getValues(Directory dir, String id, Mode mode,
-      boolean fixedSize, int maxDoc, Comparator<BytesRef> sortComparator, IOContext context) throws IOException {
+      boolean fixedSize, int maxDoc, IOContext context) throws IOException {
 
     // TODO -- I can peek @ header to determing fixed/mode?
     if (fixedSize) {
@@ -177,16 +163,12 @@ public final class Bytes {
         return new FixedStraightBytesImpl.Reader(dir, id, maxDoc, context);
       } else if (mode == Mode.DEREF) {
         return new FixedDerefBytesImpl.Reader(dir, id, maxDoc, context);
-      } else if (mode == Mode.SORTED) {
-        return new FixedSortedBytesImpl.Reader(dir, id, maxDoc, context);
       }
     } else {
       if (mode == Mode.STRAIGHT) {
         return new VarStraightBytesImpl.Reader(dir, id, maxDoc, context);
       } else if (mode == Mode.DEREF) {
         return new VarDerefBytesImpl.Reader(dir, id, maxDoc, context);
-      } else if (mode == Mode.SORTED) {
-        return new VarSortedBytesImpl.Reader(dir, id, maxDoc, sortComparator, context);
       }
     }
 
@@ -288,111 +270,6 @@ public final class Bytes {
 
   }
 
-  static abstract class BytesSortedSourceBase extends SortedSource {
-    private final PagedBytes pagedBytes;
-    private final Comparator<BytesRef> comp;
-    protected final PackedInts.Reader docToOrdIndex;
-    private final ValueType type;
-    
-    protected final IndexInput datIn;
-    protected final IndexInput idxIn;
-    protected final BytesRef defaultValue = new BytesRef();
-    protected final static int PAGED_BYTES_BITS = 15;
-    protected final PagedBytes.Reader data;
-    
-
-    protected BytesSortedSourceBase(IndexInput datIn, IndexInput idxIn,
-        Comparator<BytesRef> comp, long bytesToRead, ValueType type) throws IOException {
-      this(datIn, idxIn, comp, new PagedBytes(PAGED_BYTES_BITS), bytesToRead, type);
-    }
-    
-    protected BytesSortedSourceBase(IndexInput datIn, IndexInput idxIn,
-        Comparator<BytesRef> comp, PagedBytes pagedBytes, long bytesToRead,ValueType type)
-        throws IOException {
-      assert bytesToRead <= datIn.length() : " file size is less than the expected size diff: "
-          + (bytesToRead - datIn.length()) + " pos: " + datIn.getFilePointer();
-      this.datIn = datIn;
-      this.pagedBytes = pagedBytes;
-      this.pagedBytes.copy(datIn, bytesToRead);
-      data = pagedBytes.freeze(true);
-      this.idxIn = idxIn;
-      this.comp = comp == null ? BytesRef.getUTF8SortedAsUnicodeComparator()
-          : comp;
-      docToOrdIndex = PackedInts.getReader(idxIn);
-      this.type = type;
-
-    }
-    
-    @Override
-    public int ord(int docID) {
-      return (int) docToOrdIndex.get(docID) -1;
-    }
-
-    @Override
-    public BytesRef getByOrd(int ord, BytesRef bytesRef) {
-      assert ord >= 0;
-      return deref(ord, bytesRef);
-    }
-
-    protected void closeIndexInput() throws IOException {
-      IOUtils.close(datIn, idxIn);
-    }
-    
-    /**
-     * Returns the largest doc id + 1 in this doc values source
-     */
-    public int maxDoc() {
-      return docToOrdIndex.size();
-    }
-    /**
-     * Copies the value for the given ord to the given {@link BytesRef} and
-     * returns it.
-     */
-    protected abstract BytesRef deref(int ord, BytesRef bytesRef);
-
-    protected int binarySearch(BytesRef b, BytesRef bytesRef, int low,
-        int high) {
-      int mid = 0;
-      while (low <= high) {
-        mid = (low + high) >>> 1;
-        deref(mid, bytesRef);
-        final int cmp = comp.compare(bytesRef, b);
-        if (cmp < 0) {
-          low = mid + 1;
-        } else if (cmp > 0) {
-          high = mid - 1;
-        } else {
-          return mid;
-        }
-      }
-      assert comp.compare(bytesRef, b) != 0;
-      return -(low + 1);
-    }
-
-    @Override
-    public ValuesEnum getEnum(AttributeSource attrSource) throws IOException {
-      return new SourceEnum(attrSource, type(), this, maxDoc()) {
-
-        @Override
-        public int advance(int target) throws IOException {
-          if (target >= numDocs) {
-            return pos = NO_MORE_DOCS;
-          }
-          while (source.getBytes(target, bytesRef).length == 0) {
-            if (++target >= numDocs) {
-              return pos = NO_MORE_DOCS;
-            }
-          }
-          return pos = target;
-        }
-      };
-    }
-    
-    @Override
-    public ValueType type() {
-      return type;
-    }
-  }
 
   // TODO: open up this API?!
   static abstract class BytesWriterBase extends Writer {

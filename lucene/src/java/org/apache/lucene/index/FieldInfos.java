@@ -652,29 +652,23 @@ public final class FieldInfos implements Iterable<FieldInfo> {
         case BYTES_FIXED_DEREF:
           b = 5;
           break;
-        case BYTES_FIXED_SORTED:
+        case BYTES_VAR_STRAIGHT:
           b = 6;
           break;
-        case BYTES_VAR_STRAIGHT:
+        case BYTES_VAR_DEREF:
           b = 7;
           break;
-        case BYTES_VAR_DEREF:
+        case FIXED_INTS_16:
           b = 8;
           break;
-        case BYTES_VAR_SORTED:
+        case FIXED_INTS_32:
           b = 9;
           break;
-        case FIXED_INTS_16:
+        case FIXED_INTS_64:
           b = 10;
           break;
-        case FIXED_INTS_32:
-          b = 11;
-          break;
-        case FIXED_INTS_64:
-          b = 12;
-          break;
         case FIXED_INTS_8:
-          b = 13;
+          b = 11;
           break;
        
         default:
@@ -754,27 +748,21 @@ public final class FieldInfos implements Iterable<FieldInfo> {
           docValuesType = ValueType.BYTES_FIXED_DEREF;
           break;
         case 6:
-          docValuesType = ValueType.BYTES_FIXED_SORTED;
-          break;
-        case 7:
           docValuesType = ValueType.BYTES_VAR_STRAIGHT;
           break;
-        case 8:
+        case 7:
           docValuesType = ValueType.BYTES_VAR_DEREF;
           break;
-        case 9:
-          docValuesType = ValueType.BYTES_VAR_SORTED;
-          break;
-        case 10:
+        case 8:
           docValuesType = ValueType.FIXED_INTS_16;
           break;
-        case 11:
+        case 9:
           docValuesType = ValueType.FIXED_INTS_32;
           break;
-        case 12:
+        case 10:
           docValuesType = ValueType.FIXED_INTS_64;
           break;
-        case 13:
+        case 11:
           docValuesType = ValueType.FIXED_INTS_8;
           break;  
         

@@ -120,54 +120,6 @@ public abstract class IndexDocValues implements Closeable {
   }
 
   /**
-   * Returns a {@link SortedSource} instance for this {@link IndexDocValues} field
-   * instance like {@link #getSource()}.
-   * <p>
-   * This method will return null iff this {@link IndexDocValues} represent a
-   * {@link Source} instead of a {@link SortedSource}.
-   */
-  public SortedSource getSortedSorted(Comparator<BytesRef> comparator)
-      throws IOException {
-    return cache.loadSorted(this, comparator);
-  }
-  
-  /**
-   * Returns a {@link SortedSource} instance using a default {@link BytesRef}
-   * comparator for this {@link IndexDocValues} field instance like
-   * {@link #getSource()}.
-   * <p>
-   * This method will return null iff this {@link IndexDocValues} represent a
-   * {@link Source} instead of a {@link SortedSource}.
-   */
-  public SortedSource getSortedSorted() throws IOException {
-    return getSortedSorted(null);
-  }
-
-  /**
-   * Loads and returns a {@link SortedSource} instance for this
-   * {@link IndexDocValues} field instance like {@link #load()}.
-   * <p>
-   * This method will return null iff this {@link IndexDocValues} represent a
-   * {@link Source} instead of a {@link SortedSource}.
-   */
-  public SortedSource loadSorted(Comparator<BytesRef> comparator)
-      throws IOException {
-    throw new UnsupportedOperationException();
-  }
-  
-  /**
-   * Loads and returns a {@link SortedSource} instance using a default
-   * {@link BytesRef} comparator for this {@link IndexDocValues} field instance
-   * like {@link #load()}.
-   * <p>
-   * This method will return null iff this {@link IndexDocValues} represent a
-   * {@link Source} instead of a {@link SortedSource}.
-   */
-  public SortedSource loadSorted() throws IOException {
-    return loadSorted(null);
-  }
-  
-  /**
    * Returns the {@link ValueType} of this {@link IndexDocValues} instance
    */
   public abstract ValueType type();
@@ -342,66 +294,5 @@ public abstract class IndexDocValues implements Closeable {
         return NO_MORE_DOCS;
       return advance(pos + 1);
     }
-  }
-
-  /**
-   * A sorted variant of {@link Source} for <tt>byte[]</tt> values per document.
-   * <p>
-   * Note: {@link ValuesEnum} obtained from a {@link SortedSource} will
-   * enumerate values in document order and not in sorted order.
-   */
-  public static abstract class SortedSource extends Source {
-
-    @Override
-    public BytesRef getBytes(int docID, BytesRef bytesRef) {
-      final int ord = ord(docID);
-      if (ord < 0) {
-        bytesRef.length = 0;
-      } else {
-        getByOrd(ord , bytesRef);
-      }
-      return bytesRef;
-    }
-
-    /**
-     * Returns ord for specified docID. If this docID had not been added to the
-     * Writer, the ord is 0. Ord is dense, ie, starts at 0, then increments by 1
-     * for the next (as defined by {@link Comparator} value.
-     */
-    public abstract int ord(int docID);
-
-    /** Returns value for specified ord. */
-    public abstract BytesRef getByOrd(int ord, BytesRef bytesRef);
-
-
-    /**
-     * Finds the ordinal whose value is greater or equal to the given value.
-     * 
-     * @return the given values ordinal if found or otherwise
-     *         <code>(-(ord)-1)</code>, defined as the ordinal of the first
-     *         element that is greater than the given value. This guarantees
-     *         that the return value will always be &gt;= 0 if the given value
-     *         is found.
-     * 
-     */
-    public final int getByValue(BytesRef value) {
-      return getByValue(value, new BytesRef());
-    }
-
-    /**
-     * Performs a lookup by value.
-     * 
-     * @param value
-     *          the value to look up
-     * @param tmpRef
-     *          a temporary {@link BytesRef} instance used to compare internal
-     *          values to the given value. Must not be <code>null</code>
-     * @return the given values ordinal if found or otherwise
-     *         <code>(-(ord)-1)</code>, defined as the ordinal of the first
-     *         element that is greater than the given value. This guarantees
-     *         that the return value will always be &gt;= 0 if the given value
-     *         is found.
-     */
-    public abstract int getByValue(BytesRef value, BytesRef tmpRef);
   }
 }

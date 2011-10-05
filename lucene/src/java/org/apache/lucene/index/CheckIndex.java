@@ -1074,10 +1074,8 @@ public class CheckIndex {
           while (values.nextDoc() != ValuesEnum.NO_MORE_DOCS) {
             switch (fieldInfo.docValues) {
             case BYTES_FIXED_DEREF:
-            case BYTES_FIXED_SORTED:
             case BYTES_FIXED_STRAIGHT:
             case BYTES_VAR_DEREF:
-            case BYTES_VAR_SORTED:
             case BYTES_VAR_STRAIGHT:
               values.bytes();
               break;

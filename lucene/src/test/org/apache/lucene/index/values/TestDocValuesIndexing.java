@@ -365,8 +365,6 @@ public class TestDocValuesIndexing extends LuceneTestCase {
             }
           }
           break;
-        case BYTES_VAR_SORTED:
-        case BYTES_FIXED_SORTED:
         case BYTES_VAR_DEREF:
         case BYTES_FIXED_DEREF:
         default:
@@ -471,8 +469,8 @@ public class TestDocValuesIndexing extends LuceneTestCase {
   }
 
   private static EnumSet<ValueType> BYTES = EnumSet.of(ValueType.BYTES_FIXED_DEREF,
-      ValueType.BYTES_FIXED_SORTED, ValueType.BYTES_FIXED_STRAIGHT, ValueType.BYTES_VAR_DEREF,
-      ValueType.BYTES_VAR_SORTED, ValueType.BYTES_VAR_STRAIGHT);
+      ValueType.BYTES_FIXED_STRAIGHT, ValueType.BYTES_VAR_DEREF,
+      ValueType.BYTES_VAR_STRAIGHT);
 
   private static EnumSet<ValueType> NUMERICS = EnumSet.of(ValueType.VAR_INTS,
       ValueType.FIXED_INTS_16, ValueType.FIXED_INTS_32,

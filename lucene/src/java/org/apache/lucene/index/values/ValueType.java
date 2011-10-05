@@ -18,7 +18,6 @@ package org.apache.lucene.index.values;
  */
 
 import org.apache.lucene.index.codecs.Codec;
-import org.apache.lucene.index.values.IndexDocValues.SortedSource;
 import org.apache.lucene.index.values.IndexDocValues.Source;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.packed.PackedInts;
@@ -167,26 +166,6 @@ public enum ValueType {
   BYTES_FIXED_DEREF,
 
   /**
-   * A fixed length pre-sorted byte[] variant. Fields with this type only
-   * store distinct byte values and store an additional offset pointer per
-   * document to dereference the shared byte[]. The stored
-   * byte[] is presorted, by default by unsigned byte order,
-   * and allows access via document id, ordinal and by-value.
-   * Use this type if your documents may share the same byte[].
-   * <p>
-   * NOTE: Fields of this type will not store values for documents without and
-   * explicitly provided value. If a documents value is accessed while no
-   * explicit value is stored the returned {@link BytesRef} will be a 0-length
-   * reference. In turn, {@link ValuesEnum} instances will skip over documents
-   * without an explicit value assigned. Custom default values must be assigned
-   * explicitly.
-   * </p>
-   * 
-   * @see SortedSource
-   */
-  BYTES_FIXED_SORTED,
-
-  /**
    * Variable length straight stored byte[] variant. All bytes are
    * stored sequentially for compactness. Usage of this type via the
    * disk-resident API might yield performance degradation since no additional
@@ -216,21 +195,4 @@ public enum ValueType {
    * </p>
    */
   BYTES_VAR_DEREF,
-
-  /**
-   * A variable length pre-sorted byte[] variant. Just like
-   * {@link #BYTES_FIXED_SORTED}, but allowing each
-   * document's value to be a different length.
-   * <p>
-   * NOTE: Fields of this type will not store values for documents without and
-   * explicitly provided value. If a documents value is accessed while no
-   * explicit value is stored the returned {@link BytesRef} will be a 0-length
-   * reference. In turn, {@link ValuesEnum} instances will skip over documents
-   * without an explicit value assigned. Custom default values must be assigned
-   * explicitly.
-   * </p>
-   * 
-   * @see SortedSource
-   */
-  BYTES_VAR_SORTED
 }
