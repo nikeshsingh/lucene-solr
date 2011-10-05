@@ -139,7 +139,7 @@ final class SegmentMerger {
     if (fieldInfos.hasVectors()) {
       mergeVectors();
     }
-    // nocommit - can we do this here after changing FI in DV merge?
+    // write the field info since docvalues might change the ValueType during merge 
     fieldInfos.write(directory, segment + "." + IndexFileNames.FIELD_INFOS_EXTENSION);
     return mergedDocs;
   }
@@ -254,9 +254,6 @@ final class SegmentMerger {
       }
     }
     final SegmentCodecs codecInfo = fieldInfos.buildSegmentCodecs(false);
-    //nocommit - this is currently written after merge is done since we change FI during DV merge
-//    fieldInfos.write(directory, segment + "." + IndexFileNames.FIELD_INFOS_EXTENSION);
-
     int docCount = 0;
 
     setMatchingSegmentReaders();

@@ -19,6 +19,10 @@ package org.apache.lucene.index.values;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 
+ * @lucene.internal
+ */
 //nocommit - javadoc
 public class TypePromoter {
   private static final int IS_INT = 1 << 0;
