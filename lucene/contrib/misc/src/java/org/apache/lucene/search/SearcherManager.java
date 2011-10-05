@@ -70,8 +70,8 @@ public abstract class SearcherManager {
   protected final ExecutorService es;
   protected final SearcherWarmer warmer;
   protected final Semaphore reopenLock = new Semaphore(1);
-
-  public SearcherManager(IndexReader openedReader, SearcherWarmer warmer,
+  
+  protected SearcherManager(IndexReader openedReader, SearcherWarmer warmer,
       ExecutorService es) throws IOException {
     this.es = es;
     this.warmer = warmer;
@@ -135,7 +135,12 @@ public abstract class SearcherManager {
       throw new AlreadyClosedException("this SearcherManager is closed");
     }
   }
-  
+
+  /**
+   * Returns <code>true</code> iff no changes have occured since this searcher
+   * ie. reader was opened, otherwise <code>false</code>.
+   * @see IndexReader#isCurrent() 
+   */
   public boolean isSearcherCurrent() throws CorruptIndexException,
       IOException {
     final IndexSearcher searcher = acquire();
@@ -195,13 +200,34 @@ public abstract class SearcherManager {
   protected abstract IndexReader openIfChanged(IndexReader oldReader)
       throws IOException;
 
-  public static SearcherManager open(IndexWriter writer, boolean applyDeletes,
-      SearcherWarmer warmer, ExecutorService es) throws CorruptIndexException,
-      IOException {
+  /**
+   * Creates and returns a new SearcherManager from the given {@link IndexWriter}. 
+   * @param writer the IndexWriter to open the IndexReader from.
+   * @param applyAllDeletes If <code>true</code>, all buffered deletes will
+   *        be applied (made visible) in the {@link IndexSearcher} / {@link IndexReader}.
+   *        If <code>false</code>, the deletes are not applied but remain buffered 
+   *        (in IndexWriter) so that they will be applied in the future.
+   *        Applying deletes can be costly, so if your app can tolerate deleted documents
+   *        being returned you might gain some performance by passing <code>false</code>.
+   * @param warmer optional {@link SearcherWarmer}.  Pass
+   *        null if you don't require the searcher to warmed
+   *        before going live.  If this is  <code>non-null</code> then a
+   *        merged segment warmer is installed on the
+   *        provided IndexWriter's config.
+   * @param optional ExecutorService so different segments can
+   *        be searched concurrently (see {@link
+   *        IndexSearcher#IndexSearcher(IndexReader,ExecutorService)}.  Pass <code>null</code>
+   *        to search segments sequentially.
+   *        
+   * @see IndexReader#openIfChanged(IndexReader, IndexWriter, boolean)
+   * @throws IOException
+   */
+  public static SearcherManager open(IndexWriter writer, boolean applyAllDeletes,
+      SearcherWarmer warmer, ExecutorService es) throws IOException {
     final IndexReader open = IndexReader.open(writer, true);
     boolean success = false;
     try {
-      SearcherManager manager = new NRTSearchManager(writer, applyDeletes,
+      SearcherManager manager = new NRTSearchManager(writer, applyAllDeletes,
           open, warmer, es);
       success = true;
       return manager;
@@ -212,11 +238,21 @@ public abstract class SearcherManager {
     }
   }
 
-  public static SearcherManager open(Directory dir, SearcherWarmer warmer)
-      throws IOException {
-    return open(dir, warmer, null);
-  }
-
+  /**
+   * Creates and returns a new SearcherManager from the given {@link Directory}. 
+   * @param dir the directory to open the IndexReader on.
+   * @param warmer optional {@link SearcherWarmer}.  Pass
+   *        null if you don't require the searcher to warmed
+   *        before going live.  If this is  <code>non-null</code> then a
+   *        merged segment warmer is installed on the
+   *        provided IndexWriter's config.
+   * @param optional ExecutorService so different segments can
+   *        be searched concurrently (see {@link
+   *        IndexSearcher#IndexSearcher(IndexReader,ExecutorService)}.  Pass <code>null</code>
+   *        to search segments sequentially.
+   *        
+   * @throws IOException
+   */
   public static SearcherManager open(Directory dir, SearcherWarmer warmer,
       ExecutorService es) throws IOException {
     final IndexReader open = IndexReader.open(dir, true);
@@ -232,12 +268,12 @@ public abstract class SearcherManager {
     }
   }
 
-  private static final class NRTSearchManager extends SearcherManager {
+  static final class NRTSearchManager extends SearcherManager {
     private final IndexWriter writer;
     private final boolean applyDeletes;
 
-    public NRTSearchManager(IndexWriter writer, boolean applyDeletes,
-        IndexReader openedReader, SearcherWarmer warmer, ExecutorService es)
+    NRTSearchManager(final IndexWriter writer, final boolean applyDeletes,
+        final IndexReader openedReader, final SearcherWarmer warmer, final ExecutorService es)
         throws IOException {
       super(openedReader, warmer, es);
       this.writer = writer;
@@ -247,8 +283,7 @@ public abstract class SearcherManager {
             new IndexWriter.IndexReaderWarmer() {
               @Override
               public void warm(IndexReader reader) throws IOException {
-                NRTSearchManager.this.warmer.warm(new IndexSearcher(reader,
-                    NRTSearchManager.this.es));
+                warmer.warm(new IndexSearcher(reader, es));
               }
             });
       }
@@ -263,8 +298,8 @@ public abstract class SearcherManager {
 
   }
 
-  private static final class DirectorySearchManager extends SearcherManager {
-    public DirectorySearchManager(IndexReader openedReader,
+  static final class DirectorySearchManager extends SearcherManager {
+    DirectorySearchManager(IndexReader openedReader,
         SearcherWarmer warmer, ExecutorService es) throws IOException {
       super(openedReader, warmer, es);
     }

@@ -25,7 +25,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -41,7 +40,7 @@ import org.apache.lucene.util.ThreadInterruptedException;
  * Utility class to manage sharing near-real-time searchers
  * across multiple searching threads.
  *
- * <p>NOTE: to use this class, you must call reopen
+ * <p>NOTE: to use this class, you must call {@link #maybeReopen(boolean)}
  * periodically.  The {@link NRTManagerReopenThread} is a
  * simple class to do this on a periodic basis.  If you
  * implement your own reopener, be sure to call {@link
@@ -53,11 +52,11 @@ import org.apache.lucene.util.ThreadInterruptedException;
 
 public class NRTManager implements Closeable {
   private final IndexWriter writer;
-  private final SearcherRef withoutDeletes;
-  private final SearcherRef withDeltes;
+  private final SearcherManagerRef withoutDeletes;
+  private final SearcherManagerRef withDeletes;
   private final AtomicLong indexingGen;
   private final List<WaitingListener> waitingListeners = new CopyOnWriteArrayList<WaitingListener>();
-  private final Lock reopenLock = new ReentrantLock();
+  private final ReentrantLock reopenLock = new ReentrantLock();
   private final Condition newGeneration = reopenLock.newCondition();
 
   /**
@@ -74,21 +73,21 @@ public class NRTManager implements Closeable {
    *         before going live.  If this is non-null then a
    *         merged segment warmer is installed on the
    *         provided IndexWriter's config.
-   *  @param applyDeletes if <code>true</code> the NRTManage will force applyDeletes 
+   *  @param alwaysApplyDeletes if <code>true</code> the NRTManage will force applyDeletes 
    *         during reopen operations. 
    *
    *  <p><b>NOTE</b>: the provided {@link SearcherWarmer} is
-   *  not invoked for the initial searcher; you shouldDeletes
+   *  not invoked for the initial searcher; you should
    *  warm it yourself if necessary.
    */
   public NRTManager(IndexWriter writer, ExecutorService es,
       SearcherWarmer warmer, boolean alwaysApplyDeletes) throws IOException {
     this.writer = writer;
     if (alwaysApplyDeletes) {
-      withoutDeletes = withDeltes = new SearcherRef(true, 0,  SearcherManager.open(writer, true, warmer, es));
+      withoutDeletes = withDeletes = new SearcherManagerRef(true, 0,  SearcherManager.open(writer, true, warmer, es));
     } else {
-      withDeltes = new SearcherRef(true, 0,  SearcherManager.open(writer, true, warmer, es));
-      withoutDeletes = new SearcherRef(false, 0,  SearcherManager.open(writer, false, warmer, es));
+      withDeletes = new SearcherManagerRef(true, 0,  SearcherManager.open(writer, true, warmer, es));
+      withoutDeletes = new SearcherManagerRef(false, 0,  SearcherManager.open(writer, false, warmer, es));
     }
     indexingGen = new AtomicLong(1);
   }
@@ -174,67 +173,65 @@ public class NRTManager implements Closeable {
   }
  
   
-  public SearcherManager waitForGeneration(long targetGen, boolean applyAllDeletes) {
-    return waitForGeneration(targetGen, applyAllDeletes, -1,  TimeUnit.NANOSECONDS);
+  //nocommit javadoc 
+  public SearcherManager waitForGeneration(long targetGen, boolean requireDeletes) {
+    return waitForGeneration(targetGen, requireDeletes, -1,  TimeUnit.NANOSECONDS);
   }
 
-  public SearcherManager waitForGeneration(long targetGen, boolean applyAllDeletes, long time, TimeUnit unit) {
-    if (targetGen > getCurrentSearchingGen(applyAllDeletes)) {
-      // Must wait
-      // final long t0 = System.nanoTime();
-      for (WaitingListener listener : waitingListeners) {
-        listener.waiting(applyAllDeletes, targetGen);
-      }
-      while (targetGen > getCurrentSearchingGen(applyAllDeletes)) {
-        // System.out.println(Thread.currentThread().getName() +
-        // ": wait fresh searcher targetGen=" + targetGen + " vs searchingGen="
-        // + getCurrentSearchingGen(requireDeletes) + " requireDeletes=" +
-        // requireDeletes);
-        if (!waitOnGenCondition(time, unit)) {
-          return getSearcherManager(applyAllDeletes);
-        }
-      }
-    }
-    return getSearcherManager(applyAllDeletes);
-  }
-  
-  private boolean waitOnGenCondition(long time, TimeUnit unit) {
+  //nocommit javadoc
+  public SearcherManager waitForGeneration(long targetGen, boolean requireDeletes, long time, TimeUnit unit) {
     try {
       reopenLock.lockInterruptibly();
       try {
-        if (time < 0) {
-          newGeneration.await();
-          return true;
-        } else {
-          return newGeneration.await(time, unit);
+        if (targetGen > getCurrentSearchingGen(requireDeletes)) {
+          for (WaitingListener listener : waitingListeners) {
+            listener.waiting(requireDeletes, targetGen);
+          }
+          while (targetGen > getCurrentSearchingGen(requireDeletes)) {
+            if (!waitOnGenCondition(time, unit)) {
+              return getSearcherManager(requireDeletes);
+            }
+          }
         }
+
       } finally {
         reopenLock.unlock();
       }
-    } catch (InterruptedException e) {
-      throw new ThreadInterruptedException(e);
+    } catch (InterruptedException ie) {
+      throw new ThreadInterruptedException(ie);
+    }
+    return getSearcherManager(requireDeletes);
+  }
+  
+  //nocommit javadoc
+  private boolean waitOnGenCondition(long time, TimeUnit unit)
+      throws InterruptedException {
+    assert reopenLock.isHeldByCurrentThread();
+    if (time < 0) {
+      newGeneration.await();
+      return true;
+    } else {
+      return newGeneration.await(time, unit);
     }
   }
 
   /** Returns generation of current searcher. */
   public long getCurrentSearchingGen(boolean applyAllDeletes) {
     if (applyAllDeletes) {
-      return withDeltes.generation;
+      return withDeletes.generation;
     } else {
-      return Math.max(withoutDeletes.generation, withDeltes.generation);
+      return Math.max(withoutDeletes.generation, withDeletes.generation);
     }
   }
 
   public boolean maybeReopen(boolean applyAllDeletes) throws IOException {
     if (reopenLock.tryLock()) {
       try {
-        SearcherRef reference = applyAllDeletes ? withDeltes : withoutDeletes;
+        final SearcherManagerRef reference = applyAllDeletes ? withDeletes : withoutDeletes;
         // Mark gen as of when reopen started:
         final long newSearcherGen = indexingGen.getAndIncrement();
         boolean setSearchGen = false;
-        if (reference.manager.isSearcherCurrent()) {
-          setSearchGen = true;
-        } else {
+        if (!(setSearchGen = reference.manager.isSearcherCurrent())) {
           setSearchGen = reference.manager.maybeReopen();
         }
         if (setSearchGen) {
@@ -260,39 +257,42 @@ public class NRTManager implements Closeable {
   public synchronized void close() throws IOException {
     reopenLock.lock();
     try {
-      IOUtils.close(withDeltes, withoutDeletes);
+      IOUtils.close(withDeletes, withoutDeletes);
       newGeneration.signalAll();
     } finally {
       reopenLock.unlock();
     }
   }
   
+  //nocommit javadoc
   public IndexSearcher acquireLatest() {
     return getSearcherManager(false).acquire();
   }
   
+  //nocommit javadoc
   public void release(IndexSearcher searcher) throws IOException {
     getSearcherManager(false).release(searcher);
   }
   
+  //nocommit javadoc
   public SearcherManager getSearcherManager(boolean applyAllDeletes) {
     if (applyAllDeletes) {
-      return withDeltes.manager;
+      return withDeletes.manager;
     } else {
-      if (withDeltes.generation > withoutDeletes.generation) {
-        return withDeltes.manager;
+      if (withDeletes.generation > withoutDeletes.generation) {
+        return withDeletes.manager;
       } else {
         return withoutDeletes.manager;
       }
     }
   }
   
-  static class SearcherRef implements Closeable {
+  static final class SearcherManagerRef implements Closeable {
     final boolean applyDeletes;
     volatile long generation;
     final SearcherManager manager;
 
-    SearcherRef(boolean applyDeletes, long generation, SearcherManager manager) {
+    SearcherManagerRef(boolean applyDeletes, long generation, SearcherManager manager) {
       super();
       this.applyDeletes = applyDeletes;
       this.generation = generation;
@@ -300,7 +300,7 @@ public class NRTManager implements Closeable {
     }
     
     public void close() throws IOException {
-      generation = Long.MAX_VALUE;
+      generation = Long.MAX_VALUE; // max it out to make sure nobody can wait on another gen
       manager.close();
     }
   }
