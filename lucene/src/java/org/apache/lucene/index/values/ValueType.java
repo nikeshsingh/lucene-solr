@@ -18,6 +18,7 @@ package org.apache.lucene.index.values;
  */
 
 import org.apache.lucene.index.codecs.Codec;
+import org.apache.lucene.index.values.IndexDocValues.SortedSource;
 import org.apache.lucene.index.values.IndexDocValues.Source;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.packed.PackedInts;

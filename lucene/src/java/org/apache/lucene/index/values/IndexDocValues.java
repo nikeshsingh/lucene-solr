@@ -219,8 +219,6 @@ public abstract class IndexDocValues implements Closeable {
   /**
    * A sorted variant of {@link Source} for <tt>byte[]</tt> values per document.
    * <p>
-   * Note: {@link ValuesEnum} obtained from a {@link SortedSource} will
-   * enumerate values in document order and not in sorted order.
    */
   public static abstract class SortedSource extends Source {
 
@@ -256,8 +254,8 @@ public abstract class IndexDocValues implements Closeable {
      * 
      * @param value
      *          the value to look up
-     * @param tmpRef
-     *          a temporary {@link BytesRef} instance used to compare internal
+     * @param spare
+     *          a spare {@link BytesRef} instance used to compare internal
      *          values to the given value. Must not be <code>null</code>
      * @return the given values ordinal if found or otherwise
      *         <code>(-(ord)-1)</code>, defined as the ordinal of the first
@@ -265,8 +263,8 @@ public abstract class IndexDocValues implements Closeable {
      *         that the return value will always be &gt;= 0 if the given value
      *         is found.
      */
-    public int getByValue(BytesRef bytes, BytesRef tmpRef) {
-      return binarySearch(bytes, tmpRef, 0, numOrds() - 1);
+    public int getByValue(BytesRef value, BytesRef spare) {
+      return binarySearch(value, spare, 0, numOrds() - 1);
     }    
 
     protected int binarySearch(BytesRef b, BytesRef bytesRef, int low,
