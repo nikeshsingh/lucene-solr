@@ -18,6 +18,7 @@ package org.apache.lucene.index.values;
  */
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.Comparator;
 
 import org.apache.lucene.document.IndexDocValuesField;
 import org.apache.lucene.index.Fields;
@@ -25,6 +26,7 @@ import org.apache.lucene.index.FieldsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.index.codecs.CodecProvider;
+import org.apache.lucene.index.values.IndexDocValues.SortedSource;
 import org.apache.lucene.util.BytesRef;
 
 /**
@@ -205,5 +207,90 @@ public abstract class IndexDocValues implements Closeable {
     public Object getArray() {
       return null;
     }
+    
+    public SortedSource asSortedSource() {
+      return null;
+    }
+  }
+  
+  /**
+   * A sorted variant of {@link Source} for <tt>byte[]</tt> values per document.
+   * <p>
+   * Note: {@link ValuesEnum} obtained from a {@link SortedSource} will
+   * enumerate values in document order and not in sorted order.
+   */
+  public static abstract class SortedSource extends Source {
+
+    private final Comparator<BytesRef> comparator;
+
+    protected SortedSource(ValueType type, Comparator<BytesRef> comparator) {
+      super(type);
+      this.comparator = comparator;
+    }
+
+    @Override
+    public BytesRef getBytes(int docID, BytesRef bytesRef) {
+      final int ord = ord(docID);
+      if (ord < 0) {
+        bytesRef.length = 0;
+      } else {
+        getByOrd(ord , bytesRef);
+      }
+      return bytesRef;
+    }
+
+    /**
+     * Returns ord for specified docID. If this docID had not been added to the
+     * Writer, the ord is 0. Ord is dense, ie, starts at 0, then increments by 1
+     * for the next (as defined by {@link Comparator} value.
+     */
+    public abstract int ord(int docID);
+
+    /** Returns value for specified ord. */
+    public abstract BytesRef getByOrd(int ord, BytesRef bytesRef);
+
+    /**
+     * Performs a lookup by value.
+     * 
+     * @param value
+     *          the value to look up
+     * @param tmpRef
+     *          a temporary {@link BytesRef} instance used to compare internal
+     *          values to the given value. Must not be <code>null</code>
+     * @return the given values ordinal if found or otherwise
+     *         <code>(-(ord)-1)</code>, defined as the ordinal of the first
+     *         element that is greater than the given value. This guarantees
+     *         that the return value will always be &gt;= 0 if the given value
+     *         is found.
+     */
+    public int getByValue(BytesRef bytes, BytesRef tmpRef) {
+      return binarySearch(bytes, tmpRef, 0, numOrds() - 1);
+    }    
+
+    protected int binarySearch(BytesRef b, BytesRef bytesRef, int low,
+        int high) {
+      int mid = 0;
+      while (low <= high) {
+        mid = (low + high) >>> 1;
+        getByOrd(mid, bytesRef);
+        final int cmp = comparator.compare(bytesRef, b);
+        if (cmp < 0) {
+          low = mid + 1;
+        } else if (cmp > 0) {
+          high = mid - 1;
+        } else {
+          return mid;
+        }
+      }
+      assert comparator.compare(bytesRef, b) != 0;
+      return -(low + 1);
+    }
+    
+    @Override
+    public SortedSource asSortedSource() {
+      return this;
+    }
+
+    public abstract int numOrds();
   }
 }

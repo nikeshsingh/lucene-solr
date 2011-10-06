@@ -20,9 +20,11 @@ package org.apache.lucene.index.values;
 /** Base class for specific Bytes Reader/Writer implementations */
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.lucene.index.IndexFileNames;
+import org.apache.lucene.index.values.IndexDocValues.SortedSource;
 import org.apache.lucene.index.values.IndexDocValues.Source;
 import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.store.Directory;
@@ -65,7 +67,8 @@ public final class Bytes {
 
   /**
    * Defines the {@link Writer}s store mode. The writer will either store the
-   * bytes sequentially ({@link #STRAIGHT} or dereferenced ({@link #DEREF})
+   * bytes sequentially ({@link #STRAIGHT}, dereferenced ({@link #DEREF}) or
+   * sorted ({@link #SORTED})
    * 
    * @lucene.experimental
    */
@@ -78,6 +81,10 @@ public final class Bytes {
      * Mode for dereferenced stored bytes
      */
     DEREF,
+    /**
+     * Mode for sorted stored bytes
+     */
+    SORTED
   };
 
   /**
@@ -91,6 +98,8 @@ public final class Bytes {
    *          the segment name and a unique id per segment.
    * @param mode
    *          the writers store mode
+   * @param comp
+   *          a {@link BytesRef} comparator - only used with {@link Mode#SORTED}
    * @param fixedSize
    *          <code>true</code> if all bytes subsequently passed to the
    *          {@link Writer} will have the same length
@@ -104,22 +113,30 @@ public final class Bytes {
    * @throws IOException
    *           if the files for the writer can not be created.
    */
-  public static Writer getWriter(Directory dir, String id, Mode mode, boolean fixedSize, Counter bytesUsed, IOContext context)
+  public static Writer getWriter(Directory dir, String id, Mode mode,
+      Comparator<BytesRef> comp, boolean fixedSize, Counter bytesUsed, IOContext context)
       throws IOException {
     // TODO -- i shouldn't have to specify fixed? can
     // track itself & do the write thing at write time?
+    if (comp == null) {
+      comp = BytesRef.getUTF8SortedAsUnicodeComparator();
+    }
 
     if (fixedSize) {
       if (mode == Mode.STRAIGHT) {
         return new FixedStraightBytesImpl.Writer(dir, id, bytesUsed, context);
       } else if (mode == Mode.DEREF) {
         return new FixedDerefBytesImpl.Writer(dir, id, bytesUsed, context);
+      } else if (mode == Mode.SORTED) {
+        return new FixedSortedBytesImpl.Writer(dir, id, comp, bytesUsed, context);
       }
     } else {
       if (mode == Mode.STRAIGHT) {
         return new VarStraightBytesImpl.Writer(dir, id, bytesUsed, context);
       } else if (mode == Mode.DEREF) {
         return new VarDerefBytesImpl.Writer(dir, id, bytesUsed, context);
+      } else if (mode == Mode.SORTED) {
+        return new VarSortedBytesImpl.Writer(dir, id, comp, bytesUsed, context);
       }
     }
 
@@ -143,12 +160,13 @@ public final class Bytes {
    *          otherwise <code>false</code>
    * @param maxDoc
    *          the number of document values stored for the given ID
+   * @param sortComparator byte comparator used by sorted variants
    * @return an initialized {@link IndexDocValues} instance.
    * @throws IOException
    *           if an {@link IOException} occurs
    */
   public static IndexDocValues getValues(Directory dir, String id, Mode mode,
-      boolean fixedSize, int maxDoc, IOContext context) throws IOException {
+      boolean fixedSize, int maxDoc, Comparator<BytesRef> sortComparator, IOContext context) throws IOException {
 
     // TODO -- I can peek @ header to determing fixed/mode?
     if (fixedSize) {
@@ -156,12 +174,16 @@ public final class Bytes {
         return new FixedStraightBytesImpl.FixedStraightReader(dir, id, maxDoc, context);
       } else if (mode == Mode.DEREF) {
         return new FixedDerefBytesImpl.FixedDerefReader(dir, id, maxDoc, context);
+      } else if (mode == Mode.SORTED) {
+        return new FixedSortedBytesImpl.Reader(dir, id, maxDoc, context, ValueType.BYTES_FIXED_SORTED, sortComparator);
       }
     } else {
       if (mode == Mode.STRAIGHT) {
         return new VarStraightBytesImpl.VarStraightReader(dir, id, maxDoc, context);
       } else if (mode == Mode.DEREF) {
         return new VarDerefBytesImpl.VarDerefReader(dir, id, maxDoc, context);
+      } else if (mode == Mode.SORTED) {
+        return new VarSortedBytesImpl.Reader(dir, id, maxDoc,context, ValueType.BYTES_VAR_SORTED, sortComparator);
       }
     }
 
@@ -521,5 +543,56 @@ public final class Bytes {
       w.finish();
     }
     
+  }
+  
+  static abstract class BytesSortedSourceBase extends SortedSource {
+    private final PagedBytes pagedBytes;
+    protected final PackedInts.Reader docToOrdIndex;
+    
+    protected final IndexInput datIn;
+    protected final IndexInput idxIn;
+    protected final BytesRef defaultValue = new BytesRef();
+    protected final static int PAGED_BYTES_BITS = 15;
+    protected final PagedBytes.Reader data;
+    
+
+    protected BytesSortedSourceBase(IndexInput datIn, IndexInput idxIn,
+        Comparator<BytesRef> comp, long bytesToRead, ValueType type) throws IOException {
+      this(datIn, idxIn, comp, new PagedBytes(PAGED_BYTES_BITS), bytesToRead, type);
+    }
+    
+    protected BytesSortedSourceBase(IndexInput datIn, IndexInput idxIn,
+        Comparator<BytesRef> comp, PagedBytes pagedBytes, long bytesToRead,ValueType type)
+        throws IOException {
+      super(type, comp);
+      assert bytesToRead <= datIn.length() : " file size is less than the expected size diff: "
+          + (bytesToRead - datIn.length()) + " pos: " + datIn.getFilePointer();
+      this.datIn = datIn;
+      this.pagedBytes = pagedBytes;
+      this.pagedBytes.copy(datIn, bytesToRead);
+      data = pagedBytes.freeze(true);
+      this.idxIn = idxIn;
+      docToOrdIndex = PackedInts.getReader(idxIn);
+
+    }
+    
+    @Override
+    public int ord(int docID) {
+      return (int) docToOrdIndex.get(docID);
+    }
+
+    @Override
+    public abstract BytesRef getByOrd(int ord, BytesRef bytesRef);
+
+    protected void closeIndexInput() throws IOException {
+      IOUtils.close(datIn, idxIn);
+    }
+    
+    /**
+     * Returns the largest doc id + 1 in this doc values source
+     */
+    public int maxDoc() {
+      return docToOrdIndex.size();
+    }
   }
 }

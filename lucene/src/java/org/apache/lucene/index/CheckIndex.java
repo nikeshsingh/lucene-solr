@@ -1074,6 +1074,8 @@ public class CheckIndex {
           final int maxDoc = reader.maxDoc();
           for (int i = 0; i < maxDoc; i++) {
             switch (fieldInfo.docValues) {
+            case BYTES_FIXED_SORTED:
+            case BYTES_VAR_SORTED:
             case BYTES_FIXED_DEREF:
             case BYTES_FIXED_STRAIGHT:
             case BYTES_VAR_DEREF:

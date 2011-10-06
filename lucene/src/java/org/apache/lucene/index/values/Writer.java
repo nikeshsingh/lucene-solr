@@ -17,6 +17,7 @@ package org.apache.lucene.index.values;
  * limitations under the License.
  */
 import java.io.IOException;
+import java.util.Comparator;
 
 import org.apache.lucene.index.codecs.DocValuesConsumer;
 import org.apache.lucene.index.values.IndexDocValues.Source;
@@ -175,7 +176,10 @@ public abstract class Writer extends DocValuesConsumer {
    * @throws IOException
    */
   public static Writer create(ValueType type, String id, Directory directory,
-      Counter bytesUsed, IOContext context) throws IOException {
+      Comparator<BytesRef> comp, Counter bytesUsed, IOContext context) throws IOException {
+    if (comp == null) {
+      comp = BytesRef.getUTF8SortedAsUnicodeComparator();
+    }
     switch (type) {
     case FIXED_INTS_16:
     case FIXED_INTS_32:
@@ -188,16 +192,22 @@ public abstract class Writer extends DocValuesConsumer {
     case FLOAT_64:
       return Floats.getWriter(directory, id, bytesUsed, context, type);
     case BYTES_FIXED_STRAIGHT:
-      return Bytes.getWriter(directory, id, Bytes.Mode.STRAIGHT, true,
+      return Bytes.getWriter(directory, id, Bytes.Mode.STRAIGHT, comp, true,
           bytesUsed, context);
     case BYTES_FIXED_DEREF:
-      return Bytes.getWriter(directory, id, Bytes.Mode.DEREF, true,
+      return Bytes.getWriter(directory, id, Bytes.Mode.DEREF, comp, true,
+          bytesUsed, context);
+    case BYTES_FIXED_SORTED:
+      return Bytes.getWriter(directory, id, Bytes.Mode.SORTED, comp, true,
           bytesUsed, context);
     case BYTES_VAR_STRAIGHT:
-      return Bytes.getWriter(directory, id, Bytes.Mode.STRAIGHT, false,
+      return Bytes.getWriter(directory, id, Bytes.Mode.STRAIGHT, comp, false,
           bytesUsed, context);
     case BYTES_VAR_DEREF:
-      return Bytes.getWriter(directory, id, Bytes.Mode.DEREF, false,
+      return Bytes.getWriter(directory, id, Bytes.Mode.DEREF, comp, false,
+          bytesUsed, context);
+    case BYTES_VAR_SORTED:
+      return Bytes.getWriter(directory, id, Bytes.Mode.SORTED, comp, false,
           bytesUsed, context);
     default:
       throw new IllegalArgumentException("Unknown Values: " + type);
