@@ -18,7 +18,6 @@ package org.apache.lucene.index.values;
  */
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.Comparator;
 
 import org.apache.lucene.document.IndexDocValuesField;
 import org.apache.lucene.index.Fields;
@@ -63,9 +62,6 @@ public abstract class IndexDocValues implements Closeable {
    * the callers responsibility to maintain the instance and release its
    * resources once the source is not needed anymore.
    * <p>
-   * This method will return null iff this {@link IndexDocValues} represent a
-   * {@link SortedSource}.
-   * <p>
    * For managed {@link Source} instances see {@link #getSource()}.
    * 
    * @see #getSource()
@@ -84,9 +80,6 @@ public abstract class IndexDocValues implements Closeable {
    * from the cache once this {@link IndexDocValues} instance is closed by the
    * {@link IndexReader}, {@link Fields} or {@link FieldsEnum} the
    * {@link IndexDocValues} was created from.
-   * <p>
-   * This method will return null iff this {@link IndexDocValues} represent a
-   * {@link SortedSource}.
    */
   public Source getSource() throws IOException {
     return cache.load(this);
@@ -114,13 +107,10 @@ public abstract class IndexDocValues implements Closeable {
 
   /**
    * Sets the {@link SourceCache} used by this {@link IndexDocValues} instance. This
-   * method should be called before {@link #load()} or
-   * {@link #loadSorted(Comparator)} is called. All {@link Source} or
-   * {@link SortedSource} instances in the currently used cache will be closed
+   * method should be called before {@link #load()} is called. All {@link Source} instances in the currently used cache will be closed
    * before the new cache is installed.
    * <p>
-   * Note: All instances previously obtained from {@link #load()} or
-   * {@link #loadSorted(Comparator)} will be closed.
+   * Note: All instances previously obtained from {@link #load()} will be lost.
    * 
    * @throws IllegalArgumentException
    *           if the given cache is <code>null</code>

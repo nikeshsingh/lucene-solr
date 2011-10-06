@@ -101,7 +101,7 @@ public abstract class Writer extends DocValuesConsumer {
   /**
    * Merges a document with the given <code>docID</code>. The methods
    * implementation obtains the value for the <i>sourceDoc</i> id from the
-   * current {@link Source} set to {@link #setNextMergeSource(Source)}.
+   * current {@link Source} set to <i>setNextMergeSource(Source)</i>.
    * <p>
    * This method is used during merging to provide implementation agnostic
    * default merge implementation.
@@ -117,7 +117,7 @@ public abstract class Writer extends DocValuesConsumer {
 
   /**
    * Sets the next {@link Source} to consume values from on calls to
-   * {@link #mergeDoc(int)}
+   * {@link #mergeDoc(int, int)}
    * 
    * @param mergeSource
    *          the next {@link Source}, this must not be null
@@ -169,11 +169,6 @@ public abstract class Writer extends DocValuesConsumer {
    *          the file name id used to create files within the writer.
    * @param directory
    *          the {@link Directory} to create the files from.
-   * @param comp
-   *          a {@link BytesRef} comparator used for {@link Bytes} variants. If
-   *          <code>null</code>
-   *          {@link BytesRef#getUTF8SortedAsUnicodeComparator()} is used as the
-   *          default.
    * @param bytesUsed
    *          a byte-usage tracking reference
    * @return a new {@link Writer} instance for the given {@link ValueType}

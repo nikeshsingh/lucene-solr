@@ -46,8 +46,7 @@ import org.apache.lucene.util.packed.PackedInts;
 /**
  * Provides concrete Writer/Reader implementations for <tt>byte[]</tt> value per
  * document. There are 6 package-private default implementations of this, for
- * all combinations of {@link Mode#DEREF}/{@link Mode#STRAIGHT}/
- * {@link Mode#SORTED} x fixed-length/variable-length.
+ * all combinations of {@link Mode#DEREF}/{@link Mode#STRAIGHT} x fixed-length/variable-length.
  * 
  * <p>
  * NOTE: Currently the total amount of byte[] data stored (across a single
@@ -66,8 +65,7 @@ public final class Bytes {
 
   /**
    * Defines the {@link Writer}s store mode. The writer will either store the
-   * bytes sequentially ({@link #STRAIGHT}, dereferenced ({@link #DEREF}) or
-   * sorted ({@link #SORTED})
+   * bytes sequentially ({@link #STRAIGHT} or dereferenced ({@link #DEREF})
    * 
    * @lucene.experimental
    */
@@ -93,8 +91,6 @@ public final class Bytes {
    *          the segment name and a unique id per segment.
    * @param mode
    *          the writers store mode
-   * @param comp
-   *          a {@link BytesRef} comparator - only used with {@link Mode#SORTED}
    * @param fixedSize
    *          <code>true</code> if all bytes subsequently passed to the
    *          {@link Writer} will have the same length
@@ -147,7 +143,6 @@ public final class Bytes {
    *          otherwise <code>false</code>
    * @param maxDoc
    *          the number of document values stored for the given ID
-   * @param sortComparator byte comparator used by sorted variants
    * @return an initialized {@link IndexDocValues} instance.
    * @throws IOException
    *           if an {@link IOException} occurs
