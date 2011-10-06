@@ -24,9 +24,10 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.BytesRef;
 
 /**
+ * Base class for disk resident source implementations
  * @lucene.internal
  */
-public abstract class DirectSource extends Source {
+abstract class DirectSource extends Source {
 
   protected final IndexInput data;
   private final ToNumeric toNumeric;
@@ -62,7 +63,7 @@ public abstract class DirectSource extends Source {
       ref.offset = 0;
       return ref;
     } catch (IOException ex) {
-      throw new RuntimeException(ex);
+      throw new IllegalStateException("failed to get value for docID: " + docID, ex);
     }
   }
 
@@ -72,7 +73,7 @@ public abstract class DirectSource extends Source {
       position(docID);
       return toNumeric.toLong(data);
     } catch (IOException ex) {
-      throw new RuntimeException(ex);
+      throw new IllegalStateException("failed to get value for docID: " + docID, ex);
     }
   }
 
@@ -82,7 +83,7 @@ public abstract class DirectSource extends Source {
       position(docID);
       return toNumeric.toDouble(data);
     } catch (IOException ex) {
-      throw new RuntimeException(ex);
+      throw new IllegalStateException("failed to get value for docID: " + docID, ex);
     }
   }
 
