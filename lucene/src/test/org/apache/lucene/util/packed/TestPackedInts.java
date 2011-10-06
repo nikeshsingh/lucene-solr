@@ -116,15 +116,15 @@ public class TestPackedInts extends LuceneTestCase {
           in.close();
         }
         
-        { // test reader iterator seek
+        { // test reader iterator get
           IndexInput in = d.openInput("out.bin", newIOContext(random));
-          PackedInts.SeekableReaderIterator intsEnum = PackedInts.getSeekableReaderIterator(in);
+          PackedInts.RandomAccessReaderIterator intsEnum = PackedInts.getRandomAccessReaderIterator(in);
           for (int i = 0; i < valueCount; i++) {
             final String msg = "index=" + i + " ceil=" + ceil + " valueCount="
                 + valueCount + " nbits=" + nbits + " for "
                 + intsEnum.getClass().getSimpleName();
             final int ord = random.nextInt(valueCount);
-            long seek = intsEnum.seek(ord);
+            long seek = intsEnum.get(ord);
             assertEquals(msg, seek, values[ord]);
             if (random.nextBoolean() && ord < valueCount-1) {
               if (random.nextBoolean()) {

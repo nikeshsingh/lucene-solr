@@ -338,11 +338,11 @@ class FixedStraightBytesImpl {
       super(input, type);
       this.size = size;
     }
+
     @Override
-    protected void offsetAndSize(int docID, OffsetAndSize offsetAndSize)
-        throws IOException {
-      offsetAndSize.offset = size * docID;
-      offsetAndSize.size = size;
+    protected int position(int docID) throws IOException {
+      data.seek(baseOffset + size * docID);
+      return size;
     }
 
   }

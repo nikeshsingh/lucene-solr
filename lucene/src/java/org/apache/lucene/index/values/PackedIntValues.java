@@ -247,7 +247,7 @@ class PackedIntValues {
   }
 
   private static final class DirectPackedIntsSource extends Source {
-    private final PackedInts.SeekableReaderIterator ints;
+    private final PackedInts.RandomAccessReaderIterator ints;
     private long minValue;
     private final long defaultValue;
 
@@ -255,13 +255,25 @@ class PackedIntValues {
         throws IOException {
       minValue = dataIn.readLong();
       defaultValue = dataIn.readLong();
-      this.ints = PackedInts.getSeekableReaderIterator(dataIn);
+      this.ints = PackedInts.getRandomAccessReaderIterator(dataIn);
+    }
+
+    @Override
+    public double getFloat(int docID) {
+      return getInt(docID);
+    }
+
+    @Override
+    public BytesRef getBytes(int docID, BytesRef ref) {
+      ref.grow(8);
+      ref.copy(getInt(docID));
+      return ref;
     }
 
     @Override
     public long getInt(int docID) {
       try {
-      final long val = ints.seek(docID);
+      final long val = ints.get(docID);
       return val == defaultValue ? 0 : minValue + val;
       } catch (IOException e) {
         throw new RuntimeException(e);

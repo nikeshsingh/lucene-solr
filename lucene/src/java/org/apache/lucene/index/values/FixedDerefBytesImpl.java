@@ -109,21 +109,20 @@ class FixedDerefBytesImpl {
   }
   
   public final static class DirectFixedDerefSource extends DirectSource {
-    private PackedInts.SeekableReaderIterator index;
+    private PackedInts.RandomAccessReaderIterator index;
     private final int size;
 
     DirectFixedDerefSource(IndexInput data, IndexInput index, int size, ValueType type)
         throws IOException {
       super(data, type);
       this.size = size;
-      this.index = PackedInts.getSeekableReaderIterator(index);
+      this.index = PackedInts.getRandomAccessReaderIterator(index);
     }
 
     @Override
-    protected void offsetAndSize(int docID, OffsetAndSize offsetAndSize)
-        throws IOException {
-        offsetAndSize.offset = index.seek(docID) * size;
-        offsetAndSize.size = size;  
+    protected int position(int docID) throws IOException {
+      data.seek(baseOffset + index.get(docID) * size);
+      return size;
     }
   }
 

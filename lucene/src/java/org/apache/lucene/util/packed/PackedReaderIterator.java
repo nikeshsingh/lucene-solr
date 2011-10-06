@@ -21,7 +21,7 @@ import org.apache.lucene.store.IndexInput;
 
 import java.io.IOException;
 
-final class PackedReaderIterator implements PackedInts.SeekableReaderIterator {
+final class PackedReaderIterator implements PackedInts.RandomAccessReaderIterator {
   private long pending;
   private int pendingBitsLeft;
   private final IndexInput in;
@@ -112,21 +112,23 @@ final class PackedReaderIterator implements PackedInts.SeekableReaderIterator {
     return currentValue = next();
   }
   
-  public long seek(final int ord) throws IOException {
-    assert ord < valueCount : "ord must be less than valueCount";
-    if (ord < position) {
+
+  @Override
+  public long get(int index) throws IOException {
+    assert index < valueCount : "ord must be less than valueCount";
+    if (index < position) {
       pendingBitsLeft = 0;
-      final long bitsToSkip = (((long) bitsPerValue) * (long) ord);
+      final long bitsToSkip = (((long) bitsPerValue) * (long) index);
       final long skip = bitsToSkip - pendingBitsLeft;
       final long closestByte = (skip >> 6) << 3;
       in.seek(startPointer + closestByte);
       pending = in.readLong();
       pendingBitsLeft = 64 - (int) (skip % 64);
-      position = ord - 1;
+      position = index - 1;
       return currentValue = next();
-    } else if (ord == position) {
+    } else if (index == position) {
       return currentValue;
     }
-    return advance(ord);
+    return advance(index);
   }
 }

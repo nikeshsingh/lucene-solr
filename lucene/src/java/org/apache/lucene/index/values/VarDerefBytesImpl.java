@@ -129,29 +129,24 @@ class VarDerefBytesImpl {
   
   public final static class DirectDerefVarSource extends DirectSource {
 
-    private PackedInts.SeekableReaderIterator index;
+    private PackedInts.RandomAccessReaderIterator index;
 
     DirectDerefVarSource(IndexInput data, IndexInput index, ValueType type)
         throws IOException {
       super(data, type);
-      this.index = PackedInts.getSeekableReaderIterator(index);
+      this.index = PackedInts.getRandomAccessReaderIterator(index);
     }
-
+    
     @Override
-    protected void offsetAndSize(int docID, OffsetAndSize offsetAndSize)
-        throws IOException {
-      offsetAndSize.offset = index.seek(docID);
-      data.seek(baseOffset + offsetAndSize.offset);
+    protected int position(int docID) throws IOException {
+      data.seek(baseOffset + index.get(docID));
       final byte sizeByte = data.readByte();
-      offsetAndSize.offset++;
       if ((sizeByte & 128) == 0) {
         // length is 1 byte
-        offsetAndSize.size = sizeByte;
+        return sizeByte;
       } else {
-        offsetAndSize.size = ((sizeByte & 0x7f) << 8) | ((data.readByte() & 0xff));
-        offsetAndSize.offset++;
+        return ((sizeByte & 0x7f) << 8) | ((data.readByte() & 0xff));
       }
-      
     }
   }
 }

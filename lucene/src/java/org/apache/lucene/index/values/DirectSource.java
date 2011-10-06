@@ -55,12 +55,10 @@ public abstract class DirectSource extends Source{
 
     @Override
     public BytesRef getBytes(int docID, BytesRef ref) {
-      
       try {
-        offsetAndSize(docID, offsetAndSize);
-        data.seek(offsetAndSize.offset + baseOffset);
-        ref.grow(offsetAndSize.size);
-        data.readBytes(ref.bytes, 0, offsetAndSize.size);
+        final int sizeToRead = position(docID);
+        ref.grow(sizeToRead);
+        data.readBytes(ref.bytes, 0, sizeToRead);
         ref.length = offsetAndSize.size;
         ref.offset = 0;
         return ref;
@@ -72,8 +70,7 @@ public abstract class DirectSource extends Source{
     @Override
     public long getInt(int docID) {
       try {
-        offsetAndSize(docID, offsetAndSize);
-        data.seek(offsetAndSize.offset + baseOffset);
+        position(docID);
         return toNumeric.toLong(data);
       } catch (IOException ex) {
         throw new RuntimeException(ex);
@@ -83,16 +80,15 @@ public abstract class DirectSource extends Source{
     @Override
     public double getFloat(int docID) {
       try {
-        offsetAndSize(docID, offsetAndSize);
-        data.seek(offsetAndSize.offset + baseOffset);
+        position(docID);
         return toNumeric.toDouble(data);
       } catch (IOException ex) {
         throw new RuntimeException(ex);
       }
     }
+    
+    protected abstract int position(int docID) throws IOException;
 
-    protected abstract void offsetAndSize(int docID, OffsetAndSize offsetAndSize)
-        throws IOException;
 
     @Override
     public ValueType type() {

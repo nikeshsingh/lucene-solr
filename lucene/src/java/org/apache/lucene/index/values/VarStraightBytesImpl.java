@@ -264,19 +264,19 @@ class VarStraightBytesImpl {
   
   public final static class DirectStraightVarSource extends DirectSource {
 
-    private PackedInts.SeekableReaderIterator index;
+    private final PackedInts.RandomAccessReaderIterator index;
 
     DirectStraightVarSource(IndexInput data, IndexInput index, ValueType type)
         throws IOException {
       super(data, type);
-      this.index = PackedInts.getSeekableReaderIterator(index);
+      this.index = PackedInts.getRandomAccessReaderIterator(index);
     }
 
     @Override
-    protected void offsetAndSize(int docID, OffsetAndSize offsetAndSize)
-        throws IOException {
-        offsetAndSize.offset = index.seek(docID);
-        offsetAndSize.size = (int) (index.next() - offsetAndSize.offset);
+    protected int position(int docID) throws IOException {
+      final long offset = index.get(docID);
+      data.seek(baseOffset + offset);
+      return (int) (index.next() - offset);
     }
   }
 }
