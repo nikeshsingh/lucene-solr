@@ -214,7 +214,7 @@ class PackedIntValues {
 
     @Override
     public Source getDirectSource() throws IOException {
-      return values != null ? new FixedStraightBytesImpl.DirectFixedSource((IndexInput) datIn.clone(), 8, ValueType.FIXED_INTS_64) : new DirectPackedIntsSource((IndexInput) datIn.clone());
+      return values != null ? new FixedStraightBytesImpl.DirectFixedStraightSource((IndexInput) datIn.clone(), 8, ValueType.FIXED_INTS_64) : new DirectPackedIntsSource((IndexInput) datIn.clone());
     }
   }
 

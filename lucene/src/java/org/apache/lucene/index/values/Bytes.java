@@ -195,55 +195,8 @@ public final class Bytes {
       data = pagedBytes.freeze(true);
       this.idxIn = idxIn;
     }
-
-    public void close() throws IOException {
-      try {
-        data.close(); // close data
-      } finally {
-        try {
-          if (datIn != null) {
-            datIn.close();
-          }
-        } finally {
-          if (idxIn != null) {// if straight - no index needed
-            idxIn.close();
-          }
-        }
-      }
-    }
-    
-    @Override
-    public int getValueCount() {
-      throw new UnsupportedOperationException();
-    }
-
-    /**
-     * Returns one greater than the largest possible document number.
-     */
-    protected abstract int maxDoc();
-
   }
   
-  static abstract class DerefBytesSourceBase extends BytesSourceBase {
-    protected final PackedInts.Reader addresses;
-    public DerefBytesSourceBase(IndexInput datIn, IndexInput idxIn,  long bytesToRead, ValueType type) throws IOException {
-      super(datIn, idxIn, new PagedBytes(PAGED_BYTES_BITS), bytesToRead, type);
-      addresses = PackedInts.getReader(idxIn);
-    }
-    
-    @Override
-    public int getValueCount() {
-      return addresses.size();
-    }
-    
-    @Override
-    protected int maxDoc() {
-      return addresses.size();
-    }
-
-  }
-
-
   // TODO: open up this API?!
   static abstract class BytesWriterBase extends Writer {
     private final String id;

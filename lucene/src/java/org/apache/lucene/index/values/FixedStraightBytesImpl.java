@@ -25,6 +25,7 @@ import org.apache.lucene.index.values.Bytes.BytesSourceBase;
 import org.apache.lucene.index.values.Bytes.BytesReaderBase;
 import org.apache.lucene.index.values.Bytes.BytesWriterBase;
 import org.apache.lucene.index.values.DirectSource;
+import org.apache.lucene.index.values.IndexDocValues.Source;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
@@ -254,76 +255,74 @@ class FixedStraightBytesImpl {
     @Override
     public Source load() throws IOException {
       return size == 1 ? new SingleByteSource(cloneData(), maxDoc) : 
-        new StraightBytesSource(cloneData(), size, maxDoc);
+        new FixedStraightSource(cloneData(), size, maxDoc);
     }
 
     @Override
     public void close() throws IOException {
       datIn.close();
     }
-    
-    // specialized version for single bytes
-    private static class SingleByteSource extends Source {
-      private final byte[] data;
-
-      public SingleByteSource(IndexInput datIn, int maxDoc) throws IOException {
-        super(ValueType.BYTES_FIXED_STRAIGHT);
-        try {
-          data = new byte[maxDoc];
-          datIn.readBytes(data, 0, data.length, false);
-        } finally {
-          IOUtils.close(datIn);
-        }
-
-      }
-
-      @Override
-      public BytesRef getBytes(int docID, BytesRef bytesRef) {
-        bytesRef.length = 1;
-        bytesRef.bytes = data;
-        bytesRef.offset = docID;
-        return bytesRef;
-      }
-      
-    }
-
-    private final static class StraightBytesSource extends BytesSourceBase {
-      private final int size;
-      private final int maxDoc;
-
-      public StraightBytesSource(IndexInput datIn, int size, int maxDoc)
-          throws IOException {
-        super(datIn, null, new PagedBytes(PAGED_BYTES_BITS), size * maxDoc, ValueType.BYTES_FIXED_STRAIGHT);
-        this.size = size;
-        this.maxDoc = maxDoc;
-      }
-
-      @Override
-      public BytesRef getBytes(int docID, BytesRef bytesRef) {
-        return data.fillSlice(bytesRef, docID * size, size);
-      }
-      
-      @Override
-      public int getValueCount() {
-        return maxDoc;
-      }
-
-      @Override
-      protected int maxDoc() {
-        return maxDoc;
-      }
-    }
-
+   
     @Override
     public Source getDirectSource() throws IOException {
-      return new DirectFixedSource(cloneData(), size, type());
+      return new DirectFixedStraightSource(cloneData(), size, type());
     }
   }
   
-  public final static class DirectFixedSource extends DirectSource {
+  // specialized version for single bytes
+  private static final class SingleByteSource extends Source {
+    private final byte[] data;
+
+    public SingleByteSource(IndexInput datIn, int maxDoc) throws IOException {
+      super(ValueType.BYTES_FIXED_STRAIGHT);
+      try {
+        data = new byte[maxDoc];
+        datIn.readBytes(data, 0, data.length, false);
+      } finally {
+        IOUtils.close(datIn);
+      }
+    }
+    
+    @Override
+    public boolean hasArray() {
+      return true;
+    }
+
+    @Override
+    public Object getArray() {
+      return data;
+    }
+
+    @Override
+    public BytesRef getBytes(int docID, BytesRef bytesRef) {
+      bytesRef.length = 1;
+      bytesRef.bytes = data;
+      bytesRef.offset = docID;
+      return bytesRef;
+    }
+  }
+
+  
+  private final static class FixedStraightSource extends BytesSourceBase {
     private final int size;
 
-    DirectFixedSource(IndexInput input, int size, ValueType type) {
+    public FixedStraightSource(IndexInput datIn, int size, int maxDoc)
+        throws IOException {
+      super(datIn, null, new PagedBytes(PAGED_BYTES_BITS), size * maxDoc,
+          ValueType.BYTES_FIXED_STRAIGHT);
+      this.size = size;
+    }
+
+    @Override
+    public BytesRef getBytes(int docID, BytesRef bytesRef) {
+      return data.fillSlice(bytesRef, docID * size, size);
+    }
+  }
+  
+  public final static class DirectFixedStraightSource extends DirectSource {
+    private final int size;
+
+    DirectFixedStraightSource(IndexInput input, int size, ValueType type) {
       super(input, type);
       this.size = size;
     }

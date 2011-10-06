@@ -20,8 +20,8 @@ package org.apache.lucene.index.values;
 import java.io.IOException;
 
 import org.apache.lucene.index.values.Bytes.BytesReaderBase;
+import org.apache.lucene.index.values.Bytes.BytesSourceBase;
 import org.apache.lucene.index.values.Bytes.BytesWriterBase;
-import org.apache.lucene.index.values.Bytes.DerefBytesSourceBase;
 import org.apache.lucene.index.values.DirectSource;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
@@ -32,6 +32,7 @@ import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Counter;
 import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.PagedBytes;
 import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.ByteBlockPool.DirectTrackingAllocator;
 import org.apache.lucene.util.packed.PackedInts;
@@ -232,20 +233,7 @@ class VarStraightBytesImpl {
 
     @Override
     public Source load() throws IOException {
-      return new Source(cloneData(), cloneIndex());
-    }
-
-    private class Source extends DerefBytesSourceBase {
-      public Source(IndexInput datIn, IndexInput idxIn) throws IOException {
-        super(datIn, idxIn, idxIn.readVLong(), ValueType.BYTES_VAR_STRAIGHT);
-      }
-
-      @Override
-      public BytesRef getBytes(int docID, BytesRef bytesRef) {
-        final long address = addresses.get(docID);
-        return data.fillSlice(bytesRef, address,
-            (int) (addresses.get(docID + 1) - address));
-      }
+      return new VarStraightSource(cloneData(), cloneIndex());
     }
 
     @Override
@@ -253,15 +241,32 @@ class VarStraightBytesImpl {
         throws IOException {
       IndexInput cloneIndex = cloneIndex();
       cloneIndex.readVLong();
-      return new DirectStraightVarSource(cloneData(), cloneIndex, type());
+      return new DirectVarStraightSource(cloneData(), cloneIndex, type());
     }
   }
   
-  public final static class DirectStraightVarSource extends DirectSource {
+  private static final class VarStraightSource extends BytesSourceBase {
+    private final PackedInts.Reader addresses;
+
+    public VarStraightSource(IndexInput datIn, IndexInput idxIn) throws IOException {
+      super(datIn, idxIn, new PagedBytes(PAGED_BYTES_BITS), idxIn.readVLong(),
+          ValueType.BYTES_VAR_STRAIGHT);
+      addresses = PackedInts.getReader(idxIn);
+    }
+
+    @Override
+    public BytesRef getBytes(int docID, BytesRef bytesRef) {
+      final long address = addresses.get(docID);
+      return data.fillSlice(bytesRef, address,
+          (int) (addresses.get(docID + 1) - address));
+    }
+  }
+  
+  public final static class DirectVarStraightSource extends DirectSource {
 
     private final PackedInts.RandomAccessReaderIterator index;
 
-    DirectStraightVarSource(IndexInput data, IndexInput index, ValueType type)
+    DirectVarStraightSource(IndexInput data, IndexInput index, ValueType type)
         throws IOException {
       super(data, type);
       this.index = PackedInts.getRandomAccessReaderIterator(index);

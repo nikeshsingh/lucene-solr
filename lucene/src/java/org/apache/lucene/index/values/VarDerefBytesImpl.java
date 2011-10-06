@@ -20,7 +20,7 @@ package org.apache.lucene.index.values;
 import java.io.IOException;
 
 import org.apache.lucene.index.values.Bytes.BytesReaderBase;
-import org.apache.lucene.index.values.Bytes.DerefBytesSourceBase;
+import org.apache.lucene.index.values.Bytes.BytesSourceBase;
 import org.apache.lucene.index.values.Bytes.DerefBytesWriterBase;
 import org.apache.lucene.index.values.DirectSource;
 import org.apache.lucene.store.Directory;
@@ -29,6 +29,7 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Counter;
+import org.apache.lucene.util.PagedBytes;
 import org.apache.lucene.util.packed.PackedInts;
 
 // Stores variable-length byte[] by deref, ie when two docs
@@ -98,35 +99,39 @@ class VarDerefBytesImpl {
 
     @Override
     public Source load() throws IOException {
-      return new Source(cloneData(), cloneIndex(), totalBytes);
+      return new VarDerefSource(cloneData(), cloneIndex(), totalBytes);
     }
 
-    private final static class Source extends DerefBytesSourceBase {
-
-      public Source(IndexInput datIn, IndexInput idxIn, long totalBytes)
-          throws IOException {
-        super(datIn, idxIn, totalBytes, ValueType.BYTES_VAR_DEREF);
-      }
-
-      @Override
-      public BytesRef getBytes(int docID, BytesRef bytesRef) {
-        return data.fillSliceWithPrefix(bytesRef,
-            addresses.get(docID));
-      }
-    }
-
+   
     @Override
     public org.apache.lucene.index.values.IndexDocValues.Source getDirectSource()
         throws IOException {
-      return new DirectDerefVarSource(cloneData(), cloneIndex(), type());
+      return new DirectVarDerefSource(cloneData(), cloneIndex(), type());
     }
   }
   
-  public final static class DirectDerefVarSource extends DirectSource {
+  final static class VarDerefSource extends BytesSourceBase {
+    private final PackedInts.Reader addresses;
 
-    private PackedInts.RandomAccessReaderIterator index;
+    public VarDerefSource(IndexInput datIn, IndexInput idxIn, long totalBytes)
+        throws IOException {
+      super(datIn, idxIn, new PagedBytes(PAGED_BYTES_BITS), totalBytes,
+          ValueType.BYTES_VAR_DEREF);
+      addresses = PackedInts.getReader(idxIn);
+    }
 
-    DirectDerefVarSource(IndexInput data, IndexInput index, ValueType type)
+    @Override
+    public BytesRef getBytes(int docID, BytesRef bytesRef) {
+      return data.fillSliceWithPrefix(bytesRef,
+          addresses.get(docID));
+    }
+  }
+
+  
+  final static class DirectVarDerefSource extends DirectSource {
+    private final PackedInts.RandomAccessReaderIterator index;
+
+    DirectVarDerefSource(IndexInput data, IndexInput index, ValueType type)
         throws IOException {
       super(data, type);
       this.index = PackedInts.getRandomAccessReaderIterator(index);
