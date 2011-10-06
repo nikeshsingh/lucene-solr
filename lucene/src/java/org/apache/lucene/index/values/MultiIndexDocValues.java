@@ -96,68 +96,6 @@ public class MultiIndexDocValues extends IndexDocValues {
     }
   }
 
-//  private static class MultiValuesEnum extends ValuesEnum {
-//    private DocValuesIndex[] docValuesIdx;
-//    private final int maxDoc;
-//    private int currentStart;
-//    private int currentMax;
-//    private int currentDoc = -1;
-//    private ValuesEnum currentEnum;
-//    private final int[] starts;
-//
-//    public MultiValuesEnum(DocValuesIndex[] docValuesIdx, int[] starts)
-//        throws IOException {
-//      super(docValuesIdx[0].docValues.type());
-//      this.docValuesIdx = docValuesIdx;
-//      final DocValuesIndex last = docValuesIdx[docValuesIdx.length - 1];
-//      maxDoc = last.start + last.length;
-//      final DocValuesIndex idx = docValuesIdx[0];
-//      currentEnum = idx.docValues.getEnum(this.attributes());
-//      currentEnum.copyFrom(this);
-//      intsRef = currentEnum.intsRef;
-//      currentMax = idx.length;
-//      currentStart = 0;
-//      this.starts = starts;
-//    }
-//
-//    @Override
-//    public void close() throws IOException {
-//      currentEnum.close();
-//    }
-//
-//    @Override
-//    public int seek(int target) throws IOException {
-//      int relativeDoc = target - currentStart;
-//      do {
-//        if (target >= maxDoc) {// we are beyond max doc
-//          return currentDoc = NO_MORE_DOCS;
-//        }
-//        if (target >= currentMax || target < currentStart) {
-//          final int idx = ReaderUtil.subIndex(target, starts);
-//          currentEnum.close();
-//          currentEnum = docValuesIdx[idx].docValues.getEnum();
-//          currentEnum.copyFrom(this);
-//          currentStart = docValuesIdx[idx].start;
-//          currentMax = currentStart + docValuesIdx[idx].length;
-//          relativeDoc = target - currentStart;
-//        }
-//        target = currentMax; // make sure that we advance to the next enum if the current is exhausted
-//
-//      } while ((relativeDoc = currentEnum.seek(relativeDoc)) == NO_MORE_DOCS);
-//      return currentDoc = currentStart + relativeDoc;
-//    }
-//
-//    @Override
-//    public int docID() {
-//      return currentDoc;
-//    }
-//
-//    @Override
-//    public int nextDoc() throws IOException {
-//      return seek(currentDoc + 1);
-//    }
-//  }
-
   private static class MultiSource extends Source {
     private int numDocs = 0;
     private int start = 0;
