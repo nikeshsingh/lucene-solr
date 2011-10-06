@@ -308,28 +308,30 @@ public final class Bytes {
 
     protected BytesReaderBase(Directory dir, String id, String codecName,
         int maxVersion, boolean doIndex, IOContext context, ValueType type) throws IOException {
-      this.type = type;
-      this.id = id;
-      datIn = dir.openInput(IndexFileNames.segmentFileName(id, "",
-          Writer.DATA_EXTENSION), context);
+      IndexInput dataIn = null;
+      IndexInput indexIn = null;
       boolean success = false;
       try {
-      version = CodecUtil.checkHeader(datIn, codecName, maxVersion, maxVersion);
+      dataIn = dir.openInput(IndexFileNames.segmentFileName(id, "",
+            Writer.DATA_EXTENSION), context);
+      version = CodecUtil.checkHeader(dataIn, codecName, maxVersion, maxVersion);
       if (doIndex) {
-        idxIn = dir.openInput(IndexFileNames.segmentFileName(id, "",
+        indexIn = dir.openInput(IndexFileNames.segmentFileName(id, "",
             Writer.INDEX_EXTENSION), context);
-        final int version2 = CodecUtil.checkHeader(idxIn, codecName,
+        final int version2 = CodecUtil.checkHeader(indexIn, codecName,
             maxVersion, maxVersion);
         assert version == version2;
-      } else {
-        idxIn = null;
       }
       success = true;
       } finally {
         if (!success) {
-          closeInternal();
+          IOUtils.closeWhileHandlingException(dataIn, indexIn);
         }
       }
+      datIn = dataIn;
+      idxIn = indexIn;
+      this.type = type;
+      this.id = id;
     }
 
     /**
@@ -353,17 +355,7 @@ public final class Bytes {
       try {
         super.close();
       } finally {
-         closeInternal();
-      }
-    }
-    
-    private void closeInternal() throws IOException {
-      try {
-        datIn.close();
-      } finally {
-        if (idxIn != null) {
-          idxIn.close();
-        }
+         IOUtils.close(datIn, idxIn);
       }
     }
 
