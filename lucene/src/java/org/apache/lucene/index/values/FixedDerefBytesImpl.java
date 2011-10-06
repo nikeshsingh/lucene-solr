@@ -67,10 +67,10 @@ class FixedDerefBytesImpl {
     }
   }
 
-  public static class Reader extends BytesReaderBase {
+  public static class FixedDerefReader extends BytesReaderBase {
     private final int size;
     private final int numValuesStored;
-    Reader(Directory dir, String id, int maxDoc, IOContext context) throws IOException {
+    FixedDerefReader(Directory dir, String id, int maxDoc, IOContext context) throws IOException {
       super(dir, id, CODEC_NAME, VERSION_START, true, context, ValueType.BYTES_FIXED_DEREF);
       size = datIn.readInt();
       numValuesStored = idxIn.readInt();
@@ -82,7 +82,7 @@ class FixedDerefBytesImpl {
     }
 
     @Override
-    public org.apache.lucene.index.values.IndexDocValues.Source getDirectSource()
+    public Source getDirectSource()
         throws IOException {
       return new DirectFixedDerefSource(cloneData(), cloneIndex(), size, type());
     }

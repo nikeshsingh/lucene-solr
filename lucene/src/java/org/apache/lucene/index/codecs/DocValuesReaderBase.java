@@ -115,9 +115,9 @@ public abstract class DocValuesReaderBase extends PerDocValues {
     case VAR_INTS:
       return Ints.getValues(dir, id, docCount, type, context);
     case FLOAT_32:
-      return Floats.getValues(dir, id, docCount, context);
+      return Floats.getValues(dir, id, docCount, context, type);
     case FLOAT_64:
-      return Floats.getValues(dir, id, docCount, context);
+      return Floats.getValues(dir, id, docCount, context, type);
     case BYTES_FIXED_STRAIGHT:
       return Bytes.getValues(dir, id, Bytes.Mode.STRAIGHT, true, docCount, context);
     case BYTES_FIXED_DEREF:

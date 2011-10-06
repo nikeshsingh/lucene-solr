@@ -22,7 +22,6 @@ import java.util.Comparator;
 
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.values.IndexDocValues.Source;
-import org.apache.lucene.util.BytesRef;
 
 /**
  * Abstract base class for {@link IndexDocValues} {@link Source} /

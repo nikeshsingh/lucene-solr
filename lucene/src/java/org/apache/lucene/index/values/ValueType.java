@@ -42,9 +42,8 @@ public enum ValueType {
    * <p>
    * NOTE: this type uses <tt>0</tt> as the default value without any
    * distinction between provided <tt>0</tt> values during indexing. All
-   * documents without an explicit value will use <tt>0</tt> instead. In turn,
-   * {@link ValuesEnum} instances will not skip documents without an explicit
-   * value assigned. Custom default values must be assigned explicitly.
+   * documents without an explicit value will use <tt>0</tt> instead.
+   * Custom default values must be assigned explicitly.
    * </p>
    */
   VAR_INTS,
@@ -55,9 +54,8 @@ public enum ValueType {
    * <p>
    * NOTE: this type uses <tt>0</tt> as the default value without any
    * distinction between provided <tt>0</tt> values during indexing. All
-   * documents without an explicit value will use <tt>0</tt> instead. In turn,
-   * {@link ValuesEnum} instances will not skip documents without an explicit
-   * value assigned. Custom default values must be assigned explicitly.
+   * documents without an explicit value will use <tt>0</tt> instead.
+   * Custom default values must be assigned explicitly.
    * </p>
    */
   FIXED_INTS_8,
@@ -68,9 +66,8 @@ public enum ValueType {
    * <p>
    * NOTE: this type uses <tt>0</tt> as the default value without any
    * distinction between provided <tt>0</tt> values during indexing. All
-   * documents without an explicit value will use <tt>0</tt> instead. In turn,
-   * {@link ValuesEnum} instances will not skip documents without an explicit
-   * value assigned. Custom default values must be assigned explicitly.
+   * documents without an explicit value will use <tt>0</tt> instead.
+   * Custom default values must be assigned explicitly.
    * </p>
    */
   FIXED_INTS_16,
@@ -81,9 +78,8 @@ public enum ValueType {
    * <p>
    * NOTE: this type uses <tt>0</tt> as the default value without any
    * distinction between provided <tt>0</tt> values during indexing. All
-   * documents without an explicit value will use <tt>0</tt> instead. In turn,
-   * {@link ValuesEnum} instances will not skip documents without an explicit
-   * value assigned. Custom default values must be assigned explicitly.
+   * documents without an explicit value will use <tt>0</tt> instead. 
+   * Custom default values must be assigned explicitly.
    * </p>
    */
   FIXED_INTS_32,
@@ -94,9 +90,8 @@ public enum ValueType {
    * <p>
    * NOTE: this type uses <tt>0</tt> as the default value without any
    * distinction between provided <tt>0</tt> values during indexing. All
-   * documents without an explicit value will use <tt>0</tt> instead. In turn,
-   * {@link ValuesEnum} instances will not skip documents without an explicit
-   * value assigned. Custom default values must be assigned explicitly.
+   * documents without an explicit value will use <tt>0</tt> instead.
+   * Custom default values must be assigned explicitly.
    * </p>
    */
   FIXED_INTS_64,
@@ -109,9 +104,8 @@ public enum ValueType {
    * <p>
    * NOTE: this type uses <tt>0.0f</tt> as the default value without any
    * distinction between provided <tt>0.0f</tt> values during indexing. All
-   * documents without an explicit value will use <tt>0.0f</tt> instead. In
-   * turn, {@link ValuesEnum} instances will not skip documents without an
-   * explicit value assigned. Custom default values must be assigned explicitly.
+   * documents without an explicit value will use <tt>0.0f</tt> instead.
+   * Custom default values must be assigned explicitly.
    * </p>
    */
   FLOAT_32,
@@ -125,9 +119,8 @@ public enum ValueType {
    * <p>
    * NOTE: this type uses <tt>0.0d</tt> as the default value without any
    * distinction between provided <tt>0.0d</tt> values during indexing. All
-   * documents without an explicit value will use <tt>0.0d</tt> instead. In
-   * turn, {@link ValuesEnum} instances will not skip documents without an
-   * explicit value assigned. Custom default values must be assigned explicitly.
+   * documents without an explicit value will use <tt>0.0d</tt> instead.
+   * Custom default values must be assigned explicitly.
    * </p>
    */
   FLOAT_64,
@@ -142,9 +135,7 @@ public enum ValueType {
    * NOTE: this type uses <tt>0 byte</tt> filled byte[] based on the length of the first seen
    * value as the default value without any distinction between explicitly
    * provided values during indexing. All documents without an explicit value
-   * will use the default instead. In turn, {@link ValuesEnum} instances will
-   * not skip documents without an explicit value assigned. Custom default
-   * values must be assigned explicitly.
+   * will use the default instead.Custom default values must be assigned explicitly.
    * </p>
    */
   BYTES_FIXED_STRAIGHT,
@@ -158,9 +149,7 @@ public enum ValueType {
    * NOTE: Fields of this type will not store values for documents without and
    * explicitly provided value. If a documents value is accessed while no
    * explicit value is stored the returned {@link BytesRef} will be a 0-length
-   * reference. In turn, {@link ValuesEnum} instances will skip over documents
-   * without an explicit value assigned. Custom default values must be assigned
-   * explicitly.
+   * reference. Custom default values must be assigned explicitly.
    * </p>
    */
   BYTES_FIXED_DEREF,
@@ -174,9 +163,7 @@ public enum ValueType {
    * NOTE: Fields of this type will not store values for documents without an
    * explicitly provided value. If a documents value is accessed while no
    * explicit value is stored the returned {@link BytesRef} will be a 0-length
-   * byte[] reference.  In contrast to dereferenced variants, {@link ValuesEnum}
-   * instances will <b>not</b> skip over documents without an explicit value
-   * assigned.  Custom default values must be assigned explicitly.
+   * byte[] reference. Custom default values must be assigned explicitly.
    * </p>
    */
   BYTES_VAR_STRAIGHT,
@@ -189,9 +176,7 @@ public enum ValueType {
    * NOTE: Fields of this type will not store values for documents without and
    * explicitly provided value. If a documents value is accessed while no
    * explicit value is stored the returned {@link BytesRef} will be a 0-length
-   * reference. In turn, {@link ValuesEnum} instances will skip over documents
-   * without an explicit value assigned. Custom default values must be assigned
-   * explicitly.
+   * reference. Custom default values must be assigned explicitly.
    * </p>
    */
   BYTES_VAR_DEREF,

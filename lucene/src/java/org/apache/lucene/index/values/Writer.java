@@ -99,29 +99,28 @@ public abstract class Writer extends DocValuesConsumer {
   }
 
   /**
-   * Records a value from the given document id. The methods implementation
-   * obtains the value for the document id from the last {@link ValuesEnum}
-   * set to {@link #setNextMergeSource(Source)}.
+   * Merges a document with the given <code>docID</code>. The methods
+   * implementation obtains the value for the <i>sourceDoc</i> id from the
+   * current {@link Source} set to {@link #setNextMergeSource(Source)}.
    * <p>
    * This method is used during merging to provide implementation agnostic
    * default merge implementation.
    * </p>
    * <p>
-   * The given document id must be the same document id returned from
-   * {@link ValuesEnum#docID()} when this method is called. All documents IDs
-   * between the given ID and the previously given ID or <tt>0</tt> if the
-   * method is call the first time are filled with default values depending on
-   * the {@link Writer} implementation. The given document ID must always be
-   * greater than the previous ID or <tt>0</tt> if called the first time.
+   * All documents IDs between the given ID and the previously given ID or
+   * <tt>0</tt> if the method is call the first time are filled with default
+   * values depending on the {@link Writer} implementation. The given document
+   * ID must always be greater than the previous ID or <tt>0</tt> if called the
+   * first time.
    */
   protected abstract void mergeDoc(int docID, int sourceDoc) throws IOException;
 
   /**
-   * Sets the next {@link ValuesEnum} to consume values from on calls to
+   * Sets the next {@link Source} to consume values from on calls to
    * {@link #mergeDoc(int)}
    * 
    * @param mergeSource
-   *          the next {@link ValuesEnum}, this must not be null
+   *          the next {@link Source}, this must not be null
    */
   protected void setNextMergeSource(Source mergeSource) {
     currentMergeSource = mergeSource;
@@ -190,9 +189,9 @@ public abstract class Writer extends DocValuesConsumer {
     case VAR_INTS:
       return Ints.getWriter(directory, id, bytesUsed, type, context);
     case FLOAT_32:
-      return Floats.getWriter(directory, id, 4, bytesUsed, context);
+      return Floats.getWriter(directory, id, bytesUsed, context, type);
     case FLOAT_64:
-      return Floats.getWriter(directory, id, 8, bytesUsed, context);
+      return Floats.getWriter(directory, id, bytesUsed, context, type);
     case BYTES_FIXED_STRAIGHT:
       return Bytes.getWriter(directory, id, Bytes.Mode.STRAIGHT, true,
           bytesUsed, context);

@@ -158,15 +158,15 @@ public final class Bytes {
     // TODO -- I can peek @ header to determing fixed/mode?
     if (fixedSize) {
       if (mode == Mode.STRAIGHT) {
-        return new FixedStraightBytesImpl.Reader(dir, id, maxDoc, context);
+        return new FixedStraightBytesImpl.FixedStraightReader(dir, id, maxDoc, context);
       } else if (mode == Mode.DEREF) {
-        return new FixedDerefBytesImpl.Reader(dir, id, maxDoc, context);
+        return new FixedDerefBytesImpl.FixedDerefReader(dir, id, maxDoc, context);
       }
     } else {
       if (mode == Mode.STRAIGHT) {
-        return new VarStraightBytesImpl.Reader(dir, id, maxDoc, context);
+        return new VarStraightBytesImpl.VarStraightReader(dir, id, maxDoc, context);
       } else if (mode == Mode.DEREF) {
-        return new VarDerefBytesImpl.Reader(dir, id, maxDoc, context);
+        return new VarDerefBytesImpl.VarDerefReader(dir, id, maxDoc, context);
       }
     }
 

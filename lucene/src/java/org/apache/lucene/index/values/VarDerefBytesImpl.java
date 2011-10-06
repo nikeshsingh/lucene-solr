@@ -90,9 +90,9 @@ class VarDerefBytesImpl {
     }
   }
 
-  public static class Reader extends BytesReaderBase {
+  public static class VarDerefReader extends BytesReaderBase {
     private final long totalBytes;
-    Reader(Directory dir, String id, int maxDoc, IOContext context) throws IOException {
+    VarDerefReader(Directory dir, String id, int maxDoc, IOContext context) throws IOException {
       super(dir, id, CODEC_NAME, VERSION_START, true, context, ValueType.BYTES_VAR_DEREF);
       totalBytes = idxIn.readLong();
     }
@@ -101,10 +101,9 @@ class VarDerefBytesImpl {
     public Source load() throws IOException {
       return new VarDerefSource(cloneData(), cloneIndex(), totalBytes);
     }
-
    
     @Override
-    public org.apache.lucene.index.values.IndexDocValues.Source getDirectSource()
+    public Source getDirectSource()
         throws IOException {
       return new DirectVarDerefSource(cloneData(), cloneIndex(), type());
     }

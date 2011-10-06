@@ -138,8 +138,8 @@ class FixedStraightBytesImpl {
       datOut = getOrCreateDataOut();
       boolean success = false;
       try {
-        if (state.liveDocs == null && state.reader instanceof Reader ) {
-          Reader reader = (Reader) state.reader;
+        if (state.liveDocs == null && state.reader instanceof FixedStraightReader ) {
+          FixedStraightReader reader = (FixedStraightReader) state.reader;
           final int maxDocs = reader.maxDoc;
           if (maxDocs == 0) {
             return;
@@ -238,16 +238,16 @@ class FixedStraightBytesImpl {
   
   }
   
-  public static class Reader extends BytesReaderBase {
+  public static class FixedStraightReader extends BytesReaderBase {
     protected final int size;
     protected final int maxDoc;
     
-    Reader(Directory dir, String id, int maxDoc, IOContext context) throws IOException {
-      this(dir, id, CODEC_NAME, VERSION_CURRENT, maxDoc, context);
+    FixedStraightReader(Directory dir, String id, int maxDoc, IOContext context) throws IOException {
+      this(dir, id, CODEC_NAME, VERSION_CURRENT, maxDoc, context, ValueType.BYTES_FIXED_STRAIGHT);
     }
 
-    protected Reader(Directory dir, String id, String codec, int version, int maxDoc, IOContext context) throws IOException {
-      super(dir, id, codec, version, false, context, ValueType.BYTES_FIXED_STRAIGHT);
+    protected FixedStraightReader(Directory dir, String id, String codec, int version, int maxDoc, IOContext context, ValueType type) throws IOException {
+      super(dir, id, codec, version, false, context, type);
       size = datIn.readInt();
       this.maxDoc = maxDoc;
     }
@@ -255,7 +255,7 @@ class FixedStraightBytesImpl {
     @Override
     public Source load() throws IOException {
       return size == 1 ? new SingleByteSource(cloneData(), maxDoc) : 
-        new FixedStraightSource(cloneData(), size, maxDoc);
+        new FixedStraightSource(cloneData(), size, maxDoc, type);
     }
 
     @Override
@@ -306,10 +306,10 @@ class FixedStraightBytesImpl {
   private final static class FixedStraightSource extends BytesSourceBase {
     private final int size;
 
-    public FixedStraightSource(IndexInput datIn, int size, int maxDoc)
+    public FixedStraightSource(IndexInput datIn, int size, int maxDoc, ValueType type)
         throws IOException {
       super(datIn, null, new PagedBytes(PAGED_BYTES_BITS), size * maxDoc,
-          ValueType.BYTES_FIXED_STRAIGHT);
+          type);
       this.size = size;
     }
 

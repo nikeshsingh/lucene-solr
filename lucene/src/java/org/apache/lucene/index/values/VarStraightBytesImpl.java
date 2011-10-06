@@ -98,9 +98,9 @@ class VarStraightBytesImpl {
       datOut = getOrCreateDataOut();
       boolean success = false;
       try {
-        if (state.liveDocs == null && state.reader instanceof Reader) {
+        if (state.liveDocs == null && state.reader instanceof VarStraightReader) {
           // bulk merge since we don't have any deletes
-          Reader reader = (Reader) state.reader;
+          VarStraightReader reader = (VarStraightReader) state.reader;
           final int maxDocs = reader.maxDoc;
           if (maxDocs == 0) {
             return;
@@ -223,10 +223,10 @@ class VarStraightBytesImpl {
     }
   }
 
-  public static class Reader extends BytesReaderBase {
+  public static class VarStraightReader extends BytesReaderBase {
     private final int maxDoc;
 
-    Reader(Directory dir, String id, int maxDoc, IOContext context) throws IOException {
+    VarStraightReader(Directory dir, String id, int maxDoc, IOContext context) throws IOException {
       super(dir, id, CODEC_NAME, VERSION_START, true, context, ValueType.BYTES_VAR_STRAIGHT);
       this.maxDoc = maxDoc;
     }
@@ -237,11 +237,9 @@ class VarStraightBytesImpl {
     }
 
     @Override
-    public org.apache.lucene.index.values.IndexDocValues.Source getDirectSource()
+    public Source getDirectSource()
         throws IOException {
-      IndexInput cloneIndex = cloneIndex();
-      cloneIndex.readVLong();
-      return new DirectVarStraightSource(cloneData(), cloneIndex, type());
+      return new DirectVarStraightSource(cloneData(), cloneIndex(), type());
     }
   }
   
@@ -269,6 +267,7 @@ class VarStraightBytesImpl {
     DirectVarStraightSource(IndexInput data, IndexInput index, ValueType type)
         throws IOException {
       super(data, type);
+      index.readVLong();
       this.index = PackedInts.getRandomAccessReaderIterator(index);
     }
 

@@ -218,12 +218,12 @@ public class TestDocValues extends LuceneTestCase {
     float[] sourceArray = new float[] {1,2,3};
     Directory dir = newDirectory();
     final Counter trackBytes = Counter.newCounter();
-    Writer w = Floats.getWriter(dir, "test", 4, trackBytes, newIOContext(random));
+    Writer w = Floats.getWriter(dir, "test", trackBytes, newIOContext(random), ValueType.FLOAT_32);
     for (int i = 0; i < sourceArray.length; i++) {
       w.add(i, sourceArray[i]);
     }
     w.finish(sourceArray.length);
-    IndexDocValues r = Floats.getValues(dir, "test", 3, newIOContext(random));
+    IndexDocValues r = Floats.getValues(dir, "test", 3, newIOContext(random), ValueType.FLOAT_32);
     Source source = r.getSource();
     assertTrue(source.hasArray());
     float[] loaded = ((float[])source.getArray());
@@ -239,12 +239,12 @@ public class TestDocValues extends LuceneTestCase {
     double[] sourceArray = new double[] {1,2,3};
     Directory dir = newDirectory();
     final Counter trackBytes = Counter.newCounter();
-    Writer w = Floats.getWriter(dir, "test", 8, trackBytes, newIOContext(random));
+    Writer w = Floats.getWriter(dir, "test", trackBytes, newIOContext(random), ValueType.FLOAT_64);
     for (int i = 0; i < sourceArray.length; i++) {
       w.add(i, sourceArray[i]);
     }
     w.finish(sourceArray.length);
-    IndexDocValues r = Floats.getValues(dir, "test", 3, newIOContext(random));
+    IndexDocValues r = Floats.getValues(dir, "test", 3, newIOContext(random), ValueType.FLOAT_64);
     Source source = r.getSource();
     assertTrue(source.hasArray());
     double[] loaded = ((double[])source.getArray());
@@ -289,17 +289,17 @@ public class TestDocValues extends LuceneTestCase {
   }
 
   public void testFloats4() throws IOException {
-    runTestFloats(4, 0.00001);
+    runTestFloats(ValueType.FLOAT_32, 0.00001);
   }
 
-  private void runTestFloats(int precision, double delta) throws IOException {
+  private void runTestFloats(ValueType type, double delta) throws IOException {
     Directory dir = newDirectory();
     final Counter trackBytes = Counter.newCounter();
-    Writer w = Floats.getWriter(dir, "test", precision, trackBytes, newIOContext(random));
+    Writer w = Floats.getWriter(dir, "test", trackBytes, newIOContext(random), type);
     final int NUM_VALUES = 777 + random.nextInt(777);;
     final double[] values = new double[NUM_VALUES];
     for (int i = 0; i < NUM_VALUES; i++) {
-      final double v = precision == 4 ? random.nextFloat() : random
+      final double v = type == ValueType.FLOAT_32 ? random.nextFloat() : random
           .nextDouble();
       values[i] = v;
       w.add(i, v);
@@ -308,7 +308,7 @@ public class TestDocValues extends LuceneTestCase {
     w.finish(NUM_VALUES + additionalValues);
     assertEquals(0, trackBytes.get());
 
-    IndexDocValues r = Floats.getValues(dir, "test", NUM_VALUES + additionalValues, newIOContext(random));
+    IndexDocValues r = Floats.getValues(dir, "test", NUM_VALUES + additionalValues, newIOContext(random), type);
     for (int iter = 0; iter < 2; iter++) {
       Source s = getSource(r);
       for (int i = 0; i < NUM_VALUES; i++) {
@@ -320,7 +320,7 @@ public class TestDocValues extends LuceneTestCase {
   }
 
   public void testFloats8() throws IOException {
-    runTestFloats(8, 0.0);
+    runTestFloats(ValueType.FLOAT_64, 0.0);
   }
   
 

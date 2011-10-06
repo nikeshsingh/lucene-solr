@@ -33,8 +33,8 @@ import org.apache.lucene.util.BytesRef;
  * value access based on the lucene internal document id. {@link IndexDocValues}
  * exposes two distinct APIs:
  * <ul>
- * <li>via {@link Source} an entirely RAM resident API for random access</li>
- * <li>via {@link ValuesEnum} a disk resident API for sequential access</li>
+ * <li>via {@link #getSource()} providing RAM resident random access</li>
+ * <li>via {@link #getDirectSource()} providing on disk random access</li>
  * </ul> {@link IndexDocValues} are exposed via
  * {@link IndexReader#perDocValues()} on a per-segment basis. For best
  * performance {@link IndexDocValues} should be consumed per-segment just like
