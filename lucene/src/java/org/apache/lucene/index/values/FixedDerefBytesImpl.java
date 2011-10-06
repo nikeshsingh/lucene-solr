@@ -70,7 +70,7 @@ class FixedDerefBytesImpl {
     private final int size;
     private final int numValuesStored;
     Reader(Directory dir, String id, int maxDoc, IOContext context) throws IOException {
-      super(dir, id, CODEC_NAME, VERSION_START, true, context);
+      super(dir, id, CODEC_NAME, VERSION_START, true, context, ValueType.BYTES_FIXED_DEREF);
       size = datIn.readInt();
       numValuesStored = idxIn.readInt();
     }
@@ -94,11 +94,6 @@ class FixedDerefBytesImpl {
         return data.fillSlice(bytesRef, (id * size), size);
       }
 
-    }
-
-    @Override
-    public ValueType type() {
-      return ValueType.BYTES_FIXED_DEREF;
     }
 
     @Override

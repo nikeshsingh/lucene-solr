@@ -226,7 +226,7 @@ class VarStraightBytesImpl {
     private final int maxDoc;
 
     Reader(Directory dir, String id, int maxDoc, IOContext context) throws IOException {
-      super(dir, id, CODEC_NAME, VERSION_START, true, context);
+      super(dir, id, CODEC_NAME, VERSION_START, true, context, ValueType.BYTES_VAR_STRAIGHT);
       this.maxDoc = maxDoc;
     }
 
@@ -246,11 +246,6 @@ class VarStraightBytesImpl {
         return data.fillSlice(bytesRef, address,
             (int) (addresses.get(docID + 1) - address));
       }
-    }
-
-    @Override
-    public ValueType type() {
-      return ValueType.BYTES_VAR_STRAIGHT;
     }
 
     @Override

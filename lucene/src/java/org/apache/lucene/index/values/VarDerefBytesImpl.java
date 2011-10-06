@@ -92,7 +92,7 @@ class VarDerefBytesImpl {
   public static class Reader extends BytesReaderBase {
     private final long totalBytes;
     Reader(Directory dir, String id, int maxDoc, IOContext context) throws IOException {
-      super(dir, id, CODEC_NAME, VERSION_START, true, context);
+      super(dir, id, CODEC_NAME, VERSION_START, true, context, ValueType.BYTES_VAR_DEREF);
       totalBytes = idxIn.readLong();
     }
 
@@ -113,11 +113,6 @@ class VarDerefBytesImpl {
         return data.fillSliceWithPrefix(bytesRef,
             addresses.get(docID));
       }
-    }
-
-    @Override
-    public ValueType type() {
-      return ValueType.BYTES_VAR_DEREF;
     }
 
     @Override

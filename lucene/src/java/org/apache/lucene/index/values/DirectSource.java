@@ -1,4 +1,5 @@
 package org.apache.lucene.index.values;
+
 /**
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -25,74 +26,67 @@ import org.apache.lucene.util.BytesRef;
 /**
  * @lucene.internal
  */
-public abstract class DirectSource extends Source{
+public abstract class DirectSource extends Source {
 
-    protected final IndexInput data;
-    private final ValueType type;
-    private final ToNumeric toNumeric;
-    protected final long baseOffset;
+  protected final IndexInput data;
+  private final ToNumeric toNumeric;
+  protected final long baseOffset;
 
-    DirectSource(IndexInput input, ValueType type) {
-      this.data = input;
-      this.type = type;
-      baseOffset = input.getFilePointer();
-      switch (type) {
-      case FIXED_INTS_16:
-        toNumeric = new ShortToLong();
-        break;
-      case FLOAT_32:
-      case FIXED_INTS_32:
-        toNumeric = new IntToLong();
-        break;
-      case FIXED_INTS_8:
-        toNumeric = new ByteToLong();
-        break;
-      default:
-        toNumeric = new LongToLong();
-      }
+  DirectSource(IndexInput input, ValueType type) {
+    super(type);
+    this.data = input;
+    baseOffset = input.getFilePointer();
+    switch (type) {
+    case FIXED_INTS_16:
+      toNumeric = new ShortToLong();
+      break;
+    case FLOAT_32:
+    case FIXED_INTS_32:
+      toNumeric = new IntToLong();
+      break;
+    case FIXED_INTS_8:
+      toNumeric = new ByteToLong();
+      break;
+    default:
+      toNumeric = new LongToLong();
     }
+  }
 
-    @Override
-    public BytesRef getBytes(int docID, BytesRef ref) {
-      try {
-        final int sizeToRead = position(docID);
-        ref.grow(sizeToRead);
-        data.readBytes(ref.bytes, 0, sizeToRead);
-        ref.length = sizeToRead;
-        ref.offset = 0;
-        return ref;
-      } catch (IOException ex) {
-        throw new RuntimeException(ex);
-      }
+  @Override
+  public BytesRef getBytes(int docID, BytesRef ref) {
+    try {
+      final int sizeToRead = position(docID);
+      ref.grow(sizeToRead);
+      data.readBytes(ref.bytes, 0, sizeToRead);
+      ref.length = sizeToRead;
+      ref.offset = 0;
+      return ref;
+    } catch (IOException ex) {
+      throw new RuntimeException(ex);
     }
+  }
 
-    @Override
-    public long getInt(int docID) {
-      try {
-        position(docID);
-        return toNumeric.toLong(data);
-      } catch (IOException ex) {
-        throw new RuntimeException(ex);
-      }
+  @Override
+  public long getInt(int docID) {
+    try {
+      position(docID);
+      return toNumeric.toLong(data);
+    } catch (IOException ex) {
+      throw new RuntimeException(ex);
     }
+  }
 
-    @Override
-    public double getFloat(int docID) {
-      try {
-        position(docID);
-        return toNumeric.toDouble(data);
-      } catch (IOException ex) {
-        throw new RuntimeException(ex);
-      }
+  @Override
+  public double getFloat(int docID) {
+    try {
+      position(docID);
+      return toNumeric.toDouble(data);
+    } catch (IOException ex) {
+      throw new RuntimeException(ex);
     }
-    
-    protected abstract int position(int docID) throws IOException;
+  }
 
-
-    @Override
-    public ValueType type() {
-      return type;
-    }
+  protected abstract int position(int docID) throws IOException;
 
   private abstract static class ToNumeric {
     abstract long toLong(IndexInput input) throws IOException;

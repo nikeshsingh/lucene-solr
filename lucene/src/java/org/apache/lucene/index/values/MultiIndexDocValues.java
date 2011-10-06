@@ -27,6 +27,7 @@ import org.apache.lucene.util.ReaderUtil;
  * {@link IndexDocValues}
  * 
  * @lucene.experimental
+ * @lucene.internal
  */
 public class MultiIndexDocValues extends IndexDocValues {
 
@@ -105,6 +106,7 @@ public class MultiIndexDocValues extends IndexDocValues {
     private boolean direct;
 
     public MultiSource(DocValuesIndex[] docValuesIdx, int[] starts, boolean direct) {
+      super(docValuesIdx[0].docValues.type());
       this.docValuesIdx = docValuesIdx;
       this.starts = starts;
       assert docValuesIdx.length != 0;
@@ -150,19 +152,12 @@ public class MultiIndexDocValues extends IndexDocValues {
       final int doc = ensureSource(docID);
       return current.getBytes(doc, bytesRef);
     }
-
-    @Override
-    public ValueType type() {
-      return docValuesIdx[0].docValues.type();
-    }
-
   }
 
   private static class EmptySource extends Source {
-    private final ValueType type;
 
     public EmptySource(ValueType type) {
-      this.type = type;
+      super(type);
     }
 
     @Override
@@ -180,11 +175,6 @@ public class MultiIndexDocValues extends IndexDocValues {
     @Override
     public long getInt(int docID) {
       return 0;
-    }
-
-    @Override
-    public ValueType type() {
-      return type;
     }
   }
 

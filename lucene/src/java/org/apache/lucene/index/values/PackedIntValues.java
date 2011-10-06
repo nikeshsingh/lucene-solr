@@ -225,6 +225,7 @@ class PackedIntValues {
     private final PackedInts.Reader values;
 
     public PackedIntsSource(IndexInput dataIn) throws IOException {
+      super(ValueType.VAR_INTS);
       minValue = dataIn.readLong();
       defaultValue = dataIn.readLong();
       values = PackedInts.getReader(dataIn);
@@ -239,11 +240,6 @@ class PackedIntValues {
       final long value = values.get(docID);
       return value == defaultValue ? 0 : minValue + value;
     }
-
-    @Override
-    public ValueType type() {
-      return ValueType.VAR_INTS;
-    }
   }
 
   private static final class DirectPackedIntsSource extends Source {
@@ -253,6 +249,7 @@ class PackedIntValues {
 
     private DirectPackedIntsSource(IndexInput dataIn)
         throws IOException {
+      super(ValueType.VAR_INTS);
       minValue = dataIn.readLong();
       defaultValue = dataIn.readLong();
       this.ints = PackedInts.getRandomAccessReaderIterator(dataIn);
@@ -278,11 +275,6 @@ class PackedIntValues {
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
-    }
-
-    @Override
-    public ValueType type() {
-      return ValueType.VAR_INTS;
     }
   }
 

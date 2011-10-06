@@ -176,7 +176,6 @@ public final class Bytes {
   // TODO open up this API?
   static abstract class BytesSourceBase extends Source {
     private final PagedBytes pagedBytes;
-    private final ValueType type;
     protected final IndexInput datIn;
     protected final IndexInput idxIn;
     protected final static int PAGED_BYTES_BITS = 15;
@@ -186,6 +185,7 @@ public final class Bytes {
 
     protected BytesSourceBase(IndexInput datIn, IndexInput idxIn,
         PagedBytes pagedBytes, long bytesToRead, ValueType type) throws IOException {
+      super(type);
       assert bytesToRead <= datIn.length() : " file size is less than the expected size diff: "
           + (bytesToRead - datIn.length()) + " pos: " + datIn.getFilePointer();
       this.datIn = datIn;
@@ -194,7 +194,6 @@ public final class Bytes {
       this.pagedBytes.copy(datIn, bytesToRead);
       data = pagedBytes.freeze(true);
       this.idxIn = idxIn;
-      this.type = type;
     }
 
     public void close() throws IOException {
@@ -213,12 +212,6 @@ public final class Bytes {
       }
     }
     
-    @Override
-    public ValueType type() {
-      return type;
-    }
-    
-
     @Override
     public int getValueCount() {
       throw new UnsupportedOperationException();
@@ -358,9 +351,11 @@ public final class Bytes {
     protected final IndexInput datIn;
     protected final int version;
     protected final String id;
+    protected final ValueType type;
 
     protected BytesReaderBase(Directory dir, String id, String codecName,
-        int maxVersion, boolean doIndex, IOContext context) throws IOException {
+        int maxVersion, boolean doIndex, IOContext context, ValueType type) throws IOException {
+      this.type = type;
       this.id = id;
       datIn = dir.openInput(IndexFileNames.segmentFileName(id, "",
           Writer.DATA_EXTENSION), context);
@@ -418,6 +413,12 @@ public final class Bytes {
         }
       }
     }
+
+    @Override
+    public ValueType type() {
+      return type;
+    }
+    
   }
   
   static abstract class DerefBytesWriterBase extends BytesWriterBase {

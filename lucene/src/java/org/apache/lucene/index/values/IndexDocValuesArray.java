@@ -4,8 +4,6 @@ import java.io.IOException;
 
 import org.apache.lucene.index.values.IndexDocValues.Source;
 import org.apache.lucene.store.IndexInput;
-import org.apache.lucene.util.AttributeSource;
-import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.RamUsageEstimator;
 
 /**
@@ -31,28 +29,11 @@ import org.apache.lucene.util.RamUsageEstimator;
 abstract class IndexDocValuesArray extends Source {
 
   protected final int bytesPerValue;
-  private final ValueType type;
-  private final boolean isFloat;
   protected int maxDocID = -1;
 
   IndexDocValuesArray(int bytesPerValue, ValueType type) {
+    super(type);
     this.bytesPerValue = bytesPerValue;
-    this.type = type;
-    switch (type) {
-    case FIXED_INTS_16:
-    case FIXED_INTS_32:
-    case FIXED_INTS_64:
-    case FIXED_INTS_8:
-      isFloat = false;
-      break;
-    case FLOAT_32:
-    case FLOAT_64:
-      isFloat = true;
-      break;
-    default:
-      throw new IllegalStateException("illegal type: " + type);
-
-    }
   }
 
   public abstract IndexDocValuesArray newFromInput(IndexInput input, int numDocs)
@@ -61,11 +42,6 @@ abstract class IndexDocValuesArray extends Source {
   @Override
   public final int getValueCount() {
     return maxDocID + 1;
-  }
-
-  @Override
-  public final ValueType type() {
-    return type;
   }
 
   @Override

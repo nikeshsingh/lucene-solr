@@ -26,7 +26,6 @@ import org.apache.lucene.index.FieldsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.index.codecs.CodecProvider;
-import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.BytesRef;
 
 /**
@@ -146,7 +145,12 @@ public abstract class IndexDocValues implements Closeable {
    * {@link Source} defines 3 {@link ValueType} //TODO finish this
    */
   public static abstract class Source {
+    
+    protected final ValueType type;
 
+    protected Source(ValueType type) {
+      this.type = type;
+    }
     /**
      * Returns a <tt>long</tt> for the given document id or throws an
      * {@link UnsupportedOperationException} if this source doesn't support
@@ -197,7 +201,9 @@ public abstract class IndexDocValues implements Closeable {
      * 
      * @return the {@link ValueType} of this source.
      */
-    public abstract ValueType type();
+    public ValueType type() {
+      return type;
+    }
 
     /**
      * Returns <code>true</code> iff this {@link Source} exposes an array via

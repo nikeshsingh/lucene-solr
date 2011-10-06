@@ -246,7 +246,7 @@ class FixedStraightBytesImpl {
     }
 
     protected Reader(Directory dir, String id, String codec, int version, int maxDoc, IOContext context) throws IOException {
-      super(dir, id, codec, version, false, context);
+      super(dir, id, codec, version, false, context, ValueType.BYTES_FIXED_STRAIGHT);
       size = datIn.readInt();
       this.maxDoc = maxDoc;
     }
@@ -267,6 +267,7 @@ class FixedStraightBytesImpl {
       private final byte[] data;
 
       public SingleByteSource(IndexInput datIn, int maxDoc) throws IOException {
+        super(ValueType.BYTES_FIXED_STRAIGHT);
         try {
           data = new byte[maxDoc];
           datIn.readBytes(data, 0, data.length, false);
@@ -284,11 +285,6 @@ class FixedStraightBytesImpl {
         return bytesRef;
       }
       
-      @Override
-      public ValueType type() {
-        return ValueType.BYTES_FIXED_STRAIGHT;
-      }
-
     }
 
     private final static class StraightBytesSource extends BytesSourceBase {
@@ -316,13 +312,6 @@ class FixedStraightBytesImpl {
       protected int maxDoc() {
         return maxDoc;
       }
-    }
-
-   
-
-    @Override
-    public ValueType type() {
-      return ValueType.BYTES_FIXED_STRAIGHT;
     }
 
     @Override
