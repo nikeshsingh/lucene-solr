@@ -51,17 +51,12 @@ import org.apache.lucene.util.BytesRef;
  * @lucene.experimental
  */
 public abstract class IndexDocValues implements Closeable {
-  /*
-   * TODO: it might be useful to add another Random Access enum for some
-   * implementations like packed ints and only return such a random access enum
-   * if the impl supports random access. For super large segments it might be
-   * useful or even required in certain environements to have disc based random
-   * access
-   */
+
   public static final IndexDocValues[] EMPTY_ARRAY = new IndexDocValues[0];
 
-  private SourceCache cache = new SourceCache.DirectSourceCache();
-
+  private volatile SourceCache cache = new SourceCache.DirectSourceCache();
+  private final Object cacheLock = new Object();
+  
   /**
    * Loads a new {@link Source} instance for this {@link IndexDocValues} field
    * instance. Source instances returned from this method are not cached. It is
@@ -96,7 +91,11 @@ public abstract class IndexDocValues implements Closeable {
   public Source getSource() throws IOException {
     return cache.load(this);
   }
-  
+
+  /**
+   * Returns a disk resident {@link Source} instance. Direct Sources are not
+   * cached in the {@link SourceCache} and should not be shared between threads.
+   */
   public abstract Source getDirectSource() throws IOException;
 
   /**
@@ -130,9 +129,10 @@ public abstract class IndexDocValues implements Closeable {
   public void setCache(SourceCache cache) {
     if (cache == null)
       throw new IllegalArgumentException("cache must not be null");
-    synchronized (this.cache) {
-      this.cache.close(this);
+    synchronized (cacheLock) {
+      SourceCache toClose = this.cache;
       this.cache = cache;
+      toClose.close(this);
     }
   }
 
@@ -140,9 +140,9 @@ public abstract class IndexDocValues implements Closeable {
    * Source of per document values like long, double or {@link BytesRef}
    * depending on the {@link IndexDocValues} fields {@link ValueType}. Source
    * implementations provide random access semantics similar to array lookups
-   * and typically are entirely memory resident.
    * <p>
-   * {@link Source} defines 3 {@link ValueType} //TODO finish this
+   * @see IndexDocValues#getSource()
+   * @see IndexDocValues#getDirectSource()
    */
   public static abstract class Source {
     
@@ -188,14 +188,6 @@ public abstract class IndexDocValues implements Closeable {
       throw new UnsupportedOperationException("bytes are not supported");
     }
 
-    /**
-     * Returns number of unique values. Some implementations may throw
-     * UnsupportedOperationException.
-     */
-    public int getValueCount() {
-      throw new UnsupportedOperationException();
-    }
-    
     /**
      * Returns the {@link ValueType} of this source.
      * 

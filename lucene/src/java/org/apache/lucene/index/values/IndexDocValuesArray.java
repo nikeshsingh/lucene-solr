@@ -47,7 +47,6 @@ abstract class IndexDocValuesArray extends Source {
   }
 
   protected final int bytesPerValue;
-  protected int maxDocID = -1;
 
   IndexDocValuesArray(int bytesPerValue, ValueType type) {
     super(type);
@@ -56,11 +55,6 @@ abstract class IndexDocValuesArray extends Source {
 
   public abstract IndexDocValuesArray newFromInput(IndexInput input, int numDocs)
       throws IOException;
-
-  @Override
-  public final int getValueCount() {
-    return maxDocID + 1;
-  }
 
   @Override
   public final boolean hasArray() {
@@ -87,7 +81,6 @@ abstract class IndexDocValuesArray extends Source {
       super(1, ValueType.FIXED_INTS_8);
       values = new byte[numDocs];
       input.readBytes(values, 0, values.length, false);
-      maxDocID = numDocs - 1;
     }
 
     @Override
@@ -109,7 +102,6 @@ abstract class IndexDocValuesArray extends Source {
 
     void toBytes(long value, BytesRef bytesRef) {
       bytesRef.bytes[0] = (byte) (0xFFL & value);
-      ;
     }
 
   };
@@ -128,7 +120,6 @@ abstract class IndexDocValuesArray extends Source {
       for (int i = 0; i < values.length; i++) {
         values[i] = input.readShort();
       }
-      maxDocID = numDocs - 1;
     }
 
     @Override
@@ -168,7 +159,6 @@ abstract class IndexDocValuesArray extends Source {
       for (int i = 0; i < values.length; i++) {
         values[i] = input.readInt();
       }
-      maxDocID = numDocs - 1;
     }
 
     @Override
@@ -208,7 +198,6 @@ abstract class IndexDocValuesArray extends Source {
       for (int i = 0; i < values.length; i++) {
         values[i] = input.readLong();
       }
-      maxDocID = numDocs - 1;
     }
 
     @Override
@@ -248,7 +237,6 @@ abstract class IndexDocValuesArray extends Source {
       for (int i = 0; i < values.length; i++) {
         values[i] = Float.intBitsToFloat(input.readInt());
       }
-      maxDocID = numDocs - 1;
     }
 
     @Override
@@ -293,7 +281,6 @@ abstract class IndexDocValuesArray extends Source {
       for (int i = 0; i < values.length; i++) {
         values[i] = Double.longBitsToDouble(input.readLong());
       }
-      maxDocID = numDocs - 1;
     }
 
     @Override
