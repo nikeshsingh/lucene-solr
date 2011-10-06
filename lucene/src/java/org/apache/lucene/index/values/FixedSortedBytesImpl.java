@@ -57,6 +57,7 @@ class FixedSortedBytesImpl {
     // some last docs that we didn't see
     @Override
     public void finishInternal(int docCount) throws IOException {
+      fillDefault(docCount);
       final IndexOutput datOut = getOrCreateDataOut();
       final int count = hash.size();
       final int[] address = new int[count]; // addr 0 is default values

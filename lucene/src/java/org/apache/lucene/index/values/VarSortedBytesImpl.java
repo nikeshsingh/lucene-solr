@@ -64,6 +64,7 @@ final class VarSortedBytesImpl {
     // some last docs that we didn't see
     @Override
     public void finishInternal(int docCount) throws IOException {
+      fillDefault(docCount);
       final int count = hash.size();
       final IndexOutput datOut = getOrCreateDataOut();
       long offset = 0;

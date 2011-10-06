@@ -321,7 +321,8 @@ public class IndexDocValuesField extends Field implements PerDocFieldValues {
     case BYTES_VAR_STRAIGHT:
     case BYTES_FIXED_SORTED:
     case BYTES_VAR_SORTED:
-      value = "bytes: " + bytes.utf8ToString();
+      // don't use to unicode string this is not necessarily unicode here
+      value = "bytes: " + bytes.toString();
       break;
     case FIXED_INTS_16:
       value = "int16: " + longValue;
