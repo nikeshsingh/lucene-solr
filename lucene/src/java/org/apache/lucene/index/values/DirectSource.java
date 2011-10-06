@@ -29,7 +29,6 @@ public abstract class DirectSource extends Source{
 
     protected final IndexInput data;
     private final ValueType type;
-    private final OffsetAndSize offsetAndSize = new OffsetAndSize();
     private final ToNumeric toNumeric;
     protected final long baseOffset;
 
@@ -59,7 +58,7 @@ public abstract class DirectSource extends Source{
         final int sizeToRead = position(docID);
         ref.grow(sizeToRead);
         data.readBytes(ref.bytes, 0, sizeToRead);
-        ref.length = offsetAndSize.size;
+        ref.length = sizeToRead;
         ref.offset = 0;
         return ref;
       } catch (IOException ex) {
@@ -94,12 +93,6 @@ public abstract class DirectSource extends Source{
     public ValueType type() {
       return type;
     }
-
-
-  public static class OffsetAndSize {
-    long offset;
-    int size;
-  }
 
   private abstract static class ToNumeric {
     abstract long toLong(IndexInput input) throws IOException;
