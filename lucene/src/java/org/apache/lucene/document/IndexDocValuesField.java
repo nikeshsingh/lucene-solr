@@ -19,7 +19,6 @@ package org.apache.lucene.document;
 import java.io.Reader;
 import java.util.Comparator;
 
-import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.index.IndexableFieldType;
 import org.apache.lucene.index.values.PerDocFieldValues;
 import org.apache.lucene.index.values.ValueType;
@@ -320,16 +319,30 @@ public class IndexDocValuesField extends Field implements PerDocFieldValues {
     case BYTES_FIXED_STRAIGHT:
     case BYTES_VAR_DEREF:
     case BYTES_VAR_STRAIGHT:
-      value = "bytes:bytes.utf8ToString();";
+    case BYTES_FIXED_SORTED:
+    case BYTES_VAR_SORTED:
+      value = "bytes: " + bytes.utf8ToString();
+      break;
+    case FIXED_INTS_16:
+      value = "int16: " + longValue;
+      break;
+    case FIXED_INTS_32:
+      value = "int32: " + longValue;
+      break;
+    case FIXED_INTS_64:
+      value = "int64: " + longValue;
+      break;
+    case FIXED_INTS_8:
+      value = "int8: " + longValue;
       break;
     case VAR_INTS:
-      value = "int:" + longValue;
+      value = "vint: " + longValue;
       break;
     case FLOAT_32:
-      value = "float32:" + doubleValue;
+      value = "float32: " + doubleValue;
       break;
     case FLOAT_64:
-      value = "float64:" + doubleValue;
+      value = "float64: " + doubleValue;
       break;
     default:
       throw new IllegalArgumentException("unknown type: " + type);
@@ -354,9 +367,15 @@ public class IndexDocValuesField extends Field implements PerDocFieldValues {
     case BYTES_FIXED_STRAIGHT:
     case BYTES_VAR_DEREF:
     case BYTES_VAR_STRAIGHT:
+    case BYTES_FIXED_SORTED:
+    case BYTES_VAR_SORTED:
       BytesRef ref = field.isBinary() ? field.binaryValue() : new BytesRef(field.stringValue());
       valField.setBytes(ref, type);
       break;
+    case FIXED_INTS_16:
+    case FIXED_INTS_32:
+    case FIXED_INTS_64:
+    case FIXED_INTS_8:
     case VAR_INTS:
       valField.setInt(Long.parseLong(field.stringValue()));
       break;

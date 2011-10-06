@@ -26,7 +26,6 @@ import org.apache.lucene.index.FieldsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.codecs.Codec;
 import org.apache.lucene.index.codecs.CodecProvider;
-import org.apache.lucene.index.values.IndexDocValues.SortedSource;
 import org.apache.lucene.util.BytesRef;
 
 /**
@@ -208,6 +207,10 @@ public abstract class IndexDocValues implements Closeable {
       return null;
     }
     
+    /**
+     * If this {@link Source} is sorted this method will return an instance of
+     * {@link SortedSource} otherwise <code>null</code>
+     */
     public SortedSource asSortedSource() {
       return null;
     }
@@ -240,8 +243,7 @@ public abstract class IndexDocValues implements Closeable {
     }
 
     /**
-     * Returns ord for specified docID. If this docID had not been added to the
-     * Writer, the ord is 0. Ord is dense, ie, starts at 0, then increments by 1
+     * Returns ord for specified docID. Ord is dense, ie, starts at 0, then increments by 1
      * for the next (as defined by {@link Comparator} value.
      */
     public abstract int ord(int docID);
@@ -290,7 +292,10 @@ public abstract class IndexDocValues implements Closeable {
     public SortedSource asSortedSource() {
       return this;
     }
-
+    
+    /**
+     * Returns the number of unique values in this sorted source
+     */
     public abstract int numOrds();
   }
 }

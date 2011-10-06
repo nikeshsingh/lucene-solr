@@ -30,7 +30,6 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Counter;
-import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.packed.PackedInts;
 
 // Stores fixed-length byte[] by deref, ie when two docs
@@ -85,7 +84,8 @@ class FixedSortedBytesImpl {
     private final int numValuesStored;
     private final Comparator<BytesRef> comparator;
 
-    public Reader(Directory dir, String id, int maxDoc, IOContext context, ValueType type, Comparator<BytesRef> comparator) throws IOException {
+    public Reader(Directory dir, String id, int maxDoc, IOContext context,
+        ValueType type, Comparator<BytesRef> comparator) throws IOException {
       super(dir, id, CODEC_NAME, VERSION_START, true, context, type);
       size = datIn.readInt();
       numValuesStored = idxIn.readInt();
@@ -93,56 +93,54 @@ class FixedSortedBytesImpl {
     }
 
     @Override
-    public org.apache.lucene.index.values.IndexDocValues.Source load()
-        throws IOException {
-      return new FixedSortedSource(cloneData(), cloneIndex(), size, numValuesStored, comparator);
+    public Source load() throws IOException {
+      return new FixedSortedSource(cloneData(), cloneIndex(), size,
+          numValuesStored, comparator);
     }
-
-
-    private static class FixedSortedSource extends BytesSortedSourceBase {
-      private final int valueCount;
-      private final int size;
-
-      public FixedSortedSource(IndexInput datIn, IndexInput idxIn, int size,
-          int numValues, Comparator<BytesRef> comp) throws IOException {
-        super(datIn, idxIn, comp, size * numValues, ValueType.BYTES_FIXED_SORTED);
-        this.size = size;
-        this.valueCount = numValues;
-        closeIndexInput();
-      }
-
-      @Override
-      public int numOrds() {
-        return valueCount;
-      }
-
-      @Override
-      public BytesRef getByOrd(int ord, BytesRef bytesRef) {
-        return data.fillSlice(bytesRef, (ord * size), size);
-      }
-    }
-
 
     @Override
-    public Source getDirectSource()
-        throws IOException {
-      return new DirectFixedSortedSource(cloneData(), cloneIndex(), size, numValuesStored, comparator, type);
+    public Source getDirectSource() throws IOException {
+      return new DirectFixedSortedSource(cloneData(), cloneIndex(), size,
+          numValuesStored, comparator, type);
     }
   }
-  
-  private static class DirectFixedSortedSource extends SortedSource {
-    PackedInts.RandomAccessReaderIterator docToOrdIndex;
-    private IndexInput datIn;
+
+  static final class FixedSortedSource extends BytesSortedSourceBase {
+    private final int valueCount;
+    private final int size;
+
+    FixedSortedSource(IndexInput datIn, IndexInput idxIn, int size,
+        int numValues, Comparator<BytesRef> comp) throws IOException {
+      super(datIn, idxIn, comp, size * numValues, ValueType.BYTES_FIXED_SORTED);
+      this.size = size;
+      this.valueCount = numValues;
+      closeIndexInput();
+    }
+
+    @Override
+    public int numOrds() {
+      return valueCount;
+    }
+
+    @Override
+    public BytesRef getByOrd(int ord, BytesRef bytesRef) {
+      return data.fillSlice(bytesRef, (ord * size), size);
+    }
+  }
+
+  static final class DirectFixedSortedSource extends SortedSource {
+    final PackedInts.RandomAccessReaderIterator docToOrdIndex;
+    private final IndexInput datIn;
     private final long basePointer;
     private final int size;
-    private int numValues;
+    private final int numValues;
 
-    protected DirectFixedSortedSource(IndexInput datIn, IndexInput idxIn, int size,
-        int numValuesStored, Comparator<BytesRef> comp, ValueType type) throws IOException {
+    DirectFixedSortedSource(IndexInput datIn, IndexInput idxIn, int size,
+        int numValuesStored, Comparator<BytesRef> comp, ValueType type)
+        throws IOException {
       super(type, comp);
       docToOrdIndex = PackedInts.getRandomAccessReaderIterator(idxIn);
       basePointer = datIn.getFilePointer();
-      IOUtils.close(idxIn);
       this.datIn = datIn;
       this.size = size;
       this.numValues = numValuesStored;
@@ -153,22 +151,23 @@ class FixedSortedBytesImpl {
       try {
         return (int) docToOrdIndex.get(docID);
       } catch (IOException e) {
-        throw new IllegalStateException("failed", e);
+        throw new IllegalStateException("failed to get ord", e);
       }
     }
 
     @Override
     public BytesRef getByOrd(int ord, BytesRef bytesRef) {
       try {
-        datIn.seek(basePointer + size*ord);
-        bytesRef.grow(size);
+        datIn.seek(basePointer + size * ord);
+        if (bytesRef.bytes.length < size) {
+          bytesRef.grow(size);
+        }
         datIn.readBytes(bytesRef.bytes, 0, size);
         bytesRef.length = size;
         bytesRef.offset = 0;
         return bytesRef;
       } catch (IOException ex) {
-        throw new IllegalStateException("failed", ex);
-
+        throw new IllegalStateException("failed to getByOrd", ex);
       }
     }
 

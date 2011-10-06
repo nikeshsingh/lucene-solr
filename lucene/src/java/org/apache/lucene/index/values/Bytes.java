@@ -547,14 +547,13 @@ public final class Bytes {
   
   static abstract class BytesSortedSourceBase extends SortedSource {
     private final PagedBytes pagedBytes;
-    protected final PackedInts.Reader docToOrdIndex;
     
+    protected final PackedInts.Reader docToOrdIndex;
     protected final IndexInput datIn;
     protected final IndexInput idxIn;
     protected final BytesRef defaultValue = new BytesRef();
     protected final static int PAGED_BYTES_BITS = 15;
     protected final PagedBytes.Reader data;
-    
 
     protected BytesSortedSourceBase(IndexInput datIn, IndexInput idxIn,
         Comparator<BytesRef> comp, long bytesToRead, ValueType type) throws IOException {
@@ -580,9 +579,6 @@ public final class Bytes {
     public int ord(int docID) {
       return (int) docToOrdIndex.get(docID);
     }
-
-    @Override
-    public abstract BytesRef getByOrd(int ord, BytesRef bytesRef);
 
     protected void closeIndexInput() throws IOException {
       IOUtils.close(datIn, idxIn);

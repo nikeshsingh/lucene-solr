@@ -177,6 +177,7 @@ public class RandomIndexWriter implements Closeable {
     switch (type) {
     case BYTES_FIXED_DEREF:
     case BYTES_FIXED_STRAIGHT:
+    case BYTES_FIXED_SORTED:
       final String randomUnicodeString = _TestUtil.randomUnicodeString(random, fixedBytesLength);
       BytesRef fixedRef = new BytesRef(randomUnicodeString);
       if (fixedRef.length > fixedBytesLength) {
@@ -189,6 +190,7 @@ public class RandomIndexWriter implements Closeable {
       break;
     case BYTES_VAR_DEREF:
     case BYTES_VAR_STRAIGHT:
+    case BYTES_VAR_SORTED:
       BytesRef ref = new BytesRef(_TestUtil.randomUnicodeString(random, 200));
       docValuesField.setBytes(ref, type);
       break;
