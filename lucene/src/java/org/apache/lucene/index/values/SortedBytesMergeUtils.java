@@ -1,4 +1,5 @@
 package org.apache.lucene.index.values;
+
 /**
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -34,7 +35,7 @@ import org.apache.lucene.util.packed.PackedInts;
 /**
  * 
  * @lucene.internal
- *
+ * 
  */
 public final class SortedBytesMergeUtils {
 
@@ -84,7 +85,7 @@ public final class SortedBytesMergeUtils {
         if (directSource != null) {
           final SortedSourceSlice slice = new SortedSourceSlice(i,
               directSource.asSortedSource(), ctx.docToEntry);
-          currentOrdBase += slice.ordsMap.length;
+          currentOrdBase += slice.ordMapping.length;
           slices.add(slice);
           continue;
         }
@@ -109,31 +110,31 @@ public final class SortedBytesMergeUtils {
     while (merger.queue.size() > 0) {
       merger.pullTop();
       spare = merger.current;
-      assert ctx.size == -1 || ctx.size == spare.length : "size: " + ctx.size + " spare: "
-          + spare.length;
+      assert ctx.size == -1 || ctx.size == spare.length : "size: " + ctx.size
+          + " spare: " + spare.length;
 
       if (recordOffsets) {
-        offset+=spare.length;
+        offset += spare.length;
         if (merger.currentOrd >= offsets.length) {
-          offsets = ArrayUtil.grow(offsets, merger.currentOrd+1);
+          offsets = ArrayUtil.grow(offsets, merger.currentOrd + 1);
         }
-        offsets[merger.currentOrd] = offset; 
+        offsets[merger.currentOrd] = offset;
       }
       datOut.writeBytes(spare.bytes, spare.offset, spare.length);
       merger.pushTop();
     }
     ctx.offsets = offsets;
-    assert offsets == null ||  offsets[merger.currentOrd-1] == offset;
+    assert offsets == null || offsets[merger.currentOrd - 1] == offset;
     return merger.currentOrd;
   }
-  
-  static private void createOrdMapping(MergeState mergeState, int[] docToEntry,
+
+  static private void createOrdMapping(MergeState mergeState, int[] docToOrd,
       List<SortedSourceSlice> slices) {
     for (SortedSourceSlice currentSlice : slices) {
       final int readerIdx = currentSlice.readerIdx;
       final int[] currentDocMap = mergeState.docMaps[readerIdx];
       if (currentSlice != null) {
-        currentSlice.docToOrd = docToEntry;
+        currentSlice.docIDToRelativeOrd = docToOrd;
         int docBase = mergeState.docBase[readerIdx];
         currentSlice.docToOrdStart = docBase;
         int numDocs = 0;
@@ -143,9 +144,9 @@ public final class SortedBytesMergeUtils {
             if (currentDocMap[j] != -1) { // not deleted
               final int doc = currentDocMap[j];
               numDocs++;
-              currentSlice.ordsMap[ord] = docToEntry[docBase + doc] = ord;
+              currentSlice.ordMapping[ord] = docToOrd[docBase + doc] = ord;
             }
-           
+
           }
         } else { // no deletes
           final IndexReaderAndLiveDocs indexReaderAndLiveDocs = mergeState.readers
@@ -154,7 +155,7 @@ public final class SortedBytesMergeUtils {
           assert indexReaderAndLiveDocs.liveDocs == null;
           for (int doc = 0; doc < numDocs; doc++) {
             final int ord = currentSlice.source.ord(doc);
-            currentSlice.ordsMap[ord] = docToEntry[docBase + doc] = ord;
+            currentSlice.ordMapping[ord] = docToOrd[docBase + doc] = ord;
           }
         }
         currentSlice.docToOrdEnd = currentSlice.docToOrdStart + numDocs;
@@ -183,8 +184,8 @@ public final class SortedBytesMergeUtils {
       assert numTop == 0;
       assert currentOrd >= 0;
       while (true) {
-        SortedSourceSlice popped = top[numTop++] = queue.pop();
-        popped.ordsMap[popped.relativeOrd] = currentOrd;
+        final SortedSourceSlice popped = top[numTop++] = queue.pop();
+        popped.ordMapping[popped.relativeOrd] = currentOrd;
         if (queue.size() == 0
             || !(queue.top()).current.bytesEquals(top[0].current)) {
           break;
@@ -209,25 +210,36 @@ public final class SortedBytesMergeUtils {
   static class SortedSourceSlice {
     final SortedSource source;
     final int readerIdx;
-    int[] docToOrd;
+    /* global array indexed by docID containg the relative ord for the doc */
+    int[] docIDToRelativeOrd;
+    /*
+     * maps relative ords to merged global ords - index is relative ord value
+     * new global ord this map gets updates as we merge ords. later we use the
+     * docIDtoRelativeOrd to get the previous relative ord to get the new ord
+     * from the relative ord map.
+     */
+    int[] ordMapping;
+
+    /* start index into docIDToRelativeOrd */
     int docToOrdStart;
+    /* end index into docIDToRelativeOrd */
     int docToOrdEnd;
     BytesRef current = new BytesRef();
+    /* the currently merged relative ordinal */
     int relativeOrd = -1;
-    int[] ordsMap;
 
     SortedSourceSlice(int readerIdx, SortedSource source, int[] docToOrd) {
       super();
       this.readerIdx = readerIdx;
       this.source = source;
-      this.docToOrd = docToOrd;
-      this.ordsMap = new int[source.getValueCount()];
-      Arrays.fill(this.ordsMap, -1);
+      this.docIDToRelativeOrd = docToOrd;
+      this.ordMapping = new int[source.getValueCount()];
+      Arrays.fill(this.ordMapping, -1);
     }
 
     BytesRef next() {
-      for (int i = relativeOrd + 1; i < ordsMap.length; i++) {
-        if (ordsMap[i] != -1) {
+      for (int i = relativeOrd + 1; i < ordMapping.length; i++) {
+        if (ordMapping[i] != -1) { // skip ords that are not referenced anymore
           source.getByOrd(i, current);
           relativeOrd = i;
           return current;
@@ -238,16 +250,20 @@ public final class SortedBytesMergeUtils {
 
     void writeOrds(PackedInts.Writer writer) throws IOException {
       for (int i = docToOrdStart; i < docToOrdEnd; i++) {
-        final int mappedOrd = docToOrd[i];
-        assert mappedOrd < ordsMap.length;
-        assert ordsMap[mappedOrd] > -1;
-        writer.add(ordsMap[mappedOrd]);
+        final int mappedOrd = docIDToRelativeOrd[i];
+        assert mappedOrd < ordMapping.length;
+        assert ordMapping[mappedOrd] > -1;
+        writer.add(ordMapping[mappedOrd]);
       }
     }
   }
 
+  /*
+   * if a segment has no values at all we use this source to fill in the missing value 
+   * in the right place (depending on the comparator used)
+   */
   private static class MissingValueSource extends SortedSource {
-
+    
     private BytesRef missingValue;
 
     public MissingValueSource(BytesRef missingValue, Comparator<BytesRef> comp,
@@ -275,7 +291,7 @@ public final class SortedBytesMergeUtils {
   }
 
   private static class MergeQueue extends PriorityQueue<SortedSourceSlice> {
-    Comparator<BytesRef> comp;
+    final Comparator<BytesRef> comp;
 
     public MergeQueue(int maxSize, Comparator<BytesRef> comp) {
       super(maxSize);
