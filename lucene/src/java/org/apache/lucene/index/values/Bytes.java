@@ -589,18 +589,12 @@ public final class Bytes {
     
     @Override
     public int ord(int docID) {
+      assert docToOrdIndex.get(docID) < getValueCount();
       return (int) docToOrdIndex.get(docID);
     }
 
     protected void closeIndexInput() throws IOException {
       IOUtils.close(datIn, idxIn);
-    }
-    
-    /**
-     * Returns the largest doc id + 1 in this doc values source
-     */
-    public int maxDoc() {
-      return docToOrdIndex.size();
     }
   }
 }

@@ -19,17 +19,22 @@ package org.apache.lucene.index.values;
 
 import java.io.IOException;
 import java.util.Comparator;
+import java.util.List;
 
-import org.apache.lucene.index.values.Bytes.BytesSortedSourceBase;
+import org.apache.lucene.index.codecs.MergeState;
 import org.apache.lucene.index.values.Bytes.BytesReaderBase;
+import org.apache.lucene.index.values.Bytes.BytesSortedSourceBase;
 import org.apache.lucene.index.values.Bytes.DerefBytesWriterBase;
 import org.apache.lucene.index.values.IndexDocValues.SortedSource;
+import org.apache.lucene.index.values.SortedBytesMergeUtils.MergeContext;
+import org.apache.lucene.index.values.SortedBytesMergeUtils.SortedSourceSlice;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Counter;
+import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.packed.PackedInts;
 
 // Stores fixed-length byte[] by deref, ie when two docs
@@ -51,6 +56,37 @@ class FixedSortedBytesImpl {
         Counter bytesUsed, IOContext context) throws IOException {
       super(dir, id, CODEC_NAME, VERSION_CURRENT, bytesUsed, context);
       this.comp = comp;
+    }
+
+    @Override
+    public void merge(MergeState mergeState, IndexDocValues[] docValues)
+        throws IOException {
+      boolean success = false;
+      try {
+        MergeContext ctx = SortedBytesMergeUtils.init(ValueType.BYTES_FIXED_SORTED, docValues, comp, mergeState);
+        List<SortedSourceSlice> slices = SortedBytesMergeUtils.buildSlices(mergeState, docValues, ctx);
+        IndexOutput datOut = getOrCreateDataOut();
+        
+        datOut.writeInt(ctx.size);
+        int maxOrd = SortedBytesMergeUtils.mergeRecords(ctx, datOut, slices);
+        IndexOutput idxOut = getOrCreateIndexOut();
+        idxOut.writeInt(maxOrd);
+        final PackedInts.Writer w = PackedInts.getWriter(idxOut, ctx.docToEntry.length,
+            PackedInts.bitsRequired(maxOrd));
+        for (SortedSourceSlice slice : slices) {
+          slice.writeOrds(w);
+        }
+        w.finish();
+        success = true;
+      } finally {
+        releaseResources();
+        if (success) {
+          IOUtils.close(getIndexOut(), getDataOut());
+        } else {
+          IOUtils.closeWhileHandlingException(getIndexOut(), getDataOut());
+        }
+
+      }
     }
 
     // Important that we get docCount, in case there were
@@ -95,8 +131,8 @@ class FixedSortedBytesImpl {
 
     @Override
     public Source load() throws IOException {
-      return new FixedSortedSource(cloneData(), cloneIndex(), size,
-          valueCount, comparator);
+      return new FixedSortedSource(cloneData(), cloneIndex(), size, valueCount,
+          comparator);
     }
 
     @Override
@@ -104,7 +140,7 @@ class FixedSortedBytesImpl {
       return new DirectFixedSortedSource(cloneData(), cloneIndex(), size,
           valueCount, comparator, type);
     }
-    
+
     @Override
     public int getValueSize() {
       return size;
@@ -117,7 +153,8 @@ class FixedSortedBytesImpl {
 
     FixedSortedSource(IndexInput datIn, IndexInput idxIn, int size,
         int numValues, Comparator<BytesRef> comp) throws IOException {
-      super(datIn, idxIn, comp, size * numValues, ValueType.BYTES_FIXED_SORTED, false);
+      super(datIn, idxIn, comp, size * numValues, ValueType.BYTES_FIXED_SORTED,
+          false);
       this.size = size;
       this.valueCount = numValues;
       closeIndexInput();
@@ -180,4 +217,5 @@ class FixedSortedBytesImpl {
       return valueCount;
     }
   }
+
 }
