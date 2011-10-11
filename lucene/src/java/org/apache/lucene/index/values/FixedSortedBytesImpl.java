@@ -60,15 +60,15 @@ class FixedSortedBytesImpl {
       fillDefault(docCount);
       final IndexOutput datOut = getOrCreateDataOut();
       final int count = hash.size();
-      final int[] address = new int[count]; // addr 0 is default values
+      final int[] address = new int[count];
       datOut.writeInt(size);
       if (size != -1) {
         final int[] sortedEntries = hash.sort(comp);
         // first dump bytes data, recording address as we go
-        final BytesRef bytesRef = new BytesRef(size);
+        final BytesRef spare = new BytesRef(size);
         for (int i = 0; i < count; i++) {
           final int e = sortedEntries[i];
-          final BytesRef bytes = hash.get(e, bytesRef);
+          final BytesRef bytes = hash.get(e, spare);
           assert bytes.length == size;
           datOut.writeBytes(bytes.bytes, bytes.offset, bytes.length);
           address[e] = i;
@@ -117,7 +117,7 @@ class FixedSortedBytesImpl {
 
     FixedSortedSource(IndexInput datIn, IndexInput idxIn, int size,
         int numValues, Comparator<BytesRef> comp) throws IOException {
-      super(datIn, idxIn, comp, size * numValues, ValueType.BYTES_FIXED_SORTED);
+      super(datIn, idxIn, comp, size * numValues, ValueType.BYTES_FIXED_SORTED, false);
       this.size = size;
       this.valueCount = numValues;
       closeIndexInput();
@@ -165,9 +165,7 @@ class FixedSortedBytesImpl {
     public BytesRef getByOrd(int ord, BytesRef bytesRef) {
       try {
         datIn.seek(basePointer + size * ord);
-        if (bytesRef.bytes.length < size) {
-          bytesRef.grow(size);
-        }
+        bytesRef.grow(size);
         datIn.readBytes(bytesRef.bytes, 0, size);
         bytesRef.length = size;
         bytesRef.offset = 0;

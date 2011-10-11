@@ -67,35 +67,31 @@ final class VarSortedBytesImpl {
       fillDefault(docCount);
       final int count = hash.size();
       final IndexOutput datOut = getOrCreateDataOut();
+      final IndexOutput idxOut = getOrCreateIndexOut();
       long offset = 0;
       final int[] index = new int[count];
-      final long[] offsets = new long[count];
       final int[] sortedEntries = hash.sort(comp);
-      // first dump bytes data, recording index & offset as
+      // total bytes of data
+      idxOut.writeLong(maxBytes);
+      PackedInts.Writer offsetWriter = PackedInts.getWriter(idxOut, count+1,
+          PackedInts.bitsRequired(maxBytes));
+      // first dump bytes data, recording index & write offset as
       // we go
+      final BytesRef spare = new BytesRef();
       for (int i = 0; i < count; i++) {
         final int e = sortedEntries[i];
-        offsets[i] = offset;
+        offsetWriter.add(offset);
         index[e] = i;
-
-        final BytesRef bytes = hash.get(e, new BytesRef());
+        final BytesRef bytes = hash.get(e, spare);
         // TODO: we could prefix code...
         datOut.writeBytes(bytes.bytes, bytes.offset, bytes.length);
         offset += bytes.length;
       }
-      final IndexOutput idxOut = getOrCreateIndexOut();
-      // total bytes of data
-      idxOut.writeLong(offset);
-      // write index
-      writeIndex(idxOut, docCount, count, index, docToEntry);
-      // next ord (0-based) -> offset
-      PackedInts.Writer offsetWriter = PackedInts.getWriter(idxOut, count+1,
-          PackedInts.bitsRequired(offset));
-      for (int i = 0; i < count; i++) {
-        offsetWriter.add(offsets[i]);
-      }
       offsetWriter.add(offset);
       offsetWriter.finish();
+      // write index
+      writeIndex(idxOut, docCount, count, index, docToEntry);
+
     }
   }
 
@@ -123,13 +119,11 @@ final class VarSortedBytesImpl {
     
   }
   private static final class VarSortedSource extends BytesSortedSourceBase {
-    private final PackedInts.Reader ordToOffsetIndex; // 0-based
     private final int valueCount;
 
     VarSortedSource(IndexInput datIn, IndexInput idxIn,
         Comparator<BytesRef> comp) throws IOException {
-      super(datIn, idxIn, comp, idxIn.readLong(), ValueType.BYTES_VAR_SORTED);
-      ordToOffsetIndex = PackedInts.getReader(idxIn);
+      super(datIn, idxIn, comp, idxIn.readLong(), ValueType.BYTES_VAR_SORTED, true);
       valueCount = ordToOffsetIndex.size()-1; // the last value here is just a dummy value to get the length of the last value
       closeIndexInput();
     }
@@ -149,7 +143,7 @@ final class VarSortedBytesImpl {
   }
 
   private static final class DirectSortedSource extends SortedSource {
-    private final PackedInts.Reader docToOrdIndex;
+    private final PackedInts.RandomAccessReaderIterator docToOrdIndex;
     private final PackedInts.RandomAccessReaderIterator ordToOffsetIndex;
     private final IndexInput datIn;
     private final long basePointer;
@@ -159,16 +153,22 @@ final class VarSortedBytesImpl {
         Comparator<BytesRef> comparator, ValueType type) throws IOException {
       super(type, comparator);
       idxIn.readLong();
-      docToOrdIndex = PackedInts.getReader(idxIn); // read the ords in to prevent too many random disk seeks
       ordToOffsetIndex = PackedInts.getRandomAccessReaderIterator(idxIn);
       valueCount = ordToOffsetIndex.size()-1; // the last value here is just a dummy value to get the length of the last value
+      // advance this iterator to the end and clone the stream once it points to the docToOrdIndex header
+      ordToOffsetIndex.advance(valueCount);
+      docToOrdIndex = PackedInts.getRandomAccessReaderIterator((IndexInput) idxIn.clone()); // read the ords in to prevent too many random disk seeks
       basePointer = datIn.getFilePointer();
       this.datIn = datIn;
     }
 
     @Override
     public int ord(int docID) {
-      return (int) docToOrdIndex.get(docID);
+      try {
+        return (int) docToOrdIndex.get(docID);
+      } catch (IOException ex) {
+        throw new IllegalStateException("failed", ex);
+      }
     }
 
     @Override
@@ -178,9 +178,7 @@ final class VarSortedBytesImpl {
         final long nextOffset = ordToOffsetIndex.next();
         datIn.seek(basePointer + offset);
         final int length = (int) (nextOffset - offset);
-        if (bytesRef.bytes.length < length) {
-          bytesRef.grow(length);
-        }
+        bytesRef.grow(length);
         datIn.readBytes(bytesRef.bytes, 0, length);
         bytesRef.length = length;
         bytesRef.offset = 0;
