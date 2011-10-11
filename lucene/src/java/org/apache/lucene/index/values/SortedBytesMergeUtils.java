@@ -18,7 +18,6 @@ package org.apache.lucene.index.values;
  */
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 
@@ -37,7 +36,11 @@ import org.apache.lucene.util.packed.PackedInts;
  * @lucene.internal
  * 
  */
-public final class SortedBytesMergeUtils {
+final class SortedBytesMergeUtils {
+
+  private SortedBytesMergeUtils() {
+    // no instance
+  }
 
   static MergeContext init(ValueType type, IndexDocValues[] docValues,
       Comparator<BytesRef> comp, MergeState mergeState) {
@@ -128,7 +131,16 @@ public final class SortedBytesMergeUtils {
     return merger.currentOrd;
   }
 
-  static private void createOrdMapping(MergeState mergeState, int[] docToOrd,
+  /*
+   * In order to merge we need to map the ords used in each segment to the new
+   * global ords in the new segment. Additionally we need to drop values that
+   * are not referenced anymore due to deleted documents. This method walks all
+   * live documents and fetches their current ordinal. We store this ordinal per
+   * slice and (SortedSourceSlice#ordMapping) and remember the doc to ord
+   * mapping in docIDToRelativeOrd. After the merge SortedSourceSlice#ordMapping
+   * contains the new global ordinals for the relative index.
+   */
+  private static void createOrdMapping(MergeState mergeState, int[] docToOrd,
       List<SortedSourceSlice> slices) {
     for (SortedSourceSlice currentSlice : slices) {
       final int readerIdx = currentSlice.readerIdx;
@@ -144,7 +156,9 @@ public final class SortedBytesMergeUtils {
             if (currentDocMap[j] != -1) { // not deleted
               final int doc = currentDocMap[j];
               numDocs++;
-              currentSlice.ordMapping[ord] = docToOrd[docBase + doc] = ord;
+              docToOrd[docBase + doc] = ord;
+              // use ord + 1 to identify unreferenced values (ie. == 0)
+              currentSlice.ordMapping[ord] = ord + 1;
             }
 
           }
@@ -155,7 +169,9 @@ public final class SortedBytesMergeUtils {
           assert indexReaderAndLiveDocs.liveDocs == null;
           for (int doc = 0; doc < numDocs; doc++) {
             final int ord = currentSlice.source.ord(doc);
-            currentSlice.ordMapping[ord] = docToOrd[docBase + doc] = ord;
+            docToOrd[docBase + doc] = ord;
+            // use ord + 1 to identify unreferenced values (ie. == 0)
+            currentSlice.ordMapping[ord] = ord + 1;
           }
         }
         currentSlice.docToOrdEnd = currentSlice.docToOrdStart + numDocs;
@@ -185,7 +201,8 @@ public final class SortedBytesMergeUtils {
       assert currentOrd >= 0;
       while (true) {
         final SortedSourceSlice popped = top[numTop++] = queue.pop();
-        popped.ordMapping[popped.relativeOrd] = currentOrd;
+        // use ord + 1 to identify unreferenced values (ie. == 0)
+        popped.ordMapping[popped.relativeOrd] = currentOrd + 1;
         if (queue.size() == 0
             || !(queue.top()).current.bytesEquals(top[0].current)) {
           break;
@@ -234,12 +251,11 @@ public final class SortedBytesMergeUtils {
       this.source = source;
       this.docIDToRelativeOrd = docToOrd;
       this.ordMapping = new int[source.getValueCount()];
-      Arrays.fill(this.ordMapping, -1);
     }
 
     BytesRef next() {
       for (int i = relativeOrd + 1; i < ordMapping.length; i++) {
-        if (ordMapping[i] != -1) { // skip ords that are not referenced anymore
+        if (ordMapping[i] != 0) { // skip ords that are not referenced anymore
           source.getByOrd(i, current);
           relativeOrd = i;
           return current;
@@ -252,18 +268,18 @@ public final class SortedBytesMergeUtils {
       for (int i = docToOrdStart; i < docToOrdEnd; i++) {
         final int mappedOrd = docIDToRelativeOrd[i];
         assert mappedOrd < ordMapping.length;
-        assert ordMapping[mappedOrd] > -1;
-        writer.add(ordMapping[mappedOrd]);
+        assert ordMapping[mappedOrd] > 0 : "illegal mapping ord mapps to an unreferenced value";
+        writer.add(ordMapping[mappedOrd] - 1);
       }
     }
   }
 
   /*
-   * if a segment has no values at all we use this source to fill in the missing value 
-   * in the right place (depending on the comparator used)
+   * if a segment has no values at all we use this source to fill in the missing
+   * value in the right place (depending on the comparator used)
    */
-  private static class MissingValueSource extends SortedSource {
-    
+  private static final class MissingValueSource extends SortedSource {
+
     private BytesRef missingValue;
 
     public MissingValueSource(BytesRef missingValue, Comparator<BytesRef> comp,
@@ -290,7 +306,11 @@ public final class SortedBytesMergeUtils {
 
   }
 
-  private static class MergeQueue extends PriorityQueue<SortedSourceSlice> {
+  /*
+   * merge queue
+   */
+  private static final class MergeQueue extends
+      PriorityQueue<SortedSourceSlice> {
     final Comparator<BytesRef> comp;
 
     public MergeQueue(int maxSize, Comparator<BytesRef> comp) {
