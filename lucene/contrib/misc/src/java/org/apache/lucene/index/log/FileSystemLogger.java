@@ -85,10 +85,8 @@ public class FileSystemLogger<Rec extends LogRecord> extends Logger<Rec> {
           buffer = ByteBuffer.allocateDirect(ArrayUtil.oversize(recordBytes.length, 1));
           buffer.put(node.item);
         }
-        flushBuffer();
-        if (syncAfterBatch) {
-          currentLogFile.channel().force(false);
-        }
+        flushBuffer(syncAfterBatch);
+        syncAfterBatch = false;
         slice.sliceHead = node;
         break;
       } else {
@@ -101,15 +99,22 @@ public class FileSystemLogger<Rec extends LogRecord> extends Logger<Rec> {
         offset += recordBytes.length;
       }
     }
+    if (buffer.position() != 0) {
+      flushBuffer(syncAfterBatch);
+      slice.sliceHead = node;
+    }
   }
 
-  private void flushBuffer() throws IOException {
+  private void flushBuffer(boolean syncAfterBatch) throws IOException {
     buffer.flip();
-    FileChannel channel = currentLogFile.channel;
+    final FileChannel channel = currentLogFile.channel;
     while (buffer.hasRemaining()) {
       channel.write(buffer);
     }
     buffer.clear();
+    if (syncAfterBatch) {
+      channel.force(false);
+    }
   }
 
   @Override
