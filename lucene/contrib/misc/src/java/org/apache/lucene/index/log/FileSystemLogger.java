@@ -31,7 +31,7 @@ public class FileSystemLogger<Rec extends LogRecord> extends Logger<Rec> {
       throw new IllegalArgumentException("logDirectory must be a directory");
     }
     this.logDirectory = logDirectory;
-    buffer = ByteBuffer.allocateDirect(2048);
+    buffer = ByteBuffer.allocateDirect(8192);
 
   }
 
