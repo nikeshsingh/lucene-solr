@@ -17,6 +17,7 @@
 
 package org.apache.solr.update;
 
+import org.apache.lucene.util.IOUtils;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.util.FastInputStream;
 import org.apache.solr.common.util.JavaBinCodec;
@@ -39,9 +40,7 @@ public class TransactionLogReader {
     }
   }
 
-  private File tlogFile;
-  private RandomAccessFile raf;
-  private FileChannel channel;
+  private final TransactionLogFileHandle handle;
   private FastInputStream fis;
   private boolean completed;
   private LogCodec codec;
@@ -69,18 +68,22 @@ public class TransactionLogReader {
 
 
   public TransactionLogReader(File tlogFile) {
+    TransactionLogFileHandle handle = null;
     try {
-      this.tlogFile = tlogFile;
-      raf = new RandomAccessFile(tlogFile,"r");
+      handle = new TransactionLogFileHandle(tlogFile, false);
       byte[] end = new byte[END_MESSAGE_BYTES.length];
-      long size = raf.length();
+      long size = handle.getLength();
       completed = false;
       if (size >= end.length) {
-        raf.seek(size - end.length);
-        raf.readFully(end);
+        handle.readAt(size-end.length, end);
         completed = Arrays.equals(end, END_MESSAGE_BYTES);
       }
+      this.handle = handle;
     } catch (IOException e) {
+      try {
+        IOUtils.close(handle);
+      } catch (IOException e1) {
+      }
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, e);
     }
   }
@@ -93,8 +96,8 @@ public class TransactionLogReader {
   public Map readHeader() {
     if (header != null) return header;
     try {
-      raf.seek(0);
-      channel = raf.getChannel();
+      FileChannel channel = handle.getChannel();
+      channel.position(0);
       InputStream is = Channels.newInputStream(channel);
       fis = new FastInputStream(is);
       codec = new LogCodec();
@@ -121,18 +124,18 @@ public class TransactionLogReader {
 
   public void close() {
     try {
-      raf.close();
+      handle.close();
     } catch (IOException e) {
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Corrupt transaction log", e);
     }
   }
 
   public void delete() {
-    tlogFile.delete();
+    handle.deleteFile();
   }
 
   @Override
   public String toString() {
-    return "TransactionLogReader{"+"file="+tlogFile+"}";
+    return "TransactionLogReader{"+"file="+handle.getFile()+"}";
   }
 }

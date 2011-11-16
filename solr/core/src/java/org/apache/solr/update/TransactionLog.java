@@ -51,11 +51,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class TransactionLog {
 
   public final static String END_MESSAGE="SOLR_TLOG_END";
-
+  final TransactionLogFileHandle handle;
   long id;
-  File tlogFile;
-  RandomAccessFile raf;
-  FileChannel channel;
   OutputStream os;
   FastOutputStream fos;
   InputStream is;
@@ -131,16 +128,14 @@ public class TransactionLog {
 
   TransactionLog(File tlogFile, Collection<String> globalStrings) {
     try {
-      this.tlogFile = tlogFile;
-      raf = new RandomAccessFile(this.tlogFile, "rw");
-      long start = raf.length();
+      handle = new TransactionLogFileHandle(tlogFile, deleteOnClose);
+      long start = handle.getLength();
       assert start==0;
       if (start > 0) {
-        raf.setLength(0);
+        handle.reset();
       }
       // System.out.println("###start= "+start);
-      channel = raf.getChannel();
-      os = Channels.newOutputStream(channel);
+      os = Channels.newOutputStream(handle.getChannel());
       fos = FastOutputStream.wrap(os);
       addGlobalStrings(globalStrings);
     } catch (IOException e) {
@@ -297,7 +292,7 @@ public class TransactionLog {
         ***/
       }
 
-      ChannelFastInputStream fis = new ChannelFastInputStream(channel, pos);
+      ChannelFastInputStream fis = new ChannelFastInputStream(handle.getChannel(), pos);
       LogCodec codec = new LogCodec();
       return codec.readVal(fis);
     } catch (IOException e) {
@@ -326,7 +321,7 @@ public class TransactionLog {
         // Since fsync is outside of synchronized block, we can end up with a partial
         // last record on power failure (which is OK, and does not represent an error...
         // we just need to be aware of it when reading).
-        raf.getFD().sync();
+        handle.sync(false);
       }
 
     } catch (IOException e) {
@@ -338,16 +333,14 @@ public class TransactionLog {
     try {
       fos.flush();
       fos.close();
-      if (deleteOnClose) {
-        tlogFile.delete();
-      }
+      handle.close();
     } catch (IOException e) {
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, e);
     }
   }
 
   public String toString() {
-    return tlogFile.toString();
+    return handle.getFile().toString();
   }
 
 }
