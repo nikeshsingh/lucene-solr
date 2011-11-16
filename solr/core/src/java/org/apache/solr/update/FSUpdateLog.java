@@ -277,7 +277,8 @@ public class FSUpdateLog extends UpdateLog {
       id++;
 
       if (prevTlog != null) {
-        globalStrings = prevTlog.getGlobalStrings();
+        //nocommit
+//        globalStrings = prevTlog.getGlobalStrings();
       }
     }
   }

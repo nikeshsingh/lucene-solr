@@ -34,7 +34,7 @@ public class TransactionLogReader {
   private static byte[] END_MESSAGE_BYTES;
   static {
     try {
-      END_MESSAGE_BYTES = TransactionLog.END_MESSAGE.getBytes("UTF-8");
+      END_MESSAGE_BYTES = SolrTransactionLogCodec.END_MESSAGE.getBytes("UTF-8");
     } catch (UnsupportedEncodingException e) {
       // impossible
     }
