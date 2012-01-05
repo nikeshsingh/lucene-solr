@@ -66,8 +66,8 @@ class FixedSortedBytesImpl {
         throws IOException {
       boolean success = false;
       try {
-        final MergeContext ctx = SortedBytesMergeUtils.init(Type.BYTES_FIXED_SORTED, docValues, comp, mergeState);
-        List<SortedSourceSlice> slices = SortedBytesMergeUtils.buildSlices(mergeState, docValues, ctx);
+        final MergeContext ctx = SortedBytesMergeUtils.init(Type.BYTES_FIXED_SORTED, docValues, comp, mergeState.mergedDocCount);
+        List<SortedSourceSlice> slices = SortedBytesMergeUtils.buildSlices(mergeState.docBase, mergeState.docMaps, docValues, ctx);
         final IndexOutput datOut = getOrCreateDataOut();
         datOut.writeInt(ctx.sizePerValues);
         final int maxOrd = SortedBytesMergeUtils.mergeRecords(ctx, datOut, slices);

@@ -47,7 +47,7 @@ public final class SortedBytesMergeUtils {
   }
 
   public static MergeContext init(Type type, DocValues[] docValues,
-      Comparator<BytesRef> comp, MergeState mergeState) {
+      Comparator<BytesRef> comp, int mergeDocCount) {
     int size = -1;
     if (type == Type.BYTES_FIXED_SORTED) {
       for (DocValues indexDocValues : docValues) {
@@ -58,7 +58,7 @@ public final class SortedBytesMergeUtils {
       }
       assert size >= 0;
     }
-    return new MergeContext(comp, mergeState, size, type);
+    return new MergeContext(comp, mergeDocCount, size, type);
   }
 
   public static final class MergeContext {
@@ -69,7 +69,7 @@ public final class SortedBytesMergeUtils {
     public final int[] docToEntry;
     public long[] offsets; // if non-null #mergeRecords collects byte offsets here
 
-    public MergeContext(Comparator<BytesRef> comp, MergeState mergeState,
+    public MergeContext(Comparator<BytesRef> comp, int mergeDocCount,
         int size, Type type) {
       assert type == Type.BYTES_FIXED_SORTED || type == Type.BYTES_VAR_SORTED;
       this.comp = comp;
@@ -79,11 +79,15 @@ public final class SortedBytesMergeUtils {
         missingValue.grow(size);
         missingValue.length = size;
       }
-      docToEntry = new int[mergeState.mergedDocCount];
+      docToEntry = new int[mergeDocCount];
+    }
+    
+    public int getMergeDocCount() {
+      return docToEntry.length;
     }
   }
 
-  public static List<SortedSourceSlice> buildSlices(MergeState mergeState,
+  public static List<SortedSourceSlice> buildSlices(int[] docBases ,int[][] docMaps,
       DocValues[] docValues, MergeContext ctx) throws IOException {
     final List<SortedSourceSlice> slices = new ArrayList<SortedSourceSlice>();
     for (int i = 0; i < docValues.length; i++) {
@@ -92,13 +96,13 @@ public final class SortedBytesMergeUtils {
       if (docValues[i] != null
           && (directSource = docValues[i].getDirectSource()) != null) {
         final SortedSourceSlice slice = new SortedSourceSlice(i, directSource
-            .asSortedSource(), mergeState, ctx.docToEntry);
+            .asSortedSource(), docBases, ctx.getMergeDocCount(), ctx.docToEntry);
         nextSlice = slice;
       } else {
         nextSlice = new SortedSourceSlice(i, new MissingValueSource(ctx),
-            mergeState, ctx.docToEntry);
+            docBases, ctx.getMergeDocCount(), ctx.docToEntry);
       }
-      createOrdMapping(mergeState, nextSlice);
+      createOrdMapping(docBases, docMaps, nextSlice);
       slices.add(nextSlice);
     }
     return Collections.unmodifiableList(slices);
@@ -113,12 +117,12 @@ public final class SortedBytesMergeUtils {
    * mapping in docIDToRelativeOrd. After the merge SortedSourceSlice#ordMapping
    * contains the new global ordinals for the relative index.
    */
-  private static void createOrdMapping(MergeState mergeState,
+  private static void createOrdMapping(int[] docBases ,int[][] docMaps,
       SortedSourceSlice currentSlice) {
     final int readerIdx = currentSlice.readerIdx;
-    final int[] currentDocMap = mergeState.docMaps[readerIdx];
+    final int[] currentDocMap = docMaps[readerIdx];
     final int docBase = currentSlice.docToOrdStart;
-    assert docBase == mergeState.docBase[readerIdx];
+    assert docBase == docBases[readerIdx];
     if (currentDocMap != null) { // we have deletes
       for (int i = 0; i < currentDocMap.length; i++) {
         final int doc = currentDocMap[i];
@@ -131,11 +135,7 @@ public final class SortedBytesMergeUtils {
         }
       }
     } else { // no deletes
-      final IndexReaderAndLiveDocs indexReaderAndLiveDocs = mergeState.readers
-          .get(readerIdx);
-      final int numDocs = indexReaderAndLiveDocs.reader.numDocs();
-      assert indexReaderAndLiveDocs.liveDocs == null;
-      assert currentSlice.docToOrdEnd - currentSlice.docToOrdStart == numDocs;
+      final int numDocs = currentSlice.docToOrdEnd - currentSlice.docToOrdStart;
       for (int doc = 0; doc < numDocs; doc++) {
         final int ord = currentSlice.source.ord(doc);
         currentSlice.docIDToRelativeOrd[docBase + doc] = ord;
@@ -241,22 +241,22 @@ public final class SortedBytesMergeUtils {
     /* the currently merged relative ordinal */
     int relativeOrd = -1;
 
-    SortedSourceSlice(int readerIdx, SortedSource source, MergeState state,
+    SortedSourceSlice(int readerIdx, SortedSource source, int[] docBase, int mergeDocCount,
         int[] docToOrd) {
       super();
       this.readerIdx = readerIdx;
       this.source = source;
       this.docIDToRelativeOrd = docToOrd;
       this.ordMapping = new int[source.getValueCount()];
-      this.docToOrdStart = state.docBase[readerIdx];
-      this.docToOrdEnd = this.docToOrdStart + numDocs(state, readerIdx);
+      this.docToOrdStart = docBase[readerIdx];
+      this.docToOrdEnd = this.docToOrdStart + numDocs(docBase, mergeDocCount, readerIdx);
     }
 
-    private static int numDocs(MergeState state, int readerIndex) {
-      if (readerIndex == state.docBase.length - 1) {
-        return state.mergedDocCount - state.docBase[readerIndex];
+    private static int numDocs(int[] docBase, int mergedDocCount, int readerIndex) {
+      if (readerIndex == docBase.length - 1) {
+        return mergedDocCount - docBase[readerIndex];
       }
-      return state.docBase[readerIndex + 1] - state.docBase[readerIndex];
+      return docBase[readerIndex + 1] - docBase[readerIndex];
     }
 
     BytesRef next() {

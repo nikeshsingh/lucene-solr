@@ -67,8 +67,8 @@ final class VarSortedBytesImpl {
         throws IOException {
       boolean success = false;
       try {
-        MergeContext ctx = SortedBytesMergeUtils.init(Type.BYTES_VAR_SORTED, docValues, comp, mergeState);
-        final List<SortedSourceSlice> slices = SortedBytesMergeUtils.buildSlices(mergeState, docValues, ctx);
+        MergeContext ctx = SortedBytesMergeUtils.init(Type.BYTES_VAR_SORTED, docValues, comp, mergeState.mergedDocCount);
+        final List<SortedSourceSlice> slices = SortedBytesMergeUtils.buildSlices(mergeState.docBase, mergeState.docMaps, docValues, ctx);
         IndexOutput datOut = getOrCreateDataOut();
         
         ctx.offsets = new long[1];
