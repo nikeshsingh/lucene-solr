@@ -22,8 +22,6 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 
-import org.apache.lucene.index.DocValues.Type;
-import org.apache.lucene.index.SortedBytesMergeUtils.IndexOutputBytesRefConsumer;
 import org.apache.lucene.index.SortedBytesMergeUtils.MergeContext;
 import org.apache.lucene.index.SortedBytesMergeUtils.SortedSourceSlice;
 import org.apache.lucene.util.ArrayUtil;
