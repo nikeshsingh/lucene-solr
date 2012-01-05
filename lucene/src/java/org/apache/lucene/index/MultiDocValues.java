@@ -150,6 +150,7 @@ public class MultiDocValues extends DocValues {
             case BYTES_FIXED_DEREF:
             case BYTES_FIXED_STRAIGHT:
             case BYTES_FIXED_SORTED:
+              assert promotedType[0].getValueSize() >= 0;
               slice.docValues = new EmptyFixedDocValues(slice.length, promoted, promotedType[0].getValueSize());
               break;
             default:

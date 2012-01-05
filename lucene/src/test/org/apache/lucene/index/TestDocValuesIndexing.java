@@ -547,6 +547,7 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     return MultiDocValues.getDocValues(reader, field);
   }
 
+  @SuppressWarnings("fallthrough")
   private Source getSource(DocValues values) throws IOException {
     // getSource uses cache internally
     switch(random.nextInt(5)) {
