@@ -28,6 +28,7 @@ import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.SortedBytesMergeUtils;
 import org.apache.lucene.index.DocValues.SortedSource;
 import org.apache.lucene.index.DocValues.Type;
+import org.apache.lucene.index.SortedBytesMergeUtils.IndexOutputBytesRefConsumer;
 import org.apache.lucene.index.SortedBytesMergeUtils.MergeContext;
 import org.apache.lucene.index.SortedBytesMergeUtils.SortedSourceSlice;
 import org.apache.lucene.index.MergeState;
@@ -72,7 +73,7 @@ final class VarSortedBytesImpl {
         IndexOutput datOut = getOrCreateDataOut();
         
         ctx.offsets = new long[1];
-        final int maxOrd = SortedBytesMergeUtils.mergeRecords(ctx, datOut, slices);
+        final int maxOrd = SortedBytesMergeUtils.mergeRecords(ctx, new IndexOutputBytesRefConsumer(datOut), slices);
         final long[] offsets = ctx.offsets;
         maxBytes = offsets[maxOrd-1];
         final IndexOutput idxOut = getOrCreateIndexOut();

@@ -25,7 +25,6 @@ import java.util.List;
 import org.apache.lucene.index.DocValues.SortedSource;
 import org.apache.lucene.index.DocValues.Source;
 import org.apache.lucene.index.DocValues.Type;
-import org.apache.lucene.index.MergeState.IndexReaderAndLiveDocs;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
@@ -37,7 +36,6 @@ import org.apache.lucene.util.packed.PackedInts;
  */
 // TODO: generalize this a bit more:
 //       * remove writing (like indexoutput) from here
-//       * just take IndexReaders (not IR&LiveDocs), doesnt care about liveDocs
 //       * hook into MultiDocValues to make a MultiSortedSource
 //       * maybe DV merging should then just use MultiDocValues for simplicity?
 public final class SortedBytesMergeUtils {
@@ -145,7 +143,7 @@ public final class SortedBytesMergeUtils {
     }
   }
 
-  public static int mergeRecords(MergeContext ctx, IndexOutput datOut,
+  public static int mergeRecords(MergeContext ctx, BytesRefConsumer consumer,
       List<SortedSourceSlice> slices) throws IOException {
     final RecordMerger merger = new RecordMerger(new MergeQueue(slices.size(),
         ctx.comp), slices.toArray(new SortedSourceSlice[0]));
@@ -159,21 +157,37 @@ public final class SortedBytesMergeUtils {
       currentMergedBytes = merger.current;
       assert ctx.sizePerValues == -1 || ctx.sizePerValues == currentMergedBytes.length : "size: "
           + ctx.sizePerValues + " spare: " + currentMergedBytes.length;
-
+      offset += currentMergedBytes.length;
       if (recordOffsets) {
-        offset += currentMergedBytes.length;
         if (merger.currentOrd >= offsets.length) {
           offsets = ArrayUtil.grow(offsets, merger.currentOrd + 1);
         }
         offsets[merger.currentOrd] = offset;
       }
-      datOut.writeBytes(currentMergedBytes.bytes, currentMergedBytes.offset,
-          currentMergedBytes.length);
+      consumer.consume(currentMergedBytes, merger.currentOrd, offset);
       merger.pushTop();
     }
     ctx.offsets = offsets;
     assert offsets == null || offsets[merger.currentOrd - 1] == offset;
     return merger.currentOrd;
+  }
+  
+  public static interface BytesRefConsumer {
+    public void consume(BytesRef ref, int ord, long offset) throws IOException;
+  }
+  
+  public static final class IndexOutputBytesRefConsumer implements BytesRefConsumer {
+    private final IndexOutput datOut;
+    
+    public IndexOutputBytesRefConsumer(IndexOutput datOut) {
+      this.datOut = datOut;
+    }
+
+    @Override
+    public void consume(BytesRef currentMergedBytes, int ord, long offset) throws IOException {
+      datOut.writeBytes(currentMergedBytes.bytes, currentMergedBytes.offset,
+          currentMergedBytes.length);      
+    }
   }
 
   private static final class RecordMerger {
@@ -268,6 +282,16 @@ public final class SortedBytesMergeUtils {
         }
       }
       return null;
+    }
+    
+    public int[] toAbsolutOrds(int[] docToOrd) {
+      for (int i = docToOrdStart; i < docToOrdEnd; i++) {
+        final int mappedOrd = docIDToRelativeOrd[i];
+        assert mappedOrd < ordMapping.length;
+        assert ordMapping[mappedOrd] > 0 : "illegal mapping ord maps to an unreferenced value";
+        docToOrd[i] = ordMapping[mappedOrd] -1;
+      }
+      return docToOrd;
     }
 
     public void writeOrds(PackedInts.Writer writer) throws IOException {

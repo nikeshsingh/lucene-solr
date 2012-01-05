@@ -430,7 +430,9 @@ public class TestDocValuesIndexing extends LuceneTestCase {
     case 2:
       return values.getDirectSource();
     case 1:
-      return values.getSource();
+      if(values.type() == Type.BYTES_VAR_SORTED || values.type() == Type.BYTES_FIXED_SORTED) {
+        return values.getSource().asSortedSource();
+      }
     default:
       return values.getSource();
     }
