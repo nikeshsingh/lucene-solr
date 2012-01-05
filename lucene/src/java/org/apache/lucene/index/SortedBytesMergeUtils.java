@@ -34,10 +34,6 @@ import org.apache.lucene.util.packed.PackedInts;
 /**
  * @lucene.internal
  */
-// TODO: generalize this a bit more:
-//       * remove writing (like indexoutput) from here
-//       * hook into MultiDocValues to make a MultiSortedSource
-//       * maybe DV merging should then just use MultiDocValues for simplicity?
 public final class SortedBytesMergeUtils {
 
   private SortedBytesMergeUtils() {
