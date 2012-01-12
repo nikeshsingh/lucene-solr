@@ -1,13 +1,4 @@
 package org.apache.lucene.index;
-
-import java.io.IOException;
-import java.util.LinkedList;
-import java.util.Queue;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.ReentrantLock;
-
-import org.apache.lucene.index.DocumentsWriterPerThread.FlushedSegment;
-
 /**
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements. See the NOTICE file distributed with this
@@ -24,9 +15,23 @@ import org.apache.lucene.index.DocumentsWriterPerThread.FlushedSegment;
  * License for the specific language governing permissions and limitations under
  * the License.
  */
+import java.io.IOException;
+import java.util.LinkedList;
+import java.util.Queue;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.lucene.index.DocumentsWriterPerThread.FlushedSegment;
+
+
+/**
+ * 
+ * @lucene.internal 
+ */
 public class DocumentsWriterFlushQueue {
   private final Queue<FlushTicket> queue = new LinkedList<FlushTicket>();
+  // we track tickets separately since count must be present even before the ticket is
+  // constructed ie. queue.size would not reflect it.
   private final AtomicInteger ticketCount = new AtomicInteger();
   private final ReentrantLock purgeLock = new ReentrantLock();
 
@@ -36,7 +41,7 @@ public class DocumentsWriterFlushQueue {
                                    // a window for #anyChanges to fail
     boolean success = false;
     try {
-      add(new FlushTicket(deleteQueue.freezeGlobalBuffer(null), false));
+      queue.add(new GlobalDeletesTicket(deleteQueue.freezeGlobalBuffer(null)));
       success = true;
     } finally {
       if (!success) {
@@ -46,31 +51,36 @@ public class DocumentsWriterFlushQueue {
     forcePurge(writer);
   }
 
-  synchronized FlushTicket addFlushTicket(DocumentsWriterPerThread dwpt) {
+  synchronized SegmentFlushTicket addFlushTicket(DocumentsWriterPerThread dwpt) {
     // Each flush is assigned a ticket in the order they acquire the ticketQueue
     // lock
-    FlushTicket ticket = new FlushTicket(dwpt.prepareFlush(), true);
-    add(ticket);
     ticketCount.incrementAndGet();
-    return ticket;
+    boolean success = false;
+    try {
+      final SegmentFlushTicket ticket = new SegmentFlushTicket(dwpt.prepareFlush());
+      queue.add(ticket);
+      success = true;
+      return ticket;
+    } finally {
+      if (!success) {
+        ticketCount.decrementAndGet();
+      }
+    }
+  }
+  
+  synchronized void addSegment(SegmentFlushTicket ticket, FlushedSegment segment) {
+    ticket.setSegment(segment);
   }
 
-  synchronized void addSegment(FlushTicket ticket, FlushedSegment segment) {
-    ticket.segment = segment;
+  synchronized void markTicketFailed(SegmentFlushTicket ticket) {
+    ticket.setFailed();
   }
 
-  synchronized void markTicketFailed(FlushTicket ticket) {
-    ticket.isSegmentFlush = false;
-  }
-
-  synchronized boolean hasTickets() {
-    assert ticketCount.get() >= 0;
+  boolean hasTickets() {
+    assert ticketCount.get() >= 0 : "ticketCount should be >= 0 but was: " + ticketCount.get();
     return ticketCount.get() != 0;
   }
 
-  private synchronized void add(FlushTicket ticket) {
-    queue.add(ticket);
-  }
 
   private void innerPurge(DocumentsWriter writer) throws IOException {
     assert purgeLock.isHeldByCurrentThread();
@@ -83,10 +93,11 @@ public class DocumentsWriterFlushQueue {
       }
       if (canPublish) {
         try {
-          writer.finishFlush(head.segment, head.frozenDeletes);
+          head.publish(writer);
         } finally {
           synchronized (this) {
             queue.poll();
+            ticketCount.decrementAndGet();
           }
         }
       } else {
@@ -127,19 +138,54 @@ public class DocumentsWriterFlushQueue {
     ticketCount.set(0);
   }
 
-  static final class FlushTicket {
-    final FrozenBufferedDeletes frozenDeletes;
-    /* access to non-final members must be synchronized on DW#ticketQueue */
-    private FlushedSegment segment;
-    private boolean isSegmentFlush;
+  static abstract class FlushTicket {
+    protected FrozenBufferedDeletes frozenDeletes;
 
-    FlushTicket(FrozenBufferedDeletes frozenDeletes, boolean isSegmentFlush) {
+    protected FlushTicket(FrozenBufferedDeletes frozenDeletes) {
+      assert frozenDeletes != null;
       this.frozenDeletes = frozenDeletes;
-      this.isSegmentFlush = isSegmentFlush;
     }
 
-    private boolean canPublish() {
-      return (!isSegmentFlush || segment != null);
+    protected abstract void publish(DocumentsWriter writer) throws IOException;
+    protected abstract boolean canPublish();
+  }
+  
+  static final class GlobalDeletesTicket extends FlushTicket{
+
+    protected GlobalDeletesTicket(FrozenBufferedDeletes frozenDeletes) {
+      super(frozenDeletes);
+    }
+    protected void publish(DocumentsWriter writer) throws IOException {
+      writer.finishFlush(null, frozenDeletes);
+    }
+
+    protected boolean canPublish() {
+      return true;
+    }
+  }
+  
+  static final class SegmentFlushTicket extends FlushTicket {
+    private FlushedSegment segment;
+    private boolean failed = false;
+    
+    protected SegmentFlushTicket(FrozenBufferedDeletes frozenDeletes) {
+      super(frozenDeletes);
+    }
+    
+    protected void publish(DocumentsWriter writer) throws IOException {
+      writer.finishFlush(segment, frozenDeletes);
+    }
+    
+    protected void setSegment(FlushedSegment segment) {
+      this.segment = segment;
+    }
+    
+    protected void setFailed() {
+      failed = true;
+    }
+
+    protected boolean canPublish() {
+      return segment != null || failed;
     }
   }
 }
