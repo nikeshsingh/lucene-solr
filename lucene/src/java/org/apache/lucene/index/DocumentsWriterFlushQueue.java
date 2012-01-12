@@ -25,7 +25,6 @@ import org.apache.lucene.index.DocumentsWriterPerThread.FlushedSegment;
 
 
 /**
- * 
  * @lucene.internal 
  */
 public class DocumentsWriterFlushQueue {
@@ -37,42 +36,56 @@ public class DocumentsWriterFlushQueue {
 
   synchronized void addDeletesAndPurge(DocumentsWriter writer,
       DocumentsWriterDeleteQueue deleteQueue) throws IOException {
-    ticketCount.incrementAndGet(); // first inc the ticket count - freeze opens
-                                   // a window for #anyChanges to fail
+   incTickets();// first inc the ticket count - freeze opens
+                // a window for #anyChanges to fail
     boolean success = false;
     try {
       queue.add(new GlobalDeletesTicket(deleteQueue.freezeGlobalBuffer(null)));
       success = true;
     } finally {
       if (!success) {
-        ticketCount.decrementAndGet();
+       decTickets();
       }
     }
     forcePurge(writer);
+  }
+  
+  private void incTickets() {
+    int numTickets = ticketCount.incrementAndGet();
+    assert numTickets > 0;
+  }
+  
+  private void decTickets() {
+    int numTickets = ticketCount.decrementAndGet();
+    assert numTickets >= 0;
   }
 
   synchronized SegmentFlushTicket addFlushTicket(DocumentsWriterPerThread dwpt) {
     // Each flush is assigned a ticket in the order they acquire the ticketQueue
     // lock
-    ticketCount.incrementAndGet();
+    incTickets();
     boolean success = false;
     try {
+      // prepare flush freezes the global deletes - do in synced block!
       final SegmentFlushTicket ticket = new SegmentFlushTicket(dwpt.prepareFlush());
       queue.add(ticket);
       success = true;
       return ticket;
     } finally {
       if (!success) {
-        ticketCount.decrementAndGet();
+        decTickets();
       }
     }
   }
   
   synchronized void addSegment(SegmentFlushTicket ticket, FlushedSegment segment) {
+    // the actual flush is done asynchronously and once done the FlushedSegment
+    // is passed to the flush ticket
     ticket.setSegment(segment);
   }
 
   synchronized void markTicketFailed(SegmentFlushTicket ticket) {
+    // to free the queue we mark tickets as failed just to clean up the queue.
     ticket.setFailed();
   }
 
@@ -81,7 +94,6 @@ public class DocumentsWriterFlushQueue {
     return ticketCount.get() != 0;
   }
 
-
   private void innerPurge(DocumentsWriter writer) throws IOException {
     assert purgeLock.isHeldByCurrentThread();
     while (true) {
@@ -89,15 +101,23 @@ public class DocumentsWriterFlushQueue {
       final boolean canPublish;
       synchronized (this) {
         head = queue.peek();
-        canPublish = head != null && head.canPublish();
+        canPublish = head != null && head.canPublish(); // do this synced 
       }
       if (canPublish) {
         try {
+          /*
+           * if we bock on publish -> lock IW -> lock BufferedDeletes we don't block
+           * concurrent segment flushes just because they want to append to the queue.
+           * the downside is that we need to force a purge on fullFlush since ther could
+           * be a ticket still in the queue. 
+           */
           head.publish(writer);
         } finally {
           synchronized (this) {
-            queue.poll();
+            // finally remove the publised ticket from the queue
+            final FlushTicket poll = queue.poll();
             ticketCount.decrementAndGet();
+            assert poll == head;
           }
         }
       } else {
@@ -125,14 +145,6 @@ public class DocumentsWriterFlushQueue {
     }
   }
 
-  FlushTicket poll() {
-    try {
-      return queue.poll();
-    } finally {
-      ticketCount.decrementAndGet();
-    }
-  }
-
   synchronized void clear() {
     queue.clear();
     ticketCount.set(0);
@@ -140,6 +152,7 @@ public class DocumentsWriterFlushQueue {
 
   static abstract class FlushTicket {
     protected FrozenBufferedDeletes frozenDeletes;
+    protected boolean published = false;
 
     protected FlushTicket(FrozenBufferedDeletes frozenDeletes) {
       assert frozenDeletes != null;
@@ -156,6 +169,9 @@ public class DocumentsWriterFlushQueue {
       super(frozenDeletes);
     }
     protected void publish(DocumentsWriter writer) throws IOException {
+      assert !published : "ticket was already publised - can not publish twice";
+      published = true;
+      // its a global ticket - no segment to publish
       writer.finishFlush(null, frozenDeletes);
     }
 
@@ -173,14 +189,18 @@ public class DocumentsWriterFlushQueue {
     }
     
     protected void publish(DocumentsWriter writer) throws IOException {
+      assert !published : "ticket was already publised - can not publish twice";
+      published = true;
       writer.finishFlush(segment, frozenDeletes);
     }
     
     protected void setSegment(FlushedSegment segment) {
+      assert !failed;
       this.segment = segment;
     }
     
     protected void setFailed() {
+      assert segment == null;
       failed = true;
     }
 
