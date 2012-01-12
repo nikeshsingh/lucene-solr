@@ -18,9 +18,6 @@ package org.apache.lucene.index;
  */
 
 import java.io.IOException;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Set;
 
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
@@ -55,6 +52,11 @@ abstract class BaseMultiReader<R extends IndexReader> extends IndexReader {
     topLevelContext = ReaderUtil.buildReaderContext(this);
   }
   
+  @Override
+  public FieldInfos getFieldInfos() {
+    throw new UnsupportedOperationException("call getFieldInfos() on each sub reader, or use ReaderUtil.getMergedFieldInfos, instead");
+  }
+
   @Override
   public Fields fields() throws IOException {
     throw new UnsupportedOperationException("please use MultiFields.getFields, or wrap your IndexReader with SlowMultiReaderWrapper, if you really need a top level Fields");
@@ -118,11 +120,6 @@ abstract class BaseMultiReader<R extends IndexReader> extends IndexReader {
   }
   
   @Override
-  public synchronized byte[] norms(String field) throws IOException {
-    throw new UnsupportedOperationException("please use MultiNorms.norms, or wrap your IndexReader with SlowMultiReaderWrapper, if you really need a top level norms");
-  }
-  
-  @Override
   public int docFreq(String field, BytesRef t) throws IOException {
     ensureOpen();
     int total = 0;          // sum freqs in segments
@@ -131,17 +128,6 @@ abstract class BaseMultiReader<R extends IndexReader> extends IndexReader {
     }
     return total;
   }
-
-  @Override
-  public Collection<String> getFieldNames (IndexReader.FieldOption fieldNames) {
-    ensureOpen();
-    // maintain a unique set of field names
-    final Set<String> fieldSet = new HashSet<String>();
-    for (IndexReader reader : subReaders) {
-      fieldSet.addAll(reader.getFieldNames(fieldNames));
-    }
-    return fieldSet;
-  }  
 
   @Override
   public IndexReader[] getSequentialSubReaders() {
@@ -156,5 +142,10 @@ abstract class BaseMultiReader<R extends IndexReader> extends IndexReader {
   @Override
   public DocValues docValues(String field) throws IOException {
     throw new UnsupportedOperationException("please use MultiDocValues#getDocValues, or wrap your IndexReader with SlowMultiReaderWrapper, if you really need a top level DocValues");
+  }
+  
+  @Override
+  public DocValues normValues(String field) throws IOException {
+    throw new UnsupportedOperationException("please use MultiDocValues#getNormValues, or wrap your IndexReader with SlowMultiReaderWrapper, if you really need a top level Norm DocValues ");
   }
 }

@@ -19,7 +19,6 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,13 +26,9 @@ import java.util.Map;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.FieldInfosWriter;
 import org.apache.lucene.codecs.FieldsConsumer;
-import org.apache.lucene.codecs.NormsWriter;
 import org.apache.lucene.codecs.PerDocConsumer;
 import org.apache.lucene.codecs.StoredFieldsWriter;
 import org.apache.lucene.codecs.TermVectorsWriter;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
-import org.apache.lucene.index.IndexReader.FieldOption;
-import org.apache.lucene.index.DocValues;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.util.Bits;
@@ -125,8 +120,7 @@ final class SegmentMerger {
     mergePerDoc(segmentWriteState);
     
     if (mergeState.fieldInfos.hasNorms()) {
-      int numMerged = mergeNorms(segmentWriteState);
-      assert numMerged == mergeState.mergedDocCount;
+      mergeNorms(segmentWriteState);
     }
 
     if (mergeState.fieldInfos.hasVectors()) {
@@ -135,18 +129,6 @@ final class SegmentMerger {
     }
 
     return mergeState;
-  }
-
-  private static void addIndexed(IndexReader reader, FieldInfos fInfos,
-      Collection<String> names, boolean storeTermVectors,
-      boolean storePositionWithTermVector, boolean storeOffsetWithTermVector,
-      boolean storePayloads, IndexOptions indexOptions)
-      throws IOException {
-    for (String field : names) {
-      fInfos.addOrUpdate(field, true, storeTermVectors,
-          storePositionWithTermVector, storeOffsetWithTermVector, !reader
-              .hasNorms(field), storePayloads, indexOptions, null);
-    }
   }
 
   private void setMatchingSegmentReaders() {
@@ -162,10 +144,15 @@ final class SegmentMerger {
     // stored fields:
     for (int i = 0; i < numReaders; i++) {
       MergeState.IndexReaderAndLiveDocs reader = mergeState.readers.get(i);
+      // TODO: we may be able to broaden this to
+      // non-SegmentReaders, since FieldInfos is now
+      // required?  But... this'd also require exposing
+      // bulk-copy (TVs and stored fields) API in foreign
+      // readers..
       if (reader.reader instanceof SegmentReader) {
         SegmentReader segmentReader = (SegmentReader) reader.reader;
         boolean same = true;
-        FieldInfos segmentFieldInfos = segmentReader.fieldInfos();
+        FieldInfos segmentFieldInfos = segmentReader.getFieldInfos();
         for (FieldInfo fi : segmentFieldInfos) {
           if (!mergeState.fieldInfos.fieldName(fi.number).equals(fi.name)) {
             same = false;
@@ -210,35 +197,13 @@ final class SegmentMerger {
 
     for (MergeState.IndexReaderAndLiveDocs readerAndLiveDocs : mergeState.readers) {
       final IndexReader reader = readerAndLiveDocs.reader;
-      if (reader instanceof SegmentReader) {
-        SegmentReader segmentReader = (SegmentReader) reader;
-        FieldInfos readerFieldInfos = segmentReader.fieldInfos();
-        for (FieldInfo fi : readerFieldInfos) {
-          FieldInfo merged = mergeState.fieldInfos.add(fi);
-          // update the type promotion mapping for this reader
-          if (fi.hasDocValues()) {
-            TypePromoter previous = docValuesTypes.get(merged);
-            docValuesTypes.put(merged, mergeDocValuesType(previous, reader.docValues(fi.name))); 
-          }
-        }
-      } else {
-        addIndexed(reader, mergeState.fieldInfos, reader.getFieldNames(FieldOption.TERMVECTOR_WITH_POSITION_OFFSET), true, true, true, false, IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
-        addIndexed(reader, mergeState.fieldInfos, reader.getFieldNames(FieldOption.TERMVECTOR_WITH_POSITION), true, true, false, false, IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
-        addIndexed(reader, mergeState.fieldInfos, reader.getFieldNames(FieldOption.TERMVECTOR_WITH_OFFSET), true, false, true, false, IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
-        addIndexed(reader, mergeState.fieldInfos, reader.getFieldNames(FieldOption.TERMVECTOR), true, false, false, false, IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
-        addIndexed(reader, mergeState.fieldInfos, reader.getFieldNames(FieldOption.OMIT_POSITIONS), false, false, false, false, IndexOptions.DOCS_AND_FREQS);
-        addIndexed(reader, mergeState.fieldInfos, reader.getFieldNames(FieldOption.OMIT_TERM_FREQ_AND_POSITIONS), false, false, false, false, IndexOptions.DOCS_ONLY);
-        addIndexed(reader, mergeState.fieldInfos, reader.getFieldNames(FieldOption.STORES_PAYLOADS), false, false, false, true, IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
-        addIndexed(reader, mergeState.fieldInfos, reader.getFieldNames(FieldOption.INDEXED), false, false, false, false, IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
-        mergeState.fieldInfos.addOrUpdate(reader.getFieldNames(FieldOption.UNINDEXED), false);
-        Collection<String> dvNames = reader.getFieldNames(FieldOption.DOC_VALUES);
-        mergeState.fieldInfos.addOrUpdate(dvNames, false);
-        for (String dvName : dvNames) {
-          FieldInfo merged = mergeState.fieldInfos.fieldInfo(dvName);
-          DocValues docValues = reader.docValues(dvName);
-          merged.setDocValuesType(docValues.type());
+      FieldInfos readerFieldInfos = reader.getFieldInfos();
+      for (FieldInfo fi : readerFieldInfos) {
+        FieldInfo merged = mergeState.fieldInfos.add(fi);
+        // update the type promotion mapping for this reader
+        if (fi.hasDocValues()) {
           TypePromoter previous = docValuesTypes.get(merged);
-          docValuesTypes.put(merged, mergeDocValuesType(previous, docValues));
+          docValuesTypes.put(merged, mergeDocValuesType(previous, reader.docValues(fi.name))); 
         }
       }
     }
@@ -379,20 +344,24 @@ final class SegmentMerger {
         }
       }
   }
-
-  private int mergeNorms(SegmentWriteState segmentWriteState) throws IOException {
-    final NormsWriter writer = codec.normsFormat().normsWriter(segmentWriteState);
-    
+  
+  private void mergeNorms(SegmentWriteState segmentWriteState) throws IOException {
+    final PerDocConsumer docsConsumer = codec.normsFormat()
+        .docsConsumer(new PerDocWriteState(segmentWriteState));
+    // TODO: remove this check when 3.x indexes are no longer supported
+    // (3.x indexes don't have docvalues)
+    if (docsConsumer == null) {
+      return;
+    }
     boolean success = false;
     try {
-      int numMerged = writer.merge(mergeState);
+      docsConsumer.merge(mergeState);
       success = true;
-      return numMerged;
     } finally {
       if (success) {
-        IOUtils.close(writer);
+        IOUtils.close(docsConsumer);
       } else {
-        IOUtils.closeWhileHandlingException(writer);
+        IOUtils.closeWhileHandlingException(docsConsumer);
       }
     }
   }

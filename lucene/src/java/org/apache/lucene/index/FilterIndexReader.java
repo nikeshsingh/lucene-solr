@@ -22,7 +22,6 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
-import java.util.Collection;
 import java.util.Map;
 import java.util.Comparator;
 
@@ -295,6 +294,11 @@ public class FilterIndexReader extends IndexReader {
   }
   
   @Override
+  public FieldInfos getFieldInfos() {
+    return in.getFieldInfos();
+  }
+
+  @Override
   public Fields getTermVectors(int docID)
           throws IOException {
     ensureOpen();
@@ -332,12 +336,6 @@ public class FilterIndexReader extends IndexReader {
   }
 
   @Override
-  public byte[] norms(String f) throws IOException {
-    ensureOpen();
-    return in.norms(f);
-  }
-
-  @Override
   public int docFreq(String field, BytesRef t) throws IOException {
     ensureOpen();
     return in.docFreq(field, t);
@@ -346,12 +344,6 @@ public class FilterIndexReader extends IndexReader {
   @Override
   protected void doClose() throws IOException {
     in.close();
-  }
-
-  @Override
-  public Collection<String> getFieldNames(IndexReader.FieldOption fieldNames) {
-    ensureOpen();
-    return in.getFieldNames(fieldNames);
   }
 
   @Override
@@ -418,6 +410,12 @@ public class FilterIndexReader extends IndexReader {
   public DocValues docValues(String field) throws IOException {
     ensureOpen();
     return in.docValues(field);
+  }
+  
+  @Override
+  public DocValues normValues(String field) throws IOException {
+    ensureOpen();
+    return in.normValues(field);
   }
 
   @Override

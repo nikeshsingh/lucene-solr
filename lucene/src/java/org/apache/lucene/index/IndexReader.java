@@ -19,7 +19,6 @@ package org.apache.lucene.index;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -105,39 +104,6 @@ public abstract class IndexReader implements Closeable {
         listener.onClose(this);
       }
     }
-  }
-
-  /**
-   * Constants describing field properties, for example used for
-   * {@link IndexReader#getFieldNames(FieldOption)}.
-   */
-  public static enum FieldOption {
-    /** All fields */
-    ALL,
-    /** All indexed fields */
-    INDEXED,
-    /** All fields that store payloads */
-    STORES_PAYLOADS,
-    /** All fields that omit tf */
-    OMIT_TERM_FREQ_AND_POSITIONS,
-    /** All fields that omit positions */
-    OMIT_POSITIONS,
-    /** All fields which are not indexed */
-    UNINDEXED,
-    /** All fields which are indexed with termvectors enabled */
-    INDEXED_WITH_TERMVECTOR,
-    /** All fields which are indexed but don't have termvectors enabled */
-    INDEXED_NO_TERMVECTOR,
-    /** All fields with termvectors enabled. Please note that only standard termvector fields are returned */
-    TERMVECTOR,
-    /** All fields with termvectors with position values enabled */
-    TERMVECTOR_WITH_POSITION,
-    /** All fields with termvectors with offset values enabled */
-    TERMVECTOR_WITH_OFFSET,
-    /** All fields with termvectors with offset values and position values enabled */
-    TERMVECTOR_WITH_POSITION_OFFSET,
-    /** All fields holding doc values */
-    DOC_VALUES
   }
 
   private volatile boolean closed;
@@ -726,16 +692,8 @@ public abstract class IndexReader implements Closeable {
     // backward compatible implementation.
     // SegmentReader has an efficient implementation.
     ensureOpen();
-    return norms(field) != null;
+    return normValues(field) != null;
   }
-
-  /** Returns the byte-encoded normalization factor for the named field of
-   *  every document.  This is used by the search code to score documents.
-   *  Returns null if norms were not indexed for this field.
-   *
-   * @see org.apache.lucene.document.Field#setBoost(float)
-   */
-  public abstract byte[] norms(String field) throws IOException;
 
   /**
    * Returns {@link Fields} for this reader.
@@ -904,15 +862,14 @@ public abstract class IndexReader implements Closeable {
   /** Implements close. */
   protected abstract void doClose() throws IOException;
 
-
   /**
-   * Get a list of unique field names that exist in this index and have the specified
-   * field option information.
-   * @param fldOption specifies which field option should be available for the returned fields
-   * @return Collection of Strings indicating the names of the fields.
-   * @see IndexReader.FieldOption
+   * Get the {@link FieldInfos} describing all fields in
+   * this reader.  NOTE: do not make any changes to the
+   * returned FieldInfos!
+   *
+   * @lucene.experimental
    */
-  public abstract Collection<String> getFieldNames(FieldOption fldOption);
+  public abstract FieldInfos getFieldInfos();
 
   /** Returns the {@link Bits} representing live (not
    *  deleted) docs.  A set bit indicates the doc ID has not
@@ -1056,6 +1013,8 @@ public abstract class IndexReader implements Closeable {
    * using {@link ReaderUtil#gatherSubReaders} and iterate
    * through them yourself. */
   public abstract DocValues docValues(String field) throws IOException;
+  
+  public abstract DocValues normValues(String field) throws IOException;
 
   private volatile Fields fields;
 

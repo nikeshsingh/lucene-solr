@@ -27,7 +27,6 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.Document;
-import org.apache.lucene.index.IndexReader.FieldOption;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
@@ -35,6 +34,7 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.ReaderUtil;
 import org.apache.lucene.util.automaton.AutomatonTestUtil;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
 import org.apache.lucene.util.automaton.RegExp;
@@ -462,9 +462,9 @@ public class TestDuelingCodecs extends LuceneTestCase {
     while ((field = fieldsEnum.next()) != null) {
       assertEquals(info, leftReader.hasNorms(field), rightReader.hasNorms(field));
       if (leftReader.hasNorms(field)) {
-        byte leftNorms[] = MultiNorms.norms(leftReader, field);
-        byte rightNorms[] = MultiNorms.norms(rightReader, field);
-        assertArrayEquals(info, leftNorms, rightNorms);
+        DocValues leftNorms = MultiDocValues.getNormDocValues(leftReader, field);
+        DocValues rightNorms = MultiDocValues.getNormDocValues(rightReader, field);
+        assertDocValues(leftNorms, rightNorms);
       }
     }
   }
@@ -516,25 +516,40 @@ public class TestDuelingCodecs extends LuceneTestCase {
       assertFields(leftFields, rightFields, rarely());
     }
   }
+
+  private static Set<String> getDVFields(IndexReader reader) {
+    Set<String> fields = new HashSet<String>();
+    for(FieldInfo fi : ReaderUtil.getMergedFieldInfos(reader)) {
+      if (fi.hasDocValues()) {
+        fields.add(fi.name);
+      }
+    }
+
+    return fields;
+  }
   
   /**
    * checks that docvalues across all fields are equivalent
    */
   public void assertDocValues(IndexReader leftReader, IndexReader rightReader) throws Exception {
-    Set<String> leftValues = new HashSet<String>(leftReader.getFieldNames(FieldOption.DOC_VALUES));
-    Set<String> rightValues = new HashSet<String>(rightReader.getFieldNames(FieldOption.DOC_VALUES));
+    Set<String> leftValues = getDVFields(leftReader);
+    Set<String> rightValues = getDVFields(rightReader);
     assertEquals(info, leftValues, rightValues);
 
     for (String field : leftValues) {
       DocValues leftDocValues = MultiDocValues.getDocValues(leftReader, field);
       DocValues rightDocValues = MultiDocValues.getDocValues(rightReader, field);
-      assertNotNull(info, leftDocValues);
-      assertNotNull(info, rightDocValues);
-      assertEquals(info, leftDocValues.type(), rightDocValues.type());
-      assertEquals(info, leftDocValues.getValueSize(), rightDocValues.getValueSize());
-      assertDocValuesSource(leftDocValues.getDirectSource(), rightDocValues.getDirectSource());
-      assertDocValuesSource(leftDocValues.getSource(), rightDocValues.getSource());
+      assertDocValues(leftDocValues, rightDocValues);
     }
+  }
+  
+  public void assertDocValues(DocValues leftDocValues, DocValues rightDocValues) throws Exception {
+    assertNotNull(info, leftDocValues);
+    assertNotNull(info, rightDocValues);
+    assertEquals(info, leftDocValues.type(), rightDocValues.type());
+    assertEquals(info, leftDocValues.getValueSize(), rightDocValues.getValueSize());
+    assertDocValuesSource(leftDocValues.getDirectSource(), rightDocValues.getDirectSource());
+    assertDocValuesSource(leftDocValues.getSource(), rightDocValues.getSource());
   }
   
   /**

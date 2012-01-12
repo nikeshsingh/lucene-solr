@@ -619,6 +619,9 @@ New features
 * LUCENE-3638: Added sugar methods to IndexReader and IndexSearcher to
   load only certain fields when loading a document.  (Peter Chang via
   Mike McCandless)
+  
+* LUCENE-3628: Norms are represented as DocValues. IndexReader exposes
+  a #normValues(String) method to obtain norms per field. (Simon Willnauer) 
 
 Optimizations
 
@@ -711,6 +714,16 @@ Changes in backwards compatibility policy
   contrib/queryparser. If you have used those classes in your code
   just add the lucene-queryparser.jar file to your classpath.
   (Uwe Schindler)
+
+* LUCENE-3681: FST now stores labels for BYTE2 input type as 2 bytes
+  instead of vInt; this can make FSTs smaller and faster, but it is a
+  break in the binary format so if you had built and saved any FSTs
+  then you need to rebuild them. (Robert Muir, Mike McCandless)
+
+* LUCENE-3679: The expert IndexReader.getFieldNames(FieldOption) API
+  has been removed and replaced with the experimental getFieldInfos
+  API.  All IndexReader subclasses must implement getFieldInfos.
+  (Mike McCandless)
   
 Security fixes
 
