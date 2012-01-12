@@ -417,7 +417,7 @@ final class DocumentsWriter {
          */
         try {
           // Each flush is assigned a ticket in the order they acquire the ticketQueue lock
-          ticketQueue.addFlushTicket(flushingDWPT);
+          ticket = ticketQueue.addFlushTicket(flushingDWPT);
   
           // flush concurrently without locking
           final FlushedSegment newSegment = flushingDWPT.flush();
