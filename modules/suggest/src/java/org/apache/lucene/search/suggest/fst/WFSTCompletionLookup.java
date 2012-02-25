@@ -123,7 +123,7 @@ public class WFSTCompletionLookup extends Lookup {
         output.reset(buffer);
         output.writeBytes(spare.bytes, spare.offset, spare.length);
         output.writeByte((byte)0); // separator: not used, just for sort order
-        output.writeInt((int)encodeWeight(iterator.weight()));
+        output.writeInt(encodeWeight(iterator.weight()));
         writer.write(buffer, 0, output.getPosition());
       }
       writer.close();
@@ -293,13 +293,13 @@ public class WFSTCompletionLookup extends Lookup {
   }
   
   /** cost -> weight */
-  private static float decodeWeight(long encoded) {
-    return Integer.MAX_VALUE - encoded;
+  private static int decodeWeight(long encoded) {
+    return (int)(Integer.MAX_VALUE - encoded);
   }
   
   /** weight -> cost */
-  private static long encodeWeight(float value) {
-    if (Float.isNaN(value) || Float.isInfinite(value) || value < 0 || value > Integer.MAX_VALUE) {
+  private static int encodeWeight(long value) {
+    if (value < 0 || value > Integer.MAX_VALUE) {
       throw new UnsupportedOperationException("cannot encode value: " + value);
     }
     return Integer.MAX_VALUE - (int)value;

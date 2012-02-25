@@ -35,9 +35,9 @@ public abstract class Lookup {
    */
   public static final class LookupResult implements Comparable<LookupResult> {
     public final CharSequence key;
-    public final float value;
+    public final long value;
     
-    public LookupResult(CharSequence key, float value) {
+    public LookupResult(CharSequence key, long value) {
       this.key = key;
       this.value = value;
     }

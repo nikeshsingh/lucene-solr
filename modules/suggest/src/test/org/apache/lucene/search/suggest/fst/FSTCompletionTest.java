@@ -158,16 +158,16 @@ public class FSTCompletionTest extends LuceneTestCase {
     Random r = random;
     List<TermFreq> keys = new ArrayList<TermFreq>();
     for (int i = 0; i < 5000; i++) {
-      keys.add(new TermFreq(_TestUtil.randomSimpleString(r), -1));
+      keys.add(new TermFreq(_TestUtil.randomSimpleString(r), 0));
     }
 
     lookup.build(new TermFreqArrayIterator(keys));
 
     // All the weights were constant, so all returned buckets must be constant, whatever they
     // are.
-    Float previous = null; 
+    Long previous = null; 
     for (TermFreq tf : keys) {
-      Float current = (Float)lookup.get(_TestUtil.bytesToCharSequence(tf.term, random));
+      Long current = (Long)lookup.get(_TestUtil.bytesToCharSequence(tf.term, random));
       if (previous != null) {
         assertEquals(previous, current);
       }

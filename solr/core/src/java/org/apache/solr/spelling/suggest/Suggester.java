@@ -182,7 +182,7 @@ public class Suggester extends SolrSpellChecker {
         Collections.sort(suggestions);
       }
       for (LookupResult lr : suggestions) {
-        res.add(t, lr.key.toString(), ((Number)lr.value).intValue());
+        res.add(t, lr.key.toString(), (int)lr.value);
       }
     }
     return res;

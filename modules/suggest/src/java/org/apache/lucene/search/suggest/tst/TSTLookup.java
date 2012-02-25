@@ -50,14 +50,14 @@ public class TSTLookup extends Lookup {
     }
 
     ArrayList<String> tokens = new ArrayList<String>();
-    ArrayList<Float> vals = new ArrayList<Float>();
+    ArrayList<Long> vals = new ArrayList<Long>();
     BytesRef spare;
     CharsRef charsSpare = new CharsRef();
     while ((spare = tfit.next()) != null) {
       charsSpare.grow(spare.length);
       UnicodeUtil.UTF8toUTF16(spare.bytes, spare.offset, spare.length, charsSpare);
       tokens.add(charsSpare.toString());
-      vals.add(new Float(tfit.weight()));
+      vals.add(Long.valueOf(tfit.weight()));
     }
     autocomplete.balancedTree(tokens.toArray(), vals.toArray(), 0, tokens.size() - 1, root);
   }
@@ -107,7 +107,7 @@ public class TSTLookup extends Lookup {
     if (onlyMorePopular) {
       LookupPriorityQueue queue = new LookupPriorityQueue(num);
       for (TernaryTreeNode ttn : list) {
-        queue.insertWithOverflow(new LookupResult(ttn.token, (Float)ttn.val));
+        queue.insertWithOverflow(new LookupResult(ttn.token, ((Long)ttn.val).longValue()));
       }
       for (LookupResult lr : queue.getResults()) {
         res.add(lr);
@@ -115,7 +115,7 @@ public class TSTLookup extends Lookup {
     } else {
       for (int i = 0; i < maxCnt; i++) {
         TernaryTreeNode ttn = list.get(i);
-        res.add(new LookupResult(ttn.token, (Float)ttn.val));
+        res.add(new LookupResult(ttn.token, ((Long)ttn.val).longValue()));
       }
     }
     return res;
@@ -146,7 +146,7 @@ public class TSTLookup extends Lookup {
       node.token = in.readUTF();
     }
     if ((mask & HAS_VALUE) != 0) {
-      node.val = new Float(in.readFloat());
+      node.val = Long.valueOf((in.readLong()));
     }
     if ((mask & LO_KID) != 0) {
       node.loKid = new TernaryTreeNode();
@@ -184,7 +184,7 @@ public class TSTLookup extends Lookup {
     if (node.val != null) mask |= HAS_VALUE;
     out.writeByte(mask);
     if (node.token != null) out.writeUTF(node.token);
-    if (node.val != null) out.writeFloat((Float)node.val);
+    if (node.val != null) out.writeLong(((Long)node.val).longValue());
     // recurse and write kids
     if (node.loKid != null) {
       writeRecursively(out, node.loKid);
