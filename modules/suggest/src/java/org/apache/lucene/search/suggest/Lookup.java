@@ -131,6 +131,8 @@ public abstract class Lookup {
    * @return true if new key is added, false if it already exists or operation
    * is not supported.
    */
+  // TODO this method is unused - do we really need this?
+  // we can keep it on impls that support add?
   public abstract boolean add(CharSequence key, Object value);
   
   /**
@@ -138,6 +140,7 @@ public abstract class Lookup {
    * @param key lookup key
    * @return associated value
    */
+  // TODO: do we really need this method - this seems rather like sugar for lookup(num=1) ?
   public abstract Object get(CharSequence key);
 
   /**

@@ -154,8 +154,9 @@ public class Suggester extends SolrSpellChecker {
   }
 
   public void add(CharsRef query, int numHits) {
+    // TODO this method is unused?
     LOG.info("add " + query + ", " + numHits);
-    lookup.add(query, new Integer(numHits));
+    lookup.add(query, Integer.valueOf(numHits));
   }
   
   static SpellingResult EMPTY_RESULT = new SpellingResult();

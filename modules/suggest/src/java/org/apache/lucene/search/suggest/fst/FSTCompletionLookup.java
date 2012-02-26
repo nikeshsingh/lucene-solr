@@ -266,7 +266,8 @@ public class FSTCompletionLookup extends Lookup {
 
   @Override
   public Object get(CharSequence key) {
-    return Long.valueOf(normalCompletion.getBucket(key));
+    final int bucket = normalCompletion.getBucket(key);
+    return bucket == -1 ? null : Long.valueOf(bucket);
   }
 
   /**

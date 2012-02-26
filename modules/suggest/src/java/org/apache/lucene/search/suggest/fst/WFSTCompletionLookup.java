@@ -288,7 +288,7 @@ public class WFSTCompletionLookup extends Lookup {
     if (result == null || !arc.isFinal()) {
       return null;
     } else {
-      return decodeWeight(result + arc.nextFinalOutput);
+      return Integer.valueOf(decodeWeight(result + arc.nextFinalOutput));
     }
   }
   
