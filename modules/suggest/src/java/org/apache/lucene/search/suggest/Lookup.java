@@ -173,4 +173,17 @@ public abstract class Lookup {
    * @throws IOException when fatal IO error occurs.
    */
   public abstract boolean load(File storeDir) throws IOException;
+  
+  protected Number weightAsNumber(long weight) {
+    if (weight < 0) {
+      if (weight > Integer.MIN_VALUE) {
+        return weight > Short.MIN_VALUE ? Short.valueOf((short)weight) : Integer.valueOf((int)weight);
+      }
+    } else {
+      if (weight < Integer.MAX_VALUE) {
+        return weight < Short.MAX_VALUE ? Short.valueOf((short)weight) : Integer.valueOf((int)weight);
+      }
+    }
+    return Long.valueOf(weight);
+  }
 }

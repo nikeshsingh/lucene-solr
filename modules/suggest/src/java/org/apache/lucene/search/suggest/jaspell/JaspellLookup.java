@@ -55,13 +55,13 @@ public class JaspellLookup extends Lookup {
     final CharsRef charsSpare = new CharsRef();
 
     while ((spare = tfit.next()) != null) {
-      long freq = tfit.weight();
+      final long freq = tfit.weight();
       if (spare.length == 0) {
         continue;
       }
       charsSpare.grow(spare.length);
       UnicodeUtil.UTF8toUTF16(spare.bytes, spare.offset, spare.length, charsSpare);
-      trie.put(charsSpare.toString(), Long.valueOf(freq));
+      trie.put(charsSpare.toString(), weightAsNumber(freq));
     }
   }
 
@@ -95,7 +95,7 @@ public class JaspellLookup extends Lookup {
     if (onlyMorePopular) {
       LookupPriorityQueue queue = new LookupPriorityQueue(num);
       for (String s : list) {
-        long freq = ((Long)trie.get(s)).longValue();
+        long freq = ((Number)trie.get(s)).longValue();
         queue.insertWithOverflow(new LookupResult(new CharsRef(s), freq));
       }
       for (LookupResult lr : queue.getResults()) {
@@ -131,7 +131,7 @@ public class JaspellLookup extends Lookup {
     node.splitchar = in.readChar();
     byte mask = in.readByte();
     if ((mask & HAS_VALUE) != 0) {
-      node.data = Long.valueOf(in.readLong());
+      node.data = weightAsNumber(in.readLong());
     }
     if ((mask & LO_KID) != 0) {
       TSTNode kid = trie.new TSTNode('\0', node);
@@ -171,7 +171,7 @@ public class JaspellLookup extends Lookup {
     if (node.data != null) mask |= HAS_VALUE;
     out.writeByte(mask);
     if (node.data != null) {
-      out.writeLong(((Long)node.data).longValue());
+      out.writeLong(((Number)node.data).longValue());
     }
     writeRecursively(out, node.relatives[TSTNode.LOKID]);
     writeRecursively(out, node.relatives[TSTNode.EQKID]);
