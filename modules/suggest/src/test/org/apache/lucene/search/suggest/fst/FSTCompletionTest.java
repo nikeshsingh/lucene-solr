@@ -167,7 +167,7 @@ public class FSTCompletionTest extends LuceneTestCase {
     // are.
     Long previous = null; 
     for (TermFreq tf : keys) {
-      Long current = (Long)lookup.get(_TestUtil.bytesToCharSequence(tf.term, random));
+      Long current = ((Number)lookup.get(_TestUtil.bytesToCharSequence(tf.term, random))).longValue();
       if (previous != null) {
         assertEquals(previous, current);
       }
@@ -181,7 +181,7 @@ public class FSTCompletionTest extends LuceneTestCase {
     FSTCompletionLookup lookup = new FSTCompletionLookup();
     lookup.build(new TermFreqArrayIterator(input));
     for (TermFreq tf : input) {
-      assertTrue("Not found: " + tf.term.toString(), lookup.get(_TestUtil.bytesToCharSequence(tf.term, random)) != null);
+      assertNotNull("Not found: " + tf.term.toString(), lookup.get(_TestUtil.bytesToCharSequence(tf.term, random)));
       assertEquals(tf.term.utf8ToString(), lookup.lookup(_TestUtil.bytesToCharSequence(tf.term, random), true, 1).get(0).key.toString());
     }
 
