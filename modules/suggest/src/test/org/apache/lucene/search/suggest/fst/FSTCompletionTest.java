@@ -158,7 +158,7 @@ public class FSTCompletionTest extends LuceneTestCase {
     Random r = random;
     List<TermFreq> keys = new ArrayList<TermFreq>();
     for (int i = 0; i < 5000; i++) {
-      keys.add(new TermFreq(_TestUtil.randomSimpleString(r), 0));
+      keys.add(new TermFreq(_TestUtil.randomSimpleString(r), -1));
     }
 
     lookup.build(new TermFreqArrayIterator(keys));

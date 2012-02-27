@@ -233,7 +233,7 @@ public class FSTCompletionLookup extends Lookup {
   
   /** weight -> cost */
   private static int encodeWeight(long value) {
-    if (value < 0 || value > Integer.MAX_VALUE) {
+    if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
       throw new UnsupportedOperationException("cannot encode value: " + value);
     }
     return (int)value;
