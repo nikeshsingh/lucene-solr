@@ -55,9 +55,8 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.CompositeReader;
-import org.apache.lucene.index.FilterAtomicReader;
-import org.apache.lucene.index.Fields;
-import org.apache.lucene.index.MultiReader;
+import org.apache.lucene.index.FieldFilterAtomicReader;
+import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReader.ReaderClosedListener;
@@ -83,6 +82,7 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.RandomSimilarityProvider;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.search.QueryUtils.FCInvisibleMultiReader;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.FlushInfo;
@@ -560,14 +560,19 @@ public abstract class LuceneTestCase extends Assert {
    * @see LuceneTestCase#testCaseThread 
    */
   private class RememberThreadRule implements TestRule {
+    private String previousName;
+
     @Override
     public Statement apply(final Statement base, Description description) {
       return new Statement() {
         public void evaluate() throws Throwable {
           try {
-            LuceneTestCase.this.testCaseThread = Thread.currentThread();
+            Thread current = Thread.currentThread();
+            previousName = current.getName();
+            LuceneTestCase.this.testCaseThread = current;
             base.evaluate();
           } finally {
+            LuceneTestCase.this.testCaseThread.setName(previousName);
             LuceneTestCase.this.testCaseThread = null;
           }
         }
@@ -617,6 +622,9 @@ public abstract class LuceneTestCase extends Assert {
     seed = "random".equals(TEST_SEED) ? seedRand.nextLong() : ThreeLongs.fromString(TEST_SEED).l2;
     random.setSeed(seed);
     
+    Thread.currentThread().setName("LTC-main#seed=" + 
+        new ThreeLongs(staticSeed, seed, LuceneTestCaseRunner.runnerSeed));
+
     savedUncaughtExceptionHandler = Thread.getDefaultUncaughtExceptionHandler();
     Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
       public void uncaughtException(Thread t, Throwable e) {
@@ -1349,45 +1357,52 @@ public abstract class LuceneTestCase extends Assert {
   
   /** Sometimes wrap the IndexReader as slow, parallel or filter reader (or combinations of that) */
   public static IndexReader maybeWrapReader(IndexReader r) throws IOException {
-    // TODO: remove this, and fix those tests to wrap before putting slow around:
-    final boolean wasOriginallyAtomic = r instanceof AtomicReader;
     if (rarely()) {
+      // TODO: remove this, and fix those tests to wrap before putting slow around:
+      final boolean wasOriginallyAtomic = r instanceof AtomicReader;
       for (int i = 0, c = random.nextInt(6)+1; i < c; i++) {
         switch(random.nextInt(4)) {
           case 0:
             r = SlowCompositeReaderWrapper.wrap(r);
             break;
           case 1:
+            // will create no FC insanity as Parallel*Reader has own cache key:
             r = (r instanceof AtomicReader) ?
               new ParallelAtomicReader((AtomicReader) r) :
               new ParallelCompositeReader((CompositeReader) r);
             break;
           case 2:
-            if (!wasOriginallyAtomic) { // dont wrap originally atomic readers to be composite (some tests don't like)
-              r = new MultiReader(r);
-            }
+            // Häckidy-Hick-Hack: a standard MultiReader will cause FC insanity, so we use
+            // QueryUtils' reader with a fake cache key, so insanity checker cannot walk
+            // along our reader:
+            r = new FCInvisibleMultiReader(r);
             break;
           case 3:
-            if (r instanceof AtomicReader) {
-              r = new FilterAtomicReader((AtomicReader) r) {
-                @Override
-                public Fields fields() throws IOException {
-                  Fields f = super.fields();
-                  if (f == null) {
-                    return null;
-                  } else {
-                    return new FilterFields(f);
-                  }
-                }
-              };
+            final AtomicReader ar = SlowCompositeReaderWrapper.wrap(r);
+            final List<String> allFields = new ArrayList<String>();
+            for (FieldInfo fi : ar.getFieldInfos()) {
+              allFields.add(fi.name);
             }
+            Collections.shuffle(allFields, random);
+            final int end = allFields.isEmpty() ? 0 : random.nextInt(allFields.size());
+            final Set<String> fields = new HashSet<String>(allFields.subList(0, end));
+            // will create no FC insanity as ParallelAtomicReader has own cache key:
+            r = new ParallelAtomicReader(
+              new FieldFilterAtomicReader(ar, fields, false),
+              new FieldFilterAtomicReader(ar, fields, true)
+            );
             break;
           default:
             fail("should not get here");
         }
       }
+      if (wasOriginallyAtomic) {
+        r = SlowCompositeReaderWrapper.wrap(r);
+      }
+      if (VERBOSE) {
+        System.out.println("maybeWrapReader wrapped: " +r);
+      }
     }
-    //System.out.println(r);
     return r;
   }
 
@@ -1566,4 +1581,8 @@ public abstract class LuceneTestCase extends Assert {
 
   @Ignore("just a hack")
   public final void alwaysIgnoredTestMethod() {}
+
+  protected static boolean defaultCodecSupportsDocValues() {
+    return !Codec.getDefault().getName().equals("Lucene3x");
+  }
 }

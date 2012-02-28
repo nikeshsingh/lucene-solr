@@ -38,10 +38,12 @@ import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.codecs.lucene40.Lucene40Codec;
 import org.apache.lucene.codecs.perfield.PerFieldPostingsFormat;
+import org.apache.lucene.document.DocValuesField;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.CheckIndex;
 import org.apache.lucene.index.ConcurrentMergeScheduler;
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.FieldInfos;
@@ -248,6 +250,36 @@ public class _TestUtil {
         chars[i++] = (char) nextInt(random, 0xe000, 0xffff);
       }
     }
+  }
+  
+  /**
+   * Returns a String thats "regexpish" (contains lots of operators typically found in regular expressions)
+   * If you call this enough times, you might get a valid regex!
+   */
+  public static String randomRegexpishString(Random r) {
+    final int end = r.nextInt(20);
+    if (end == 0) {
+      // allow 0 length
+      return "";
+    }
+    final char[] buffer = new char[end];
+    for (int i = 0; i < end; i++) {
+      int t = r.nextInt(11);
+      if (t == 0) {
+        buffer[i] = (char) _TestUtil.nextInt(r, 97, 102);
+      }
+      else if (1 == t) buffer[i] = '.';
+      else if (2 == t) buffer[i] = '?';
+      else if (3 == t) buffer[i] = '*';
+      else if (4 == t) buffer[i] = '+';
+      else if (5 == t) buffer[i] = '(';
+      else if (6 == t) buffer[i] = ')';
+      else if (7 == t) buffer[i] = '-';
+      else if (8 == t) buffer[i] = '[';
+      else if (9 == t) buffer[i] = ']';
+      else if (10 == t) buffer[i] = '|';
+    }
+    return new String(buffer, 0, end);
   }
   
   private static final String[] HTML_CHAR_ENTITIES = {
@@ -647,9 +679,36 @@ public class _TestUtil {
   public static Document cloneDocument(Document doc1) {
     final Document doc2 = new Document();
     for(IndexableField f : doc1) {
-      Field field1 = (Field) f;
-      
-      Field field2 = new Field(field1.name(), field1.stringValue(), field1.fieldType());
+      final Field field1 = (Field) f;
+      final Field field2;
+      if (field1 instanceof DocValuesField) {
+        final DocValues.Type dvType = field1.fieldType().docValueType();
+        switch (dvType) {
+        case VAR_INTS:
+        case FIXED_INTS_8:
+        case FIXED_INTS_16:
+        case FIXED_INTS_32:
+        case FIXED_INTS_64:
+          field2 = new DocValuesField(field1.name(), field1.numericValue().intValue(), dvType);
+          break;
+        case BYTES_FIXED_DEREF:
+        case BYTES_FIXED_STRAIGHT:
+        case BYTES_VAR_DEREF:
+        case BYTES_VAR_STRAIGHT: 
+        case BYTES_FIXED_SORTED:
+        case BYTES_VAR_SORTED:
+          field2 = new DocValuesField(field1.name(), BytesRef.deepCopyOf(field1.binaryValue()), dvType);
+          break;
+        case FLOAT_32:
+        case FLOAT_64:
+          field2 = new DocValuesField(field1.name(), field1.numericValue().doubleValue(), dvType);
+          break;
+        default:
+          throw new IllegalArgumentException("don't know how to clone DV field=" + field1);
+        }
+      } else {
+        field2 = new Field(field1.name(), field1.stringValue(), field1.fieldType());
+      }
       doc2.add(field2);
     }
 
