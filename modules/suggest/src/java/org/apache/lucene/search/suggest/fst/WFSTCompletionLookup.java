@@ -269,16 +269,10 @@ public class WFSTCompletionLookup extends Lookup {
     return output;
   }
   
-  @Override
-  public boolean add(CharSequence key, Object value) {
-    return false; // Not supported.
-  }
-
   /**
    * Returns the weight associated with an input string,
    * or null if it does not exist.
    */
-  @Override
   public Object get(CharSequence key) {
     Arc<Long> arc = new Arc<Long>();
     Long result = null;

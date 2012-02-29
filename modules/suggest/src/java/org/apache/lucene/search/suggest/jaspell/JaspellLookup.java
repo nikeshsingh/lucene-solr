@@ -65,14 +65,12 @@ public class JaspellLookup extends Lookup {
     }
   }
 
-  @Override
   public boolean add(CharSequence key, Object value) {
     trie.put(key, value);
     // XXX
     return false;
   }
 
-  @Override
   public Object get(CharSequence key) {
     return trie.get(key);
   }

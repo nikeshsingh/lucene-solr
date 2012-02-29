@@ -124,25 +124,7 @@ public abstract class Lookup {
    */
   public abstract List<LookupResult> lookup(CharSequence key, boolean onlyMorePopular, int num);
 
-  /**
-   * Modify the lookup data by recording additional data. Optional operation.
-   * @param key new lookup key
-   * @param value value to associate with this key
-   * @return true if new key is added, false if it already exists or operation
-   * is not supported.
-   */
-  // TODO this method is unused - do we really need this?
-  // we can keep it on impls that support add?
-  public abstract boolean add(CharSequence key, Object value);
   
-  /**
-   * Get value associated with a specific key.
-   * @param key lookup key
-   * @return associated value
-   */
-  // TODO: do we really need this method - this seems rather like sugar for lookup(num=1) ?
-  public abstract Object get(CharSequence key);
-
   /**
    * Persist the constructed lookup data to a directory. Optional operation.
    * @param output {@link OutputStream} to write the data to.
@@ -176,6 +158,7 @@ public abstract class Lookup {
    * @throws IOException when fatal IO error occurs.
    */
   public abstract boolean load(File storeDir) throws IOException;
+  
   
   protected Number weightAsNumber(long weight) {
     if (weight < 0) {

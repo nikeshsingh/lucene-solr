@@ -78,14 +78,16 @@ public class PersistenceTest extends LuceneTestCase {
     // Assert validity.
     long previous = Long.MIN_VALUE;
     for (TermFreq k : keys) {
-      Number val = (Number) lookup.get(_TestUtil.bytesToCharSequence(k.term, random));
-      assertNotNull(k.term.utf8ToString(), val);
+      List<LookupResult> list = lookup.lookup(_TestUtil.bytesToCharSequence(k.term, random), false, 1);
+      assertEquals(1, list.size());
+      LookupResult lookupResult = list.get(0);
+      assertNotNull(k.term.utf8ToString(), lookupResult.key);
 
       if (supportsExactWeights) { 
-        assertEquals(k.term.utf8ToString(), k.v, val.longValue());
+        assertEquals(k.term.utf8ToString(), k.v, lookupResult.value);
       } else {
-        assertTrue(val + ">=" + previous, val.longValue() >= previous);
-        previous = val.longValue();
+        assertTrue(lookupResult.value + ">=" + previous, lookupResult.value >= previous);
+        previous = lookupResult.value;
       }
     }
   }

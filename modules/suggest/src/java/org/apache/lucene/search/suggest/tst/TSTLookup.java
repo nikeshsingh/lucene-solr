@@ -62,14 +62,12 @@ public class TSTLookup extends Lookup {
     autocomplete.balancedTree(tokens.toArray(), vals.toArray(), 0, tokens.size() - 1, root);
   }
 
-  @Override
   public boolean add(CharSequence key, Object value) {
     autocomplete.insert(root, key, value, 0);
     // XXX we don't know if a new node was created
     return true;
   }
 
-  @Override
   public Object get(CharSequence key) {
     List<TernaryTreeNode> list = autocomplete.prefixCompletion(root, key, 0);
     if (list == null || list.isEmpty()) {

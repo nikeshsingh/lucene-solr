@@ -258,13 +258,6 @@ public class FSTCompletionLookup extends Lookup {
     return results;
   }
 
-  @Override
-  public boolean add(CharSequence key, Object value) {
-    // Not supported.
-    return false;
-  }
-
-  @Override
   public Object get(CharSequence key) {
     final int bucket = normalCompletion.getBucket(key);
     return bucket == -1 ? null : Long.valueOf(bucket);
