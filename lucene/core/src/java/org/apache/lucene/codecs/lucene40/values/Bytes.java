@@ -141,7 +141,9 @@ public final class Bytes {
       } else if (mode == Mode.DEREF) {
         return new FixedDerefBytesImpl.Writer(dir, id, bytesUsed, context);
       } else if (mode == Mode.SORTED) {
-        return new FixedSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, acceptableOverheadRatio);
+        
+        return new FSTFixedSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, acceptableOverheadRatio, true);
+        //return new FixedSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, acceptableOverheadRatio);
       }
     } else {
       if (mode == Mode.STRAIGHT) {
@@ -149,7 +151,8 @@ public final class Bytes {
       } else if (mode == Mode.DEREF) {
         return new VarDerefBytesImpl.Writer(dir, id, bytesUsed, context);
       } else if (mode == Mode.SORTED) {
-        return new VarSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, acceptableOverheadRatio);
+        return new FSTFixedSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, acceptableOverheadRatio, false);
+//        return new VarSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, acceptableOverheadRatio);
       }
     }
 
@@ -192,7 +195,9 @@ public final class Bytes {
       } else if (mode == Mode.DEREF) {
         return new FixedDerefBytesImpl.FixedDerefReader(dir, id, maxDoc, context);
       } else if (mode == Mode.SORTED) {
-        return new FixedSortedBytesImpl.Reader(dir, id, maxDoc, context, Type.BYTES_FIXED_SORTED, sortComparator);
+        return new FSTFixedSortedBytesImpl.Reader(dir, id, maxDoc, context, Type.BYTES_FIXED_SORTED, sortComparator);
+        //return new FixedSortedBytesImpl.Reader(dir, id, maxDoc, context, Type.BYTES_FIXED_SORTED, sortComparator);
+
       }
     } else {
       if (mode == Mode.STRAIGHT) {
@@ -200,7 +205,9 @@ public final class Bytes {
       } else if (mode == Mode.DEREF) {
         return new VarDerefBytesImpl.VarDerefReader(dir, id, maxDoc, context);
       } else if (mode == Mode.SORTED) {
-        return new VarSortedBytesImpl.Reader(dir, id, maxDoc,context, Type.BYTES_VAR_SORTED, sortComparator);
+        //return new VarSortedBytesImpl.Reader(dir, id, maxDoc,context, Type.BYTES_VAR_SORTED, sortComparator);
+        return new FSTFixedSortedBytesImpl.Reader(dir, id, maxDoc, context, Type.BYTES_VAR_SORTED, sortComparator);
+
       }
     }
 

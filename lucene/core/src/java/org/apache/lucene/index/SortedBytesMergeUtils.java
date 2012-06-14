@@ -28,8 +28,13 @@ import org.apache.lucene.index.DocValues.Type;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.PriorityQueue;
+import org.apache.lucene.util.fst.Builder;
+import org.apache.lucene.util.fst.PositiveIntOutputs;
+import org.apache.lucene.util.fst.Util;
 import org.apache.lucene.util.packed.PackedInts;
+import org.apache.lucene.util.fst.FST;
 
 /**
  * @lucene.internal
@@ -164,6 +169,7 @@ public final class SortedBytesMergeUtils {
       consumer.consume(currentMergedBytes, merger.currentOrd, offset);
       merger.pushTop();
     }
+    consumer.flush();
     ctx.offsets = offsets;
     assert offsets == null || offsets[merger.currentOrd - 1] == offset;
     return merger.currentOrd;
@@ -171,6 +177,7 @@ public final class SortedBytesMergeUtils {
   
   public static interface BytesRefConsumer {
     public void consume(BytesRef ref, int ord, long offset) throws IOException;
+    public void flush() throws IOException;
   }
   
   public static final class IndexOutputBytesRefConsumer implements BytesRefConsumer {
@@ -185,7 +192,40 @@ public final class SortedBytesMergeUtils {
       datOut.writeBytes(currentMergedBytes.bytes, currentMergedBytes.offset,
           currentMergedBytes.length);      
     }
+
+    @Override
+    public void flush() {}
   }
+  
+  public static final class ToFSTBytesRefConsumer implements BytesRefConsumer {
+    private final IndexOutput datOut;
+    private final PositiveIntOutputs fstOutputs;
+    private final Builder<Long> builder;
+    private final float acceptableOverheadRatio;
+    public ToFSTBytesRefConsumer(IndexOutput datOut, float acceptableOverheadRatio) {
+      this.datOut = datOut;
+     this.fstOutputs = PositiveIntOutputs.getSingleton(true);
+     builder = new Builder<Long>(FST.INPUT_TYPE.BYTE1, 0, 0, true, true, Integer.MAX_VALUE, fstOutputs, null, true);
+     this.acceptableOverheadRatio = acceptableOverheadRatio;
+    }
+
+    @Override
+    public void consume(BytesRef currentMergedBytes, int ord, long offset) throws IOException {
+      final IntsRef scratchIntsRef = new IntsRef();
+      builder.add(Util.toIntsRef(currentMergedBytes, scratchIntsRef), (long) ord);
+      
+    }
+
+    @Override
+    public void flush() throws IOException {
+      FST<Long> fst = builder.finish();
+      //nocommit - are those values ok?
+      FST<Long> packed = fst.pack(3, 1000000, acceptableOverheadRatio);
+      packed.save(datOut);
+      
+    }
+  }
+
 
   private static final class RecordMerger {
     private final MergeQueue queue;

@@ -445,6 +445,8 @@ public class MultiDocValues extends DocValues {
         ordToOffset[ord+1] = offset;
       }
     }
+    @Override
+    public void flush() {}
     
   }
   
