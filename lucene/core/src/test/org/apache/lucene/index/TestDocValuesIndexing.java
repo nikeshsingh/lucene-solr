@@ -808,16 +808,18 @@ public class TestDocValuesIndexing extends LuceneTestCase {
       if (rarely()) {
         w.commit();
       }
-      int numDocsNoValue = atLeast(10);
+      int numDocsNoValue = random().nextBoolean() ? 0 : atLeast(10); 
       for (int i = 0; i < numDocsNoValue; i++) {
         Document doc = new Document();
         doc.add(newTextField("id", "noValue", Field.Store.YES));
         w.addDocument(doc);
       }
-      BytesRef bytesRef = new BytesRef(fixed ? len : 0);
-      bytesRef.offset = 0;
-      bytesRef.length = fixed ? len : 0;
-      hash.add(bytesRef); // add empty value for the gaps
+      if (numDocsNoValue > 0) {
+        BytesRef bytesRef = new BytesRef(fixed ? len : 0);
+        bytesRef.offset = 0;
+        bytesRef.length = fixed ? len : 0;
+        hash.add(bytesRef); // add empty value for the gaps
+      }
       if (rarely()) {
         w.commit();
       }

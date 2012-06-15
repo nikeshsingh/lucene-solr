@@ -62,6 +62,43 @@ public class TestDocValues extends LuceneTestCase {
     runTestBytes(Bytes.Mode.SORTED, true);
     runTestBytes(Bytes.Mode.SORTED, false);
   }
+  
+  public void simpleSortedBytesTest() throws IOException {
+    Directory dir = newDirectory();
+    final Counter trackBytes = Counter.newCounter();
+    final boolean fixed = random().nextBoolean();
+    DocValuesConsumer w = Bytes.getWriter(dir, "test", Bytes.Mode.SORTED,
+        fixed, COMP, trackBytes, newIOContext(random()), random().nextFloat()
+            * PackedInts.FAST);
+    DocValueHolder valueHolder = new DocValueHolder();
+    
+    valueHolder.bytes = new BytesRef("aaa");
+    w.add(0, valueHolder);
+    valueHolder.bytes = new BytesRef("aac");
+    w.add(1, valueHolder);
+    valueHolder.bytes = new BytesRef("acb");
+    w.add(2, valueHolder);
+    w.finish(3);
+    DocValues r = Bytes.getValues(dir, "test", Bytes.Mode.SORTED, fixed, 3,
+        COMP, newIOContext(random()));
+    SortedSource asSortedSource = r.getSource().asSortedSource();
+    assertEquals(new BytesRef("aaa"),
+        asSortedSource.getByOrd(0, new BytesRef()));
+    assertEquals(new BytesRef("aac"),
+        asSortedSource.getByOrd(1, new BytesRef()));
+    assertEquals(new BytesRef("acv"),
+        asSortedSource.getByOrd(2, new BytesRef()));
+    assertEquals(-1, asSortedSource.getOrdByValue(new BytesRef(""), null));
+    assertEquals(-1, asSortedSource.getOrdByValue(new BytesRef("AAA"), null));
+    assertEquals(0, asSortedSource.getOrdByValue(new BytesRef("aaa"), null));
+    assertEquals(-2, asSortedSource.getOrdByValue(new BytesRef("aab"), null));
+    assertEquals(2, asSortedSource.getOrdByValue(new BytesRef("acb"), null));
+    assertEquals(-3, asSortedSource.getOrdByValue(new BytesRef("abb"), null));
+    assertEquals(-4, asSortedSource.getOrdByValue(new BytesRef("bbb"), null));
+    
+    r.close();
+    dir.close();
+  }
 
   public void runTestBytes(final Bytes.Mode mode, final boolean fixedSize)
       throws IOException {

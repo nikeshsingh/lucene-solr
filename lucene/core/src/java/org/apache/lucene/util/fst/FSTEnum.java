@@ -24,10 +24,11 @@ import java.io.IOException;
 
 /** Can next() and advance() through the terms in an FST
  *
-  * @lucene.experimental
-*/
+ * @lucene.experimental
+ * @lucene.internal
+ */
 
-abstract class FSTEnum<T> {
+public abstract class FSTEnum<T> {
   protected final FST<T> fst;
 
   @SuppressWarnings({"rawtypes","unchecked"}) protected FST.Arc<T>[] arcs = new FST.Arc[10];
@@ -115,7 +116,7 @@ abstract class FSTEnum<T> {
   // SEEK_END)?  saves the eq check above?
 
   /** Seeks to smallest term that's >= target. */
-  protected void doSeekCeil() throws IOException {
+  protected SeekStatus doSeekCeil() throws IOException {
 
     //System.out.println("    advance len=" + target.length + " curlen=" + current.length);
 
@@ -178,7 +179,7 @@ abstract class FSTEnum<T> {
           assert arc.label == targetLabel: "arc.label=" + arc.label + " vs targetLabel=" + targetLabel + " mid=" + mid;
           output[upto] = fst.outputs.add(output[upto-1], arc.output);
           if (targetLabel == FST.END_LABEL) {
-            return;
+            return SeekStatus.FOUND;
           }
           setCurrentLabel(arc.label);
           incr();
@@ -195,14 +196,14 @@ abstract class FSTEnum<T> {
           upto--;
           while(true) {
             if (upto == 0) {
-              return;
+              return SeekStatus.END;
             }
             final FST.Arc<T> prevArc = getArc(upto);
             //System.out.println("  rollback upto=" + upto + " arc.label=" + prevArc.label + " isLast?=" + prevArc.isLast());
             if (!prevArc.isLast()) {
               fst.readNextArc(prevArc, fstReader);
               pushFirst();
-              return;
+              return SeekStatus.NOT_FOUND;
             }
             upto--;
           }
@@ -211,7 +212,7 @@ abstract class FSTEnum<T> {
           fst.readNextRealArc(arc, in);
           assert arc.label > targetLabel;
           pushFirst();
-          return;
+          return SeekStatus.NOT_FOUND;
         }
       } else {
         // Arcs are not array'd -- must do linear scan:
@@ -219,7 +220,7 @@ abstract class FSTEnum<T> {
           // recurse
           output[upto] = fst.outputs.add(output[upto-1], arc.output);
           if (targetLabel == FST.END_LABEL) {
-            return;
+            return SeekStatus.FOUND;
           }
           setCurrentLabel(arc.label);
           incr();
@@ -227,21 +228,21 @@ abstract class FSTEnum<T> {
           targetLabel = getTargetLabel();
         } else if (arc.label > targetLabel) {
           pushFirst();
-          return;
+          return SeekStatus.NOT_FOUND;
         } else if (arc.isLast()) {
           // Dead end (target is after the last arc);
           // rollback to last fork then push
           upto--;
           while(true) {
             if (upto == 0) {
-              return;
+              return SeekStatus.END;
             }
             final FST.Arc<T> prevArc = getArc(upto);
             //System.out.println("  rollback upto=" + upto + " arc.label=" + prevArc.label + " isLast?=" + prevArc.isLast());
             if (!prevArc.isLast()) {
               fst.readNextArc(prevArc, fstReader);
               pushFirst();
-              return;
+              return SeekStatus.NOT_FOUND;
             }
             upto--;
           }
@@ -257,7 +258,7 @@ abstract class FSTEnum<T> {
   // TODO: should we return a status here (SEEK_FOUND / SEEK_NOT_FOUND /
   // SEEK_END)?  saves the eq check above?
   /** Seeks to largest term that's <= target. */
-  protected void doSeekFloor() throws IOException {
+  protected SeekStatus doSeekFloor() throws IOException {
 
     // TODO: possibly caller could/should provide common
     // prefix length?  ie this work may be redundant if
@@ -318,7 +319,7 @@ abstract class FSTEnum<T> {
           assert arc.label == targetLabel: "arc.label=" + arc.label + " vs targetLabel=" + targetLabel + " mid=" + mid;
           output[upto] = fst.outputs.add(output[upto-1], arc.output);
           if (targetLabel == FST.END_LABEL) {
-            return;
+            return SeekStatus.FOUND;
           }
           setCurrentLabel(arc.label);
           incr();
@@ -343,11 +344,11 @@ abstract class FSTEnum<T> {
                 fst.readNextArc(arc, fstReader);
               }
               pushLast();
-              return;
+              return SeekStatus.NOT_FOUND;
             }
             upto--;
             if (upto == 0) {
-              return;
+              return SeekStatus.END;
             }
             targetLabel = getTargetLabel();
             arc = getArc(upto);
@@ -360,7 +361,7 @@ abstract class FSTEnum<T> {
           assert arc.isLast() || fst.readNextArcLabel(arc, in) > targetLabel;
           assert arc.label < targetLabel: "arc.label=" + arc.label + " vs targetLabel=" + targetLabel;
           pushLast();
-          return;
+          return SeekStatus.NOT_FOUND;
         }        
       } else {
 
@@ -368,7 +369,7 @@ abstract class FSTEnum<T> {
           // Match -- recurse
           output[upto] = fst.outputs.add(output[upto-1], arc.output);
           if (targetLabel == FST.END_LABEL) {
-            return;
+            return SeekStatus.FOUND;
           }
           setCurrentLabel(arc.label);
           incr();
@@ -390,11 +391,11 @@ abstract class FSTEnum<T> {
                 fst.readNextArc(arc, fstReader);
               }
               pushLast();
-              return;
+              return SeekStatus.NOT_FOUND;
             }
             upto--;
             if (upto == 0) {
-              return;
+              return SeekStatus.END;
             }
             targetLabel = getTargetLabel();
             arc = getArc(upto);
@@ -403,14 +404,14 @@ abstract class FSTEnum<T> {
           //System.out.println("  check next label=" + fst.readNextArcLabel(arc) + " (" + (char) fst.readNextArcLabel(arc) + ")");
           if (fst.readNextArcLabel(arc, fstReader) > targetLabel) {
             pushLast();
-            return;
+            return SeekStatus.NOT_FOUND;
           } else {
             // keep scanning
             fst.readNextArc(arc, fstReader);
           }
         } else {
           pushLast();
-          return;
+          return SeekStatus.NOT_FOUND;
         }
       }
     }
@@ -526,4 +527,7 @@ abstract class FSTEnum<T> {
     }
     return arcs[idx];
   }
+  
+  public static enum SeekStatus {END, FOUND, NOT_FOUND};
+
 }

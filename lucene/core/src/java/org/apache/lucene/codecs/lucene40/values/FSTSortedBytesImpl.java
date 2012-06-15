@@ -35,25 +35,27 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
+import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Counter;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.fst.FST;
+import org.apache.lucene.util.fst.FSTEnum;
+import org.apache.lucene.util.fst.FSTEnum.SeekStatus;
+import org.apache.lucene.util.fst.IntsRefFSTEnum;
 import org.apache.lucene.util.fst.PositiveIntOutputs;
 import org.apache.lucene.util.fst.Util;
 import org.apache.lucene.util.packed.PackedInts;
 
-// Stores fixed-length byte[] by deref, ie when two docs
-// have the same value, they store only 1 byte[]
 
 /**
  * @lucene.experimental
  */
-class FSTFixedSortedBytesImpl {
+class FSTSortedBytesImpl {
 
-  static final String CODEC_NAME_IDX = "FSTFixedSortedBytesIdx";
-  static final String CODEC_NAME_DAT = "FSTFixedSortedBytesDat";
+  static final String CODEC_NAME_IDX = "FSTSortedBytesIdx";
+  static final String CODEC_NAME_DAT = "FSTSortedBytesDat";
   static final int VERSION_START = 0;
   static final int VERSION_CURRENT = VERSION_START;
 
@@ -115,7 +117,9 @@ class FSTFixedSortedBytesImpl {
     // some last docs that we didn't see
     @Override
     public void finishInternal(int docCount) throws IOException {
-      fillDefault(docCount);
+      if (lastDocId+1 < docCount) {
+        fillDefault(docCount);
+      }
       final IndexOutput datOut = getOrCreateDataOut();
       final int count = hash.size();
       final int[] address = new int[count];
@@ -153,7 +157,7 @@ class FSTFixedSortedBytesImpl {
 
     @Override
     public Source load() throws IOException {
-      return new FixedSortedSource(cloneData(), cloneIndex(), valueCount,
+      return new FSTSortedSource(cloneData(), cloneIndex(), valueCount,
           comparator);
     }
 
@@ -168,12 +172,12 @@ class FSTFixedSortedBytesImpl {
     }
   }
 
-  static final class FixedSortedSource extends SortedSource {
+  static final class FSTSortedSource extends SortedSource {
     private final int valueCount;
     private final PackedInts.Reader docToOrdIndex;
     private final FST<Long> fst;
 
-    FixedSortedSource(IndexInput datIn, IndexInput idxIn,
+    FSTSortedSource(IndexInput datIn, IndexInput idxIn,
         int numValues, Comparator<BytesRef> comp) throws IOException {
       super(Type.BYTES_FIXED_SORTED, comp);
       docToOrdIndex = PackedInts.getReader(idxIn);
@@ -214,6 +218,75 @@ class FSTFixedSortedBytesImpl {
         throw new RuntimeException(e);
       }
     }
+    
+    public int getOrdByValue(BytesRef value, BytesRef spare) {
+      try {
+        //NOCOMMIT 
+        // phew this seems costly! a FSTEnum per lookup. We should reuse somehow
+        // it's odd that we have a spare we don't use. it seems like we need to fix this 
+        // interface to either take an extensible "spare" or keep things in a ThreadLocal?
+        Lookup<Long> lookup = new Lookup<Long>(fst);
+        SeekStatus seek = lookup.seekCeil(value);
+        switch (seek) {
+          case END:
+            return -(valueCount+1);
+          case FOUND:
+            return lookup.getOutput().intValue();
+          case NOT_FOUND:
+            return -(lookup.getOutput().intValue()+1);
+          default:
+            throw new IllegalStateException("unknown seek status: " + seek);
+        }
+      } catch (IOException e) {
+        throw new RuntimeException();
+      }
+    }
+  }
+  
+  private static class Lookup<T> extends FSTEnum<T> {
+    private final BytesRef current = new BytesRef(10);
+    BytesRef target;
+    protected Lookup(FST<T> fst) {
+      super(fst);
+    }
+
+    @Override
+    protected int getCurrentLabel() {
+      // current.offset fixed at 1
+      return current.bytes[upto] & 0xFF;
+    }
+
+    @Override
+    protected void setCurrentLabel(int label) {
+      current.bytes[upto] = (byte) label;
+    }
+    
+    
+    public SeekStatus seekCeil(BytesRef target) throws IOException {
+      this.target = target;
+      targetLength = target.length;
+      return doSeekCeil();
+      
+    }
+    
+    public T getOutput() {
+      return output[upto];
+    }
+
+    @Override
+    protected void grow() {
+      current.bytes = ArrayUtil.grow(current.bytes, upto+1);
+    }
+    
+    @Override
+    protected int getTargetLabel() {
+      if (upto-1 == target.length) {
+        return FST.END_LABEL;
+      } else {
+        return target.bytes[target.offset + upto - 1] & 0xFF;
+      }
+    }
+
   }
 
 }

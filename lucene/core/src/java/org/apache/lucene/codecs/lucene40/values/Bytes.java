@@ -142,7 +142,7 @@ public final class Bytes {
         return new FixedDerefBytesImpl.Writer(dir, id, bytesUsed, context);
       } else if (mode == Mode.SORTED) {
         
-        return new FSTFixedSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, acceptableOverheadRatio, true);
+        return new FSTSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, acceptableOverheadRatio, true);
         //return new FixedSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, acceptableOverheadRatio);
       }
     } else {
@@ -151,7 +151,7 @@ public final class Bytes {
       } else if (mode == Mode.DEREF) {
         return new VarDerefBytesImpl.Writer(dir, id, bytesUsed, context);
       } else if (mode == Mode.SORTED) {
-        return new FSTFixedSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, acceptableOverheadRatio, false);
+        return new FSTSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, acceptableOverheadRatio, false);
 //        return new VarSortedBytesImpl.Writer(dir, id, sortComparator, bytesUsed, context, acceptableOverheadRatio);
       }
     }
@@ -195,7 +195,7 @@ public final class Bytes {
       } else if (mode == Mode.DEREF) {
         return new FixedDerefBytesImpl.FixedDerefReader(dir, id, maxDoc, context);
       } else if (mode == Mode.SORTED) {
-        return new FSTFixedSortedBytesImpl.Reader(dir, id, maxDoc, context, Type.BYTES_FIXED_SORTED, sortComparator);
+        return new FSTSortedBytesImpl.Reader(dir, id, maxDoc, context, Type.BYTES_FIXED_SORTED, sortComparator);
         //return new FixedSortedBytesImpl.Reader(dir, id, maxDoc, context, Type.BYTES_FIXED_SORTED, sortComparator);
 
       }
@@ -206,7 +206,7 @@ public final class Bytes {
         return new VarDerefBytesImpl.VarDerefReader(dir, id, maxDoc, context);
       } else if (mode == Mode.SORTED) {
         //return new VarSortedBytesImpl.Reader(dir, id, maxDoc,context, Type.BYTES_VAR_SORTED, sortComparator);
-        return new FSTFixedSortedBytesImpl.Reader(dir, id, maxDoc, context, Type.BYTES_VAR_SORTED, sortComparator);
+        return new FSTSortedBytesImpl.Reader(dir, id, maxDoc, context, Type.BYTES_VAR_SORTED, sortComparator);
 
       }
     }
@@ -460,14 +460,16 @@ public final class Bytes {
             * RamUsageEstimator.NUM_BYTES_INT);
       }
       assert size >= 0;
-      BytesRef ref = new BytesRef(size);
-      ref.length = size;
-      int ord = hash.add(ref);
-      if (ord < 0) {
-        ord = (-ord) - 1;
-      }
-      for (int i = lastDocId+1; i < docID; i++) {
-        docToEntry[i] = ord;
+      if (lastDocId+1 < docID) {
+        BytesRef ref = new BytesRef(size);
+        ref.length = size;
+        int ord = hash.add(ref);
+        if (ord < 0) {
+          ord = (-ord) - 1;
+        }
+        for (int i = lastDocId+1; i < docID; i++) {
+          docToEntry[i] = ord;
+        }
       }
     }
     
