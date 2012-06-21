@@ -25,6 +25,8 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.search.spell.TermFreqIterator;
 import org.apache.lucene.search.suggest.Lookup;
 import org.apache.lucene.search.suggest.SortedTermFreqIteratorWrapper;
@@ -33,12 +35,14 @@ import org.apache.lucene.store.ByteArrayDataInput;
 import org.apache.lucene.store.ByteArrayDataOutput;
 import org.apache.lucene.store.InputStreamDataInput;
 import org.apache.lucene.store.OutputStreamDataOutput;
+import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.UnicodeUtil;
+import org.apache.lucene.util.Version;
 import org.apache.lucene.util.fst.Builder;
 import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.FST.Arc;
@@ -95,6 +99,9 @@ public class WFSTCompletionLookup extends Lookup {
   
   @Override
   public void build(TermFreqIterator iterator) throws IOException {
+    IndexWriterConfig config = new IndexWriterConfig(Version.LUCENE_50, null);
+    
+    IndexWriter writer = new IndexWriter(new RAMDirectory(), )
     BytesRef scratch = new BytesRef();
     TermFreqIterator iter = new WFSTTermFreqIteratorWrapper(iterator,
         BytesRef.getUTF8SortedAsUnicodeComparator());
