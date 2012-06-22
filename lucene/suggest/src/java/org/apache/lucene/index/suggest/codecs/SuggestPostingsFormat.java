@@ -40,7 +40,6 @@ import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.suggest.fst.WFSTCompletionLookup;
-import org.apache.lucene.store.ByteArrayDataInput;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
@@ -162,6 +161,8 @@ public class SuggestPostingsFormat extends PostingsFormat {
     public void finishTerm(BytesRef text, TermStats stats) throws IOException {
       spare.copyBytes(text);
       Long weight = processor.spit(spare);
+      //System.out.println("add term: " + spare.utf8ToString() + " weight:" + weight);
+       
       if (termCount > 0 && text.bytesEquals(previousTerm)) {
         buffer2.reset();
         postingsWriter.buffer.reset();
@@ -171,6 +172,7 @@ public class SuggestPostingsFormat extends PostingsFormat {
 
       assert buffer2.getFilePointer() == 0;
 
+      assert stats.docFreq > 0;
       buffer2.writeVInt(stats.docFreq);
       int pos = (int) buffer2.getFilePointer();
       buffer2.writeTo(finalBuffer, 0);
@@ -250,7 +252,6 @@ public class SuggestPostingsFormat extends PostingsFormat {
 
   private final static class FSTDocsEnum extends DocsEnum {
     private byte[] buffer = new byte[16];
-    private final ByteArrayDataInput in = new ByteArrayDataInput(buffer);
 
     private Bits liveDocs;
     private int docUpto;
@@ -260,6 +261,10 @@ public class SuggestPostingsFormat extends PostingsFormat {
     private IndexInput input;
     private int numDocs;
 
+    public FSTDocsEnum(IndexInput input) {
+      this.input = input;
+      currentOrd = -1;
+    }
     
     public FSTDocsEnum reset(IndexInput input, int ord, Bits liveDocs, int numDocs) throws IOException {
       assert numDocs > 0;
@@ -269,23 +274,23 @@ public class SuggestPostingsFormat extends PostingsFormat {
       docUpto = 0;
       this.numDocs = numDocs;
       this.input = input;
-      assert currentOrd == ord -1;
+      assert currentOrd == ord;
       return this;
     }
     
     @Override
-    public int nextDoc() {
+    public int nextDoc() throws IOException {
       while(true) {
-        //System.out.println("  nextDoc cycle docUpto=" + docUpto + " numDocs=" + numDocs + " fp=" + in.getPosition() + " this=" + this);
+        //System.out.println("  nextDoc cycle docUpto=" + docUpto + " numDocs=" + numDocs + " fp=" + input.getFilePointer() + " this=" + this);
         if (docUpto == numDocs) {
           // System.out.println("    END");
           return docID = NO_MORE_DOCS;
         }
         docUpto++;
-        accum += in.readVInt();
+        accum += input.readVInt();
 
         if (liveDocs == null || liveDocs.get(accum)) {
-          //System.out.println("    return docID=" + accum + " freq=" + freq);
+          //System.out.println("    return docID=" + accum);
           return (docID = accum);
         }
       }
@@ -297,7 +302,7 @@ public class SuggestPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public int advance(int target) {
+    public int advance(int target) throws IOException {
       // TODO: we could make more efficient version, but, it
       // should be rare that this will matter in practice
       // since usually apps will not store "big" fields in
@@ -314,12 +319,17 @@ public class SuggestPostingsFormat extends PostingsFormat {
     }
 
     public int nextDocFreq() throws IOException {
-      if (currentOrd == -1) {
+      currentOrd++;
+      if (currentOrd == 0) {
         return input.readVInt();
       }
+      
       while(nextDoc() < NO_MORE_DOCS) {
       }
-      return input.readVInt();
+      //System.out.println("  nextDocFreq cycle docUpto=" + docUpto + " numDocs=" + numDocs + " fp=" + input.getFilePointer() + " this=" + this);
+      int docFreq = input.readVInt();
+      assert docFreq > 0;
+      return docFreq;
     }
   }
 
@@ -331,13 +341,14 @@ public class SuggestPostingsFormat extends PostingsFormat {
     private BytesRefFSTEnum.InputOutput<Long> current;
     private final TermWeightProcessor processor;
     private final IndexInput postingsInput;
-    private final FSTDocsEnum internalEnum = new FSTDocsEnum();
+    private final FSTDocsEnum internalEnum;
     private int ord = -1;
 
     public FSTTermsEnum(FieldInfo field, FST<Long> fst, IndexInput postingsInput, TermWeightProcessor processor) {
       fstEnum = new BytesRefFSTEnum<Long>(fst);
       this.processor = processor;
       this.postingsInput = postingsInput;
+      internalEnum = new FSTDocsEnum(postingsInput); 
     }
 
 
@@ -353,6 +364,7 @@ public class SuggestPostingsFormat extends PostingsFormat {
     
     @Override
     public DocsEnum docs(Bits liveDocs, DocsEnum reuse, boolean needsFreqs) throws IOException {
+     // System.out.println("DocsEnum for term: " + current.input.utf8ToString());
       return internalEnum.reset(postingsInput, ord, liveDocs, docFreq); 
     }
     
@@ -378,6 +390,7 @@ public class SuggestPostingsFormat extends PostingsFormat {
         //System.out.println("  END");
         return null;
       }
+//      System.out.println(current.input.utf8ToString() + " " + current.output);
       ord++;
       docFreq = readDocFreq();
       //System.out.println("  term=" + field.name + ":" + current.input.utf8ToString());
@@ -457,7 +470,8 @@ public class SuggestPostingsFormat extends PostingsFormat {
 
     @Override
     public TermsEnum iterator(TermsEnum reuse) {
-      return new FSTTermsEnum(field, fst, postingsInput, processor );
+      // nocommit reuse?
+      return new FSTTermsEnum(field, fst, (IndexInput)postingsInput.clone(), processor );
     }
 
     @Override

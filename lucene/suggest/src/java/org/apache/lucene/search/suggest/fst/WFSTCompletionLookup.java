@@ -25,23 +25,18 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.codecs.DocValuesArraySource;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.suggest.codecs.SuggestCodec;
-import org.apache.lucene.index.suggest.codecs.SuggestTermAttribute;
 import org.apache.lucene.index.suggest.codecs.SuggestTermTokenStream;
 import org.apache.lucene.index.suggest.codecs.TermWeightProcessor;
 import org.apache.lucene.index.suggest.codecs.ToFST;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.Terms;
-import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.spell.TermFreqIterator;
 import org.apache.lucene.search.suggest.Lookup;
 import org.apache.lucene.search.suggest.SortedTermFreqIteratorWrapper;
@@ -55,10 +50,8 @@ import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util.Version;
-import org.apache.lucene.util.fst.Builder;
 import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.FST.Arc;
 import org.apache.lucene.util.fst.FST.BytesReader;
@@ -116,10 +109,11 @@ public class WFSTCompletionLookup extends Lookup {
   public void build(TermFreqIterator iterator) throws IOException {
     WFSTSuggestTermProcessor processor = new WFSTSuggestTermProcessor();
     IndexWriterConfig config = new IndexWriterConfig(Version.LUCENE_50, null);
-    
+    config.setMaxBufferedDocs(2);
     config.setCodec(new SuggestCodec(processor));
     RAMDirectory ramDirectory = new RAMDirectory();
     IndexWriter writer = new IndexWriter(ramDirectory, config);
+    
     BytesRef scratch = new BytesRef();
     FieldType type = new FieldType();
     type.setIndexed(true);
@@ -133,8 +127,7 @@ public class WFSTCompletionLookup extends Lookup {
     Document doc = new Document();
     doc.add(field);
     while ((scratch = iterator.next()) != null) {
-      long cost = iterator.weight();
-      stream.set(scratch, cost);
+      stream.set(scratch,  encodeWeight(iterator.weight()));
       writer.addDocument(doc);
     }
     
@@ -320,7 +313,7 @@ public class WFSTCompletionLookup extends Lookup {
       }
       spare.copyBytes(term);
       spare.bytes[spare.length] = (byte)0;
-      copyInternal(spare, encodeWeight(weight), spare.length+1);
+      copyInternal(spare, (int)weight, spare.length+1);
       spare.length = term.length + 5;
       return spare;
     }

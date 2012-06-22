@@ -1,6 +1,7 @@
 package org.apache.lucene.index.suggest.codecs;
 
 import org.apache.lucene.util.Attribute;
+import org.apache.lucene.util.BytesRef;
 
 /**
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -23,5 +24,6 @@ public interface SuggestTermAttribute extends Attribute {
   
   public void setWeight(long weight);
   public long getWeight();
+  public void setBytesRef(BytesRef ref);
 
 }

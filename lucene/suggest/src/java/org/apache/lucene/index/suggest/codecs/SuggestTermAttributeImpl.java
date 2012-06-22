@@ -26,6 +26,7 @@ import org.apache.lucene.util.BytesRef;
 public class SuggestTermAttributeImpl extends CharTermAttributeImpl implements SuggestTermAttribute {
   private final TermWeightProcessor processor;
   private long weight;
+  private BytesRef bytesRef = new BytesRef();
   
   public SuggestTermAttributeImpl(TermWeightProcessor processor) {
     this.processor = processor;
@@ -33,9 +34,8 @@ public class SuggestTermAttributeImpl extends CharTermAttributeImpl implements S
   
   @Override
   public int fillBytesRef() {
-    BytesRef bytes = getBytesRef();
-    processor.combine(bytes, bytes, weight);
-    return bytes.hashCode();
+    processor.combine(bytesRef, getBytesRef(), weight);
+    return getBytesRef().hashCode();
   }
 
   @Override
@@ -52,12 +52,19 @@ public class SuggestTermAttributeImpl extends CharTermAttributeImpl implements S
   public void clear() {
     super.clear();
     weight = 0;
+    bytesRef.length = 0;
   }
 
   @Override
   public void copyTo(AttributeImpl target) {
     super.copyTo(target);
     ((SuggestTermAttribute)target).setWeight(weight);
+    ((SuggestTermAttribute)target).setBytesRef(bytesRef);
+  }
+
+  @Override
+  public void setBytesRef(BytesRef ref) {
+    this.bytesRef.copyBytes(ref);
   }
 
 }
