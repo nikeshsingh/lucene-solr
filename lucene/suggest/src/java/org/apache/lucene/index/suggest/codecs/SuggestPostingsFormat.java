@@ -1,4 +1,4 @@
-package org.apache.lucene.search.suggest.codec;
+package org.apache.lucene.index.suggest.codecs;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -39,6 +39,7 @@ import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.search.suggest.fst.WFSTCompletionLookup;
 import org.apache.lucene.store.ByteArrayDataInput;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
@@ -61,6 +62,10 @@ public class SuggestPostingsFormat extends PostingsFormat {
   private final boolean doPackFST;
   private final float acceptableOverheadRatio;
   private final TermWeightProcessor processor;
+  
+  public SuggestPostingsFormat() {
+    this(new WFSTCompletionLookup.WFSTSuggestTermProcessor()); // nocommit 
+  }
 
   public SuggestPostingsFormat(TermWeightProcessor processor) {
     this(false, PackedInts.DEFAULT, processor);
@@ -319,7 +324,7 @@ public class SuggestPostingsFormat extends PostingsFormat {
   }
 
  
-  private final static class FSTTermsEnum extends TermsEnum {
+  private final static class FSTTermsEnum extends TermsEnum  {
     private final BytesRefFSTEnum<Long> fstEnum;
     private final BytesRef spare = new BytesRef();
     private int docFreq;
@@ -405,7 +410,7 @@ public class SuggestPostingsFormat extends PostingsFormat {
     }
   }
 
-  private final static class TermsReader extends Terms {
+  private final static class TermsReader extends Terms implements ToFST {
 
     private final long sumTotalTermFreq;
     private final long sumDocFreq;
@@ -458,6 +463,11 @@ public class SuggestPostingsFormat extends PostingsFormat {
     @Override
     public Comparator<BytesRef> getComparator() {
       return BytesRef.getUTF8SortedAsUnicodeComparator();
+    }
+
+    @Override
+    public FST<Long> get() {
+      return fst;
     }
   }
 

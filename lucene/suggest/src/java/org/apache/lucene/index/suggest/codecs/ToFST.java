@@ -1,8 +1,8 @@
-package org.apache.lucene.search.suggest.codec;
+package org.apache.lucene.index.suggest.codecs;
 
-import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.fst.FST;
 
-/*
+/**
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,9 +19,8 @@ import org.apache.lucene.util.BytesRef;
  * limitations under the License.
  */
 
-public interface TermWeightProcessor {
-
-  
-  public long spit(BytesRef term);
-  public BytesRef combine(BytesRef term, BytesRef spare, long weight);
+public interface ToFST {
+  // NOCOMMIT maybe just cast to the impl?
+  // do we need a generic interface ie not always FST<Long>?
+  public FST<Long> get();
 }

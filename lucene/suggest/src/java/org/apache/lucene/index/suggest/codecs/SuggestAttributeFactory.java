@@ -1,4 +1,4 @@
-package org.apache.lucene.search.suggest.codec;
+package org.apache.lucene.index.suggest.codecs;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -17,9 +17,6 @@ package org.apache.lucene.search.suggest.codec;
  * limitations under the License.
  */
 
-import java.text.Collator;
-
-import org.apache.lucene.collation.tokenattributes.CollatedTermAttributeImpl;
 import org.apache.lucene.util.Attribute;
 import org.apache.lucene.util.AttributeImpl;
 import org.apache.lucene.util.AttributeSource;
@@ -42,7 +39,7 @@ public class SuggestAttributeFactory extends AttributeSource.AttributeFactory {
   @Override
   public AttributeImpl createAttributeInstance(
       Class<? extends Attribute> attClass) {
-    return attClass.isAssignableFrom(SuggestAttributeFactory.class)
+    return attClass.isAssignableFrom(SuggestTermAttributeImpl.class)
     ? new SuggestTermAttributeImpl(processor)
     : delegate.createAttributeInstance(attClass);
   }

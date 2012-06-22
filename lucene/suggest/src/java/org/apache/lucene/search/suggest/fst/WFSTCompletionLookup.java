@@ -25,8 +25,23 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.codecs.DocValuesArraySource;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.FieldType;
+import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.suggest.codecs.SuggestCodec;
+import org.apache.lucene.index.suggest.codecs.SuggestTermAttribute;
+import org.apache.lucene.index.suggest.codecs.SuggestTermTokenStream;
+import org.apache.lucene.index.suggest.codecs.TermWeightProcessor;
+import org.apache.lucene.index.suggest.codecs.ToFST;
+import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.spell.TermFreqIterator;
 import org.apache.lucene.search.suggest.Lookup;
 import org.apache.lucene.search.suggest.SortedTermFreqIteratorWrapper;
@@ -99,30 +114,39 @@ public class WFSTCompletionLookup extends Lookup {
   
   @Override
   public void build(TermFreqIterator iterator) throws IOException {
+    WFSTSuggestTermProcessor processor = new WFSTSuggestTermProcessor();
     IndexWriterConfig config = new IndexWriterConfig(Version.LUCENE_50, null);
     
-    IndexWriter writer = new IndexWriter(new RAMDirectory(), )
+    config.setCodec(new SuggestCodec(processor));
+    RAMDirectory ramDirectory = new RAMDirectory();
+    IndexWriter writer = new IndexWriter(ramDirectory, config);
     BytesRef scratch = new BytesRef();
-    TermFreqIterator iter = new WFSTTermFreqIteratorWrapper(iterator,
-        BytesRef.getUTF8SortedAsUnicodeComparator());
-    IntsRef scratchInts = new IntsRef();
-    BytesRef previous = null;
-    PositiveIntOutputs outputs = PositiveIntOutputs.getSingleton(true);
-    Builder<Long> builder = new Builder<Long>(FST.INPUT_TYPE.BYTE1, outputs);
-    while ((scratch = iter.next()) != null) {
-      long cost = iter.weight();
-      
-      if (previous == null) {
-        previous = new BytesRef();
-      } else if (scratch.equals(previous)) {
-        continue; // for duplicate suggestions, the best weight is actually
-                  // added
-      }
-      Util.toIntsRef(scratch, scratchInts);
-      builder.add(scratchInts, cost);
-      previous.copyBytes(scratch);
+    FieldType type = new FieldType();
+    type.setIndexed(true);
+    type.setIndexOptions(IndexOptions.DOCS_ONLY);
+    type.setOmitNorms(true);
+    type.setStored(false);
+    type.setTokenized(true);
+    type.freeze();
+    SuggestTermTokenStream stream = new SuggestTermTokenStream(processor);
+    Field field = new Field("suggest", stream, type);
+    Document doc = new Document();
+    doc.add(field);
+    while ((scratch = iterator.next()) != null) {
+      long cost = iterator.weight();
+      stream.set(scratch, cost);
+      writer.addDocument(doc);
     }
-    fst = builder.finish();
+    
+    writer.forceMerge(1);
+    writer.close();
+    DirectoryReader reader = DirectoryReader.open(ramDirectory);
+    List<? extends AtomicReader> sequentialSubReaders = reader.getSequentialSubReaders();
+    assert sequentialSubReaders.size() == 1;
+    AtomicReader atomicReader = sequentialSubReaders.get(0);
+    fst = ((ToFST)atomicReader.terms("suggest")).get();
+    reader.close();
+    ramDirectory.close();
   }
 
   
@@ -280,4 +304,40 @@ public class WFSTCompletionLookup extends Lookup {
       return left.compareTo(right);
     }  
   };
+  
+  public static final class WFSTSuggestTermProcessor implements TermWeightProcessor {
+
+    @Override
+    public long spit(BytesRef term) {
+      term.length -= 5;
+      return asInt(term, term.offset + term.length + 1);
+    }
+
+    @Override
+    public BytesRef combine(BytesRef term, BytesRef spare, long weight) {
+      if (term.length + 5 >= spare.length) {
+        spare.grow(term.length+5);
+      }
+      spare.copyBytes(term);
+      spare.bytes[spare.length] = (byte)0;
+      copyInternal(spare, encodeWeight(weight), spare.length+1);
+      spare.length = term.length + 5;
+      return spare;
+    }
+    
+  }
+  
+  // copied from DocValuesArraySource -- maybe this is generally useful
+ 
+  private static void copyInternal(BytesRef ref, int value, int startOffset) {
+    ref.bytes[startOffset] = (byte) (value >> 24);
+    ref.bytes[startOffset + 1] = (byte) (value >> 16);
+    ref.bytes[startOffset + 2] = (byte) (value >> 8);
+    ref.bytes[startOffset + 3] = (byte) (value);
+  } 
+  
+  private static int asInt(BytesRef b, int pos) {
+    return ((b.bytes[pos++] & 0xFF) << 24) | ((b.bytes[pos++] & 0xFF) << 16)
+        | ((b.bytes[pos++] & 0xFF) << 8) | (b.bytes[pos] & 0xFF);
+  }
 }

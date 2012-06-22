@@ -1,4 +1,4 @@
-package org.apache.lucene.search.suggest.codec;
+package org.apache.lucene.index.suggest.codecs;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
