@@ -283,6 +283,11 @@ Changes in backwards compatibility policy
   removed, as IndexReaderContext.leaves() is now the preferred way
   to access sub-readers.  (Uwe Schindler)
 
+* LUCENE-4155: oal.util.ReaderUtil, TwoPhaseCommit, TwoPhaseCommitTool
+  classes were moved to oal.index package. oal.util.CodecUtil class was moved
+  to oal.codecs package. oal.util.DummyConcurrentLock was removed
+  (no longer used in Lucene 4.0).  (Uwe Schindler)
+
 Changes in Runtime Behavior
 
 * LUCENE-2846: omitNorms now behaves like omitTermFrequencyAndPositions, if you
@@ -989,6 +994,11 @@ Optimizations
 * LUCENE-4156: DirectoryTaxonomyWriter.getSize is no longer synchronized.
   (Shai Erera, Sivan Yogev)
 
+* LUCENE-4163: Improve concurrency of MMapIndexInput.clone() by using
+  the new WeakIdentityMap on top of a ConcurrentHashMap to manage
+  the cloned instances. WeakIdentityMap was extended to support
+  iterating over its keys.  (Uwe Schindler)
+
 Bug fixes
 
 * LUCENE-2803: The FieldCache can miss values if an entry for a reader
@@ -1061,6 +1071,9 @@ Bug fixes
 
 * LUCENE-4114: Fix int overflow bugs in BYTES_FIXED_STRAIGHT and
   BYTES_FIXED_DEREF doc values implementations (Walt Elder via Mike McCandless).
+
+* LUCENE-4147: Fixed thread safety issues when rollback() and commit()
+  are called simultaneously.  (Simon Willnauer, Mike McCandless)
 
 Documentation
 
