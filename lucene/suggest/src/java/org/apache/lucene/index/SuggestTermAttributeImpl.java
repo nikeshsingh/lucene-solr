@@ -1,4 +1,4 @@
-package org.apache.lucene.index.suggest.codecs;
+package org.apache.lucene.index;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -18,23 +18,29 @@ package org.apache.lucene.index.suggest.codecs;
  */
 
 import org.apache.lucene.analysis.tokenattributes.CharTermAttributeImpl;
+import org.apache.lucene.codecs.suggest.SuggestFSTBuilder;
 import org.apache.lucene.util.AttributeImpl;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.fst.BytesRefFSTEnum.InputOutput;
 
 /**
  */
 public class SuggestTermAttributeImpl extends CharTermAttributeImpl implements SuggestTermAttribute {
-  private final TermWeightProcessor processor;
+  private final SuggestFSTBuilder<Long> processor;
   private long weight;
   private BytesRef bytesRef = new BytesRef();
+  private InputOutput<Long> inputOutput = new InputOutput<Long>();
   
-  public SuggestTermAttributeImpl(TermWeightProcessor processor) {
-    this.processor = processor;
+  public SuggestTermAttributeImpl(SuggestFSTBuilder<Long> builder) {
+    this.processor = builder;
+    inputOutput.input = bytesRef;
+    
   }
   
   @Override
   public int fillBytesRef() {
-    processor.combine(bytesRef, getBytesRef(), weight);
+    inputOutput.output = weight;
+    processor.combine(getBytesRef(), inputOutput);
     return getBytesRef().hashCode();
   }
 

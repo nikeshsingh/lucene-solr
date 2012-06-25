@@ -1,9 +1,10 @@
-package org.apache.lucene.index.suggest.codecs;
+package org.apache.lucene.index;
 
 import java.io.IOException;
 
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.codecs.suggest.SuggestFSTBuilder;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.UnicodeUtil;
@@ -32,7 +33,7 @@ public final class SuggestTermTokenStream extends TokenStream {
   private boolean exhausted = false;
   private BytesRef bytesRef;
   
-  public SuggestTermTokenStream(TermWeightProcessor processor) {
+  public SuggestTermTokenStream(SuggestFSTBuilder<Long> processor) {
     super(new SuggestAttributeFactory(processor));
     this.suggestTermAttr = addAttribute(SuggestTermAttribute.class);
   }

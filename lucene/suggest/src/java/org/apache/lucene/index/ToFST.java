@@ -1,4 +1,4 @@
-package org.apache.lucene.index.suggest.codecs;
+package org.apache.lucene.index;
 
 import org.apache.lucene.util.fst.FST;
 
@@ -19,8 +19,8 @@ import org.apache.lucene.util.fst.FST;
  * limitations under the License.
  */
 
-public interface ToFST {
+public interface ToFST<T> {
   // NOCOMMIT maybe just cast to the impl?
   // do we need a generic interface ie not always FST<Long>?
-  public FST<Long> get();
+  public FST<T> get();
 }

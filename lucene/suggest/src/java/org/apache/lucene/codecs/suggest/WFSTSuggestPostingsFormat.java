@@ -1,6 +1,6 @@
-package org.apache.lucene.index.suggest.codecs;
+package org.apache.lucene.codecs.suggest;
 
-import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.packed.PackedInts;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -19,9 +19,27 @@ import org.apache.lucene.util.BytesRef;
  * limitations under the License.
  */
 
-public interface TermWeightProcessor {
-
+public class WFSTSuggestPostingsFormat extends SuggestPostingsFormat<Long> {
   
-  public BytesRef combine(BytesRef term, BytesRef spare, long weight);
-  public long spit(BytesRef term);
+  private final boolean doPackFST;
+  private final float acceptableOverheadRatio;
+  
+  public WFSTSuggestPostingsFormat() {
+    super("WFSTSuggest");
+    doPackFST = false;
+    acceptableOverheadRatio = PackedInts.DEFAULT;
+  }
+  
+  public WFSTSuggestPostingsFormat(boolean doPackFST,
+      float acceptableOverheadRatio) {
+    super("wfst-suggest");
+    this.doPackFST = doPackFST;
+    this.acceptableOverheadRatio = acceptableOverheadRatio;
+  }
+  
+  @Override
+  public SuggestFSTBuilder<Long> newBuilder() {
+    return new WeightedSuggestFSTBuilder(doPackFST, acceptableOverheadRatio);
+  }
+  
 }

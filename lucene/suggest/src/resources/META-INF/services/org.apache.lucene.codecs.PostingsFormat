@@ -13,4 +13,4 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-org.apache.lucene.index.suggest.codecs.SuggestPostingsFormat
+org.apache.lucene.codecs.suggest.WFSTSuggestPostingsFormat

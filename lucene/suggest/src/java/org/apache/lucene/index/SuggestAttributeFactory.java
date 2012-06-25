@@ -1,4 +1,4 @@
-package org.apache.lucene.index.suggest.codecs;
+package org.apache.lucene.index;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -17,6 +17,7 @@ package org.apache.lucene.index.suggest.codecs;
  * limitations under the License.
  */
 
+import org.apache.lucene.codecs.suggest.SuggestFSTBuilder;
 import org.apache.lucene.util.Attribute;
 import org.apache.lucene.util.AttributeImpl;
 import org.apache.lucene.util.AttributeSource;
@@ -24,23 +25,23 @@ import org.apache.lucene.util.AttributeSource;
 /**
  */
 public class SuggestAttributeFactory extends AttributeSource.AttributeFactory {
-  private final TermWeightProcessor processor;
+  private final SuggestFSTBuilder<Long> builder;
   private final AttributeSource.AttributeFactory delegate;
   
-  public SuggestAttributeFactory(TermWeightProcessor collator) {
-    this(AttributeSource.AttributeFactory.DEFAULT_ATTRIBUTE_FACTORY, collator);
+  public SuggestAttributeFactory(SuggestFSTBuilder<Long> builder) {
+    this(AttributeSource.AttributeFactory.DEFAULT_ATTRIBUTE_FACTORY, builder);
   }
   
-  public SuggestAttributeFactory(AttributeSource.AttributeFactory delegate, TermWeightProcessor collator) {
+  public SuggestAttributeFactory(AttributeSource.AttributeFactory delegate, SuggestFSTBuilder<Long> builder) {
     this.delegate = delegate;
-    this.processor = collator;
+    this.builder = builder;
   }
   
   @Override
   public AttributeImpl createAttributeInstance(
       Class<? extends Attribute> attClass) {
     return attClass.isAssignableFrom(SuggestTermAttributeImpl.class)
-    ? new SuggestTermAttributeImpl(processor)
+    ? new SuggestTermAttributeImpl(builder)
     : delegate.createAttributeInstance(attClass);
   }
 }

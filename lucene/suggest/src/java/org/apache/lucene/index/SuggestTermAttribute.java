@@ -1,5 +1,9 @@
-package org.apache.lucene.index.suggest.codecs;
-/*
+package org.apache.lucene.index;
+
+import org.apache.lucene.util.Attribute;
+import org.apache.lucene.util.BytesRef;
+
+/**
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,23 +20,10 @@ package org.apache.lucene.index.suggest.codecs;
  * limitations under the License.
  */
 
-import org.apache.lucene.codecs.PostingsFormat;
-import org.apache.lucene.codecs.lucene40.Lucene40Codec;
-
-
-public class SuggestCodec extends Lucene40Codec {
-
-  private final TermWeightProcessor processor;
-  public SuggestCodec(TermWeightProcessor processor) {
-    this.processor = processor;
-  }
-  @Override
-  public PostingsFormat getPostingsFormatForField(String field) {
-    if ("suggest".equals(field)) {
-      return new SuggestPostingsFormat(processor);
-    }
-    return super.getPostingsFormatForField(field);
-  }
- 
+public interface SuggestTermAttribute extends Attribute {
   
+  public void setWeight(long weight);
+  public long getWeight();
+  public void setBytesRef(BytesRef ref);
+
 }

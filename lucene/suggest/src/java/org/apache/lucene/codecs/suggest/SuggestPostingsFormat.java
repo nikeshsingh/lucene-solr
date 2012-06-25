@@ -1,4 +1,4 @@
-package org.apache.lucene.index.suggest.codecs;
+package org.apache.lucene.codecs.suggest;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -29,6 +29,7 @@ import org.apache.lucene.codecs.PostingsConsumer;
 import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.codecs.TermStats;
 import org.apache.lucene.codecs.TermsConsumer;
+import org.apache.lucene.codecs.suggest.SuggestFSTBuilder.BuildStatus;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.FieldInfo;
@@ -39,7 +40,7 @@ import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.suggest.fst.WFSTCompletionLookup;
+import org.apache.lucene.index.ToFST;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
@@ -48,60 +49,35 @@ import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.util.IntsRef;
-import org.apache.lucene.util.fst.Builder;
 import org.apache.lucene.util.fst.BytesRefFSTEnum;
 import org.apache.lucene.util.fst.FST;
-import org.apache.lucene.util.fst.PositiveIntOutputs;
-import org.apache.lucene.util.fst.Util;
-import org.apache.lucene.util.packed.PackedInts;
 
-public class SuggestPostingsFormat extends PostingsFormat {
+public abstract class SuggestPostingsFormat<T> extends PostingsFormat {
 
-  private final boolean doPackFST;
-  private final float acceptableOverheadRatio;
-  private final TermWeightProcessor processor;
   
-  public SuggestPostingsFormat() {
-    this(new WFSTCompletionLookup.WFSTSuggestTermProcessor()); // nocommit 
+  protected SuggestPostingsFormat(String name) {
+    super(name);
   }
-
-  public SuggestPostingsFormat(TermWeightProcessor processor) {
-    this(false, PackedInts.DEFAULT, processor);
-  }
-
-  public SuggestPostingsFormat(boolean doPackFST, float acceptableOverheadRatio, TermWeightProcessor processor) {
-    super("Suggest");
-    this.doPackFST = doPackFST;
-    this.acceptableOverheadRatio = acceptableOverheadRatio;
-    this.processor = processor;
-  }
+  
+  public abstract SuggestFSTBuilder<T> newBuilder();
   
   @Override
   public String toString() {
-    return "PostingsFormat(name=" + getName() + " doPackFST= " + doPackFST + ")";
+    return "SuggestPostingsFormat(name=" + getName() + ")";
   }
 
-  private final static class TermsWriter extends TermsConsumer {
+  private final class TermsWriter extends TermsConsumer {
     private final IndexOutput fstOut;
     private final IndexOutput postingsOut;
     private final FieldInfo field;
-    private final Builder<Long> builder;
-    private final PositiveIntOutputs outputs = PositiveIntOutputs.getSingleton(true);
 
-    private final boolean doPackFST;
-    private final float acceptableOverheadRatio;
-    private int termCount;
-    private final TermWeightProcessor processor;
+    private final SuggestFSTBuilder<T> processor;
 
-    public TermsWriter(IndexOutput fstOut, IndexOutput postingsOut, FieldInfo field, boolean doPackFST, float acceptableOverheadRatio, TermWeightProcessor processor) {
+    public TermsWriter(IndexOutput fstOut, IndexOutput postingsOut, FieldInfo field) {
       this.fstOut = fstOut;
       this.postingsOut = postingsOut;
       this.field = field;
-      this.doPackFST = doPackFST;
-      this.acceptableOverheadRatio = acceptableOverheadRatio;
-      this.processor = processor;
-      builder = new Builder<Long>(FST.INPUT_TYPE.BYTE1, 0, 0, true, true, Integer.MAX_VALUE, outputs, null, doPackFST, acceptableOverheadRatio);
+      this.processor = newBuilder();
     }
     
 
@@ -154,20 +130,19 @@ public class SuggestPostingsFormat extends PostingsFormat {
     private final BytesRef spare = new BytesRef();
     private byte[] finalBuffer = new byte[128];
 
-    private final IntsRef scratchIntsRef = new IntsRef();
 
     
     @Override
     public void finishTerm(BytesRef text, TermStats stats) throws IOException {
       spare.copyBytes(text);
-      Long weight = processor.spit(spare);
-      //System.out.println("add term: " + spare.utf8ToString() + " weight:" + weight);
-       
-      if (termCount > 0 && text.bytesEquals(previousTerm)) {
+      if (processor.add(spare) == BuildStatus.Duplicate) {
         buffer2.reset();
         postingsWriter.buffer.reset();
         return;
       }
+    
+      //System.out.println("add term: " + spare.utf8ToString() + " weight:" + weight);
+       
       assert postingsWriter.docCount == stats.docFreq;
 
       assert buffer2.getFilePointer() == 0;
@@ -184,30 +159,18 @@ public class SuggestPostingsFormat extends PostingsFormat {
       postingsWriter.buffer.writeTo(finalBuffer, pos);
       postingsWriter.buffer.reset();
       postingsOut.writeBytes(finalBuffer, totalBytes);
-
-      //System.out.println("    finishTerm term=" + text.utf8ToString() + " " + totalBytes + " bytes totalTF=" + stats.totalTermFreq);
-      //for(int i=0;i<totalBytes;i++) {
-      //  System.out.println("      " + Integer.toHexString(finalBuffer[i]&0xFF));
-      //}
-      
-      builder.add(Util.toIntsRef(spare, scratchIntsRef), weight);
-      termCount++;
       previousTerm.copyBytes(spare);
     }
 
     @Override
     public void finish(long sumTotalTermFreq, long sumDocFreq, int docCount) throws IOException {
-      if (termCount > 0) {
-        fstOut.writeVInt(termCount);
+      if (processor.totalTermCount()> 0) {
+        fstOut.writeVLong(processor.totalTermCount());
         fstOut.writeVInt(field.number);
         fstOut.writeVLong(sumDocFreq);
         fstOut.writeVInt(docCount);
-        FST<Long> fst = builder.finish();
-        if (doPackFST) {
-          fst = fst.pack(3, Math.max(10, fst.getNodeCount()/4), acceptableOverheadRatio);
-        }
+        FST<Long> fst = processor.finishCurrentFST(new BytesRef(), new BytesRef());
         fst.save(fstOut);
-        //System.out.println("finish field=" + field.name + " fp=" + out.getFilePointer());
       }
     }
 
@@ -235,7 +198,7 @@ public class SuggestPostingsFormat extends PostingsFormat {
       @Override
       public TermsConsumer addField(FieldInfo field) {
         //System.out.println("\naddField field=" + field.name);
-        return new TermsWriter(fstOut, postingsOut, field, doPackFST, acceptableOverheadRatio, processor);
+        return new TermsWriter(fstOut, postingsOut, field);
       }
 
       @Override
@@ -251,8 +214,6 @@ public class SuggestPostingsFormat extends PostingsFormat {
   }
 
   private final static class FSTDocsEnum extends DocsEnum {
-    private byte[] buffer = new byte[16];
-
     private Bits liveDocs;
     private int docUpto;
     private int docID = -1;
@@ -334,18 +295,18 @@ public class SuggestPostingsFormat extends PostingsFormat {
   }
 
  
-  private final static class FSTTermsEnum extends TermsEnum  {
-    private final BytesRefFSTEnum<Long> fstEnum;
+  private final static class FSTTermsEnum<T> extends TermsEnum  {
+    private final BytesRefFSTEnum<T> fstEnum;
     private final BytesRef spare = new BytesRef();
     private int docFreq;
-    private BytesRefFSTEnum.InputOutput<Long> current;
-    private final TermWeightProcessor processor;
+    private BytesRefFSTEnum.InputOutput<T> current;
+    private final SuggestFSTBuilder<T> processor;
     private final IndexInput postingsInput;
     private final FSTDocsEnum internalEnum;
     private int ord = -1;
 
-    public FSTTermsEnum(FieldInfo field, FST<Long> fst, IndexInput postingsInput, TermWeightProcessor processor) {
-      fstEnum = new BytesRefFSTEnum<Long>(fst);
+    public FSTTermsEnum(FieldInfo field, FST<T> fst, IndexInput postingsInput, SuggestFSTBuilder<T> processor) {
+      fstEnum = processor.openEnum(fst);
       this.processor = processor;
       this.postingsInput = postingsInput;
       internalEnum = new FSTDocsEnum(postingsInput); 
@@ -379,7 +340,7 @@ public class SuggestPostingsFormat extends PostingsFormat {
 
     @Override
     public BytesRef term() {
-      return processor.combine(current.input, spare, current.output);
+      return processor.combine(spare, current);
     }
 
     @Override
@@ -394,7 +355,7 @@ public class SuggestPostingsFormat extends PostingsFormat {
       ord++;
       docFreq = readDocFreq();
       //System.out.println("  term=" + field.name + ":" + current.input.utf8ToString());
-      return processor.combine(current.input, spare, current.output);
+      return processor.combine(spare, current);
     }
 
     @Override
@@ -423,28 +384,27 @@ public class SuggestPostingsFormat extends PostingsFormat {
     }
   }
 
-  private final static class TermsReader extends Terms implements ToFST {
+  private final class TermsReader extends Terms implements ToFST<T> {
 
     private final long sumTotalTermFreq;
     private final long sumDocFreq;
     private final int docCount;
-    private final int termCount;
-    private FST<Long> fst;
-    private final PositiveIntOutputs outputs = PositiveIntOutputs.getSingleton(false);
+    private final long termCount;
+    private FST<T> fst;
     private final FieldInfo field;
     private final IndexInput postingsInput;
-    private final TermWeightProcessor processor;
+    private final SuggestFSTBuilder<T> processor;
 
-    public TermsReader(FieldInfos fieldInfos, IndexInput fstInput, IndexInput postingsInput, int termCount, TermWeightProcessor processor) throws IOException {
+    public TermsReader(FieldInfos fieldInfos, IndexInput fstInput, IndexInput postingsInput, long termCount) throws IOException {
       this.termCount = termCount;
       final int fieldNumber = fstInput.readVInt();
       field = fieldInfos.fieldInfo(fieldNumber);
       sumTotalTermFreq = -1;
       sumDocFreq = fstInput.readVLong();
       docCount = fstInput.readVInt();
-      this.processor = processor;
+      this.processor = newBuilder();
       
-      fst = new FST<Long>(fstInput, outputs);
+      fst = processor.load(fstInput);
       this.postingsInput = postingsInput;
     }
 
@@ -471,7 +431,7 @@ public class SuggestPostingsFormat extends PostingsFormat {
     @Override
     public TermsEnum iterator(TermsEnum reuse) {
       // nocommit reuse?
-      return new FSTTermsEnum(field, fst, (IndexInput)postingsInput.clone(), processor );
+      return new FSTTermsEnum<T>(field, fst, (IndexInput)postingsInput.clone(), processor );
     }
 
     @Override
@@ -480,7 +440,7 @@ public class SuggestPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public FST<Long> get() {
+    public FST<T> get() {
       return fst;
     }
   }
@@ -496,11 +456,11 @@ public class SuggestPostingsFormat extends PostingsFormat {
 
     try {
       while(true) {
-        final int termCount = in.readVInt();
+        final long termCount = in.readVLong();
         if (termCount == 0) {
           break;
         }
-        final TermsReader termsReader = new TermsReader(state.fieldInfos, in, postingsInput, termCount, processor);
+        final TermsReader termsReader = new TermsReader(state.fieldInfos, in, postingsInput, termCount);
         // System.out.println("load field=" + termsReader.field.name);
         fields.put(termsReader.field.name, termsReader);
       }
