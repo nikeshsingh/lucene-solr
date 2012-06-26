@@ -31,25 +31,30 @@ import org.apache.lucene.util.fst.Util;
  */
 
 public class WeightedSuggestFSTBuilder extends SuggestFSTBuilder<Long> {
-  
+  // nocommit can we move stuff up in the baseclass
   
   private Builder<Long> builder;
   private final IntsRef scratchIntsRef = new IntsRef();
-  private final PositiveIntOutputs outputs = PositiveIntOutputs.getSingleton(true);
+  private final PositiveIntOutputs outputs = PositiveIntOutputs
+      .getSingleton(true);
   private boolean doPackFST;
   private float acceptableOverheadRatio;
   private BytesRef firstTerm = new BytesRef();
   private int totalNumTerms = 0;
   private int currentNumTerms = 0;
   private BytesRef previousTerm = new BytesRef();
-
-  public WeightedSuggestFSTBuilder(boolean doPackFST, float acceptableOverheadRatio)  {
+  
+  public WeightedSuggestFSTBuilder(boolean doPackFST,
+      float acceptableOverheadRatio) {
     this.doPackFST = doPackFST;
     this.acceptableOverheadRatio = acceptableOverheadRatio;
     builder = newBuilder(doPackFST, acceptableOverheadRatio);
   }
-  private Builder<Long> newBuilder(boolean doPackFST, float acceptableOverheadRatio) {
-    return new Builder<Long>(FST.INPUT_TYPE.BYTE1, 0, 0, true, true, Integer.MAX_VALUE, outputs, null, doPackFST, acceptableOverheadRatio);
+  
+  private Builder<Long> newBuilder(boolean doPackFST,
+      float acceptableOverheadRatio) {
+    return new Builder<Long>(FST.INPUT_TYPE.BYTE1, 0, 0, true, true,
+        Integer.MAX_VALUE, outputs, null, doPackFST, acceptableOverheadRatio);
   }
   
   private long split(BytesRef term) {
@@ -72,37 +77,38 @@ public class WeightedSuggestFSTBuilder extends SuggestFSTBuilder<Long> {
   @Override
   public BuildStatus add(BytesRef term) throws IOException {
     
-    
     long weight = split(term);
-    if (totalNumTerms != 0 &&term.bytesEquals(previousTerm)) {
+    if (totalNumTerms != 0 && term.bytesEquals(previousTerm)) {
       return BuildStatus.Duplicate;
     }
-    builder.add(Util.toIntsRef(term, scratchIntsRef ), weight);
+    builder.add(Util.toIntsRef(term, scratchIntsRef), weight);
     previousTerm.copyBytes(term);
     if (currentNumTerms == 0) {
       firstTerm.copyBytes(term);
     }
+    // nocommit we need to return BuildStatus.MustSerialize once we approach FST
+    // size limits. how do we figure that out?
     totalNumTerms++;
     currentNumTerms++;
     return BuildStatus.Added;
   }
   
   @Override
-  public void finish() {
-  }
+  public void finish() {}
   
   @Override
-  public FST<Long> finishCurrentFST(BytesRef upper, BytesRef lower) throws IOException {
+  public FST<Long> finishCurrentFST(BytesRef upper, BytesRef lower)
+      throws IOException {
     FST<Long> fst = builder.finish();
     if (doPackFST) {
-      fst = fst.pack(3, Math.max(10, fst.getNodeCount()/4), acceptableOverheadRatio);
+      fst = fst.pack(3, Math.max(10, fst.getNodeCount() / 4),
+          acceptableOverheadRatio);
     }
     upper.copyBytes(firstTerm);
     lower.copyBytes(previousTerm);
     firstTerm.copyBytes(previousTerm); // reset
     return fst;
   }
-  
   
   // copied from DocValuesArraySource -- maybe this is generally useful
   
@@ -117,14 +123,17 @@ public class WeightedSuggestFSTBuilder extends SuggestFSTBuilder<Long> {
     return ((b.bytes[pos++] & 0xFF) << 24) | ((b.bytes[pos++] & 0xFF) << 16)
         | ((b.bytes[pos++] & 0xFF) << 8) | (b.bytes[pos] & 0xFF);
   }
+  
   @Override
   public long totalTermCount() {
     return totalNumTerms;
   }
+  
   @Override
   public FST<Long> load(IndexInput input) throws IOException {
     return new FST<Long>(input, PositiveIntOutputs.getSingleton(false));
   }
+  
   @Override
   public BytesRefFSTEnum<Long> openEnum(FST<Long> fst) {
     return new BytesRefFSTEnum<Long>(fst);
