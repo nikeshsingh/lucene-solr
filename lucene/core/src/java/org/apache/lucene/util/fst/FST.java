@@ -143,7 +143,7 @@ public final class FST<T> {
   byte[] bytes;
   int byteUpto = 0;
 
-  private int startNode = -1;
+  private long startNode = -1;
 
   public final Outputs<T> outputs;
 

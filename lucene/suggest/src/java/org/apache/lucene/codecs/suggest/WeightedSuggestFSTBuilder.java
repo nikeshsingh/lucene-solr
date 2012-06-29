@@ -2,6 +2,7 @@ package org.apache.lucene.codecs.suggest;
 
 import java.io.IOException;
 
+import org.apache.lucene.store.DataInput;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IntsRef;
@@ -130,7 +131,7 @@ public class WeightedSuggestFSTBuilder extends SuggestFSTBuilder<Long> {
   }
   
   @Override
-  public FST<Long> load(IndexInput input) throws IOException {
+  public FST<Long> load(DataInput input) throws IOException {
     return new FST<Long>(input, PositiveIntOutputs.getSingleton(false));
   }
   

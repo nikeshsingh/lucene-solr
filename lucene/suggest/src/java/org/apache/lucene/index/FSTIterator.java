@@ -1,11 +1,8 @@
-package org.apache.lucene.codecs.suggest;
+package org.apache.lucene.index;
 
 import java.io.IOException;
 
-import org.apache.lucene.store.DataInput;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.fst.BytesRefFSTEnum;
-import org.apache.lucene.util.fst.BytesRefFSTEnum.InputOutput;
 import org.apache.lucene.util.fst.FST;
 
 /*
@@ -25,26 +22,10 @@ import org.apache.lucene.util.fst.FST;
  * limitations under the License.
  */
 
-public abstract class SuggestFSTBuilder<T> {
-  
-  public abstract BuildStatus add(BytesRef term) throws IOException;
-  
-  public abstract void finish();
-  
-  public abstract long totalTermCount();
-  
-  public enum BuildStatus {
-    Duplicate, MustSerialize, Added
-  }
-  
-  public abstract FST<Long> finishCurrentFST(BytesRef upper, BytesRef lower)
-      throws IOException;
+public abstract class FSTIterator<T> {
 
-  public abstract BytesRef combine(BytesRef spare, InputOutput<T> inputOutput);
   
-  
-  public abstract FST<T> load(DataInput input) throws IOException;
-  
-  public abstract BytesRefFSTEnum<T> openEnum(FST<T> fst);
-  
+  public abstract FST<T> next() throws IOException;
+  public abstract void fillUpper(BytesRef bytesRef);
+  public abstract void fillLower(BytesRef bytesRef);
 }

@@ -1,5 +1,7 @@
 package org.apache.lucene.index;
 
+import java.io.IOException;
+
 import org.apache.lucene.util.fst.FST;
 
 /**
@@ -21,6 +23,5 @@ import org.apache.lucene.util.fst.FST;
 
 public interface ToFST<T> {
   // NOCOMMIT maybe just cast to the impl?
-  // do we need a generic interface ie not always FST<Long>?
-  public FST<T> get();
+  public FSTIterator<T> getIterator() throws IOException;
 }

@@ -85,6 +85,8 @@ public class WFSTCompletionLookup extends Lookup {
     this(true);
   }
   
+  
+  
   /**
    * Creates a new suggester.
    * 
@@ -95,6 +97,10 @@ public class WFSTCompletionLookup extends Lookup {
    */
   public WFSTCompletionLookup(boolean exactFirst) {
     this.exactFirst = exactFirst;
+  }
+  
+  void setFST(FST<Long> fst) {
+    this.fst = fst; // nocommit
   }
   
   @Override

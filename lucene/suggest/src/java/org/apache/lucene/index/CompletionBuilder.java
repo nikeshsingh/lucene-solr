@@ -104,7 +104,9 @@ public abstract class CompletionBuilder {
     assert sequentialSubReaders.size() == 1;
     Terms terms = sequentialSubReaders.get(0).terms(getSuggestField());
     @SuppressWarnings("unchecked")
-    FST<Long> fst = ((ToFST<Long>)terms).get();
+    FSTIterator<Long> iter = ((ToFST<Long>)terms).getIterator();
+    FST<Long> fst = iter.next();
+    assert iter.next() == null;
     return fst;
     } finally {
       IOUtils.close(reader, writer);
