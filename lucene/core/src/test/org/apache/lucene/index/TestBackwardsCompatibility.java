@@ -63,6 +63,7 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util._TestUtil;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.junit.AfterClass;
@@ -717,24 +718,24 @@ public class TestBackwardsCompatibility extends LuceneTestCase {
       BytesRef aaaTerm = new BytesRef("aaa");
 
       // should be found exactly
-      assertEquals(TermsEnum.SeekStatus.FOUND,
+      assertEquals(SeekStatus.FOUND,
                    terms.seekCeil(aaaTerm));
       assertEquals(35, countDocs(_TestUtil.docs(random(), terms, null, null, 0)));
       assertNull(terms.next());
 
       // should hit end of field
-      assertEquals(TermsEnum.SeekStatus.END,
+      assertEquals(SeekStatus.END,
                    terms.seekCeil(new BytesRef("bbb")));
       assertNull(terms.next());
 
       // should seek to aaa
-      assertEquals(TermsEnum.SeekStatus.NOT_FOUND,
+      assertEquals(SeekStatus.NOT_FOUND,
                    terms.seekCeil(new BytesRef("a")));
       assertTrue(terms.term().bytesEquals(aaaTerm));
       assertEquals(35, countDocs(_TestUtil.docs(random(), terms, null, null, 0)));
       assertNull(terms.next());
 
-      assertEquals(TermsEnum.SeekStatus.FOUND,
+      assertEquals(SeekStatus.FOUND,
                    terms.seekCeil(aaaTerm));
       assertEquals(35, countDocs(_TestUtil.docs(random(), terms,null, null, 0)));
       assertNull(terms.next());

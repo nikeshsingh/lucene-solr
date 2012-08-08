@@ -30,6 +30,7 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util.UnicodeUtil;
 
 public class TestIndexWriterUnicode extends LuceneTestCase {
@@ -162,7 +163,7 @@ public class TestIndexWriterUnicode extends LuceneTestCase {
     while(it.hasNext()) {
       BytesRef tr = new BytesRef(it.next());
       assertEquals("seek failed for term=" + termDesc(tr.utf8ToString()),
-                   TermsEnum.SeekStatus.FOUND,
+                   SeekStatus.FOUND,
                    terms.seekCeil(tr));
     }
   }

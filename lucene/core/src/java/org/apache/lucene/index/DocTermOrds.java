@@ -21,6 +21,7 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.util.PagedBytes;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util.StringHelper;
 
 import java.io.IOException;
@@ -259,7 +260,7 @@ public class DocTermOrds {
     final TermsEnum te = terms.iterator(null);
     final BytesRef seekStart = termPrefix != null ? termPrefix : new BytesRef();
     //System.out.println("seekStart=" + seekStart.utf8ToString());
-    if (te.seekCeil(seekStart) == TermsEnum.SeekStatus.END) {
+    if (te.seekCeil(seekStart) == SeekStatus.END) {
       // No terms match
       return;
     }
@@ -719,8 +720,8 @@ public class DocTermOrds {
 
       if (startIdx >= 0) {
         // we hit the term exactly... lucky us!
-        TermsEnum.SeekStatus seekStatus = termsEnum.seekCeil(target);
-        assert seekStatus == TermsEnum.SeekStatus.FOUND;
+        SeekStatus seekStatus = termsEnum.seekCeil(target);
+        assert seekStatus == SeekStatus.FOUND;
         ord = startIdx << indexIntervalBits;
         setTerm();
         assert term != null;
@@ -732,8 +733,8 @@ public class DocTermOrds {
     
       if (startIdx == 0) {
         // our target occurs *before* the first term
-        TermsEnum.SeekStatus seekStatus = termsEnum.seekCeil(target);
-        assert seekStatus == TermsEnum.SeekStatus.NOT_FOUND;
+        SeekStatus seekStatus = termsEnum.seekCeil(target);
+        assert seekStatus == SeekStatus.NOT_FOUND;
         ord = 0;
         setTerm();
         assert term != null;
@@ -748,8 +749,8 @@ public class DocTermOrds {
         // so we don't need to seek.
       } else {
         // seek to the right block
-        TermsEnum.SeekStatus seekStatus = termsEnum.seekCeil(indexedTermsArray[startIdx]);
-        assert seekStatus == TermsEnum.SeekStatus.FOUND;
+        SeekStatus seekStatus = termsEnum.seekCeil(indexedTermsArray[startIdx]);
+        assert seekStatus == SeekStatus.FOUND;
         ord = startIdx << indexIntervalBits;
         setTerm();
         assert term != null;  // should be non-null since it's in the index
@@ -778,8 +779,8 @@ public class DocTermOrds {
         //System.out.println("  do seek term=" + base.utf8ToString());
         ord = idx << indexIntervalBits;
         delta = (int) (targetOrd - ord);
-        final TermsEnum.SeekStatus seekStatus = termsEnum.seekCeil(base, true);
-        assert seekStatus == TermsEnum.SeekStatus.FOUND;
+        final SeekStatus seekStatus = termsEnum.seekCeil(base, true);
+        assert seekStatus == SeekStatus.FOUND;
       } else {
         //System.out.println("seek w/in block");
       }

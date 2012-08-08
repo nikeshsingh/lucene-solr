@@ -20,6 +20,7 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiFields;
@@ -96,11 +97,11 @@ public class SrndTruncQuery extends SimpleTerm {
       try {
         TermsEnum termsEnum = terms.iterator(null);
 
-        TermsEnum.SeekStatus status = termsEnum.seekCeil(prefixRef);
+        SeekStatus status = termsEnum.seekCeil(prefixRef);
         BytesRef text;
-        if (status == TermsEnum.SeekStatus.FOUND) {
+        if (status == SeekStatus.FOUND) {
           text = prefixRef;
-        } else if (status == TermsEnum.SeekStatus.NOT_FOUND) {
+        } else if (status == SeekStatus.NOT_FOUND) {
           text = termsEnum.term();
         } else {
           text = null;

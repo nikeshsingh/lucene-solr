@@ -53,6 +53,7 @@ import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.LineFileDocs;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.LuceneTestCase;
@@ -1194,10 +1195,10 @@ public class TestFSTs extends LuceneTestCase {
               System.out.println("TEST: seek non-exist " + randomTerm.utf8ToString() + " " + randomTerm);
             }
 
-            final TermsEnum.SeekStatus seekResult = termsEnum.seekCeil(randomTerm);
+            final SeekStatus seekResult = termsEnum.seekCeil(randomTerm);
             final InputOutput<Long> fstSeekResult = fstEnum.seekCeil(randomTerm);
 
-            if (seekResult == TermsEnum.SeekStatus.END) {
+            if (seekResult == SeekStatus.END) {
               assertNull("got " + (fstSeekResult == null ? "null" : fstSeekResult.input.utf8ToString()) + " but expected null", fstSeekResult);
             } else {
               assertSame(termsEnum, fstEnum, storeOrd);
@@ -1719,25 +1720,25 @@ public class TestFSTs extends LuceneTestCase {
           System.out.println("  useCache=" + useCache);
         }
 
-        final TermsEnum.SeekStatus status;
+        final SeekStatus status;
         if (nextID == null) {
           if (termsEnum.seekExact(new BytesRef(id), useCache)) {
-            status = TermsEnum.SeekStatus.FOUND;
+            status = SeekStatus.FOUND;
           } else {
-            status = TermsEnum.SeekStatus.NOT_FOUND;
+            status = SeekStatus.NOT_FOUND;
           }
         } else {
           status = termsEnum.seekCeil(new BytesRef(id), useCache);
         }
 
         if (nextID != null) {
-          assertEquals(TermsEnum.SeekStatus.NOT_FOUND, status);
+          assertEquals(SeekStatus.NOT_FOUND, status);
           assertEquals("expected=" + nextID + " actual=" + termsEnum.term().utf8ToString(), new BytesRef(nextID), termsEnum.term());
         } else if (!exists) {
-          assertTrue(status == TermsEnum.SeekStatus.NOT_FOUND ||
-                     status == TermsEnum.SeekStatus.END);
+          assertTrue(status == SeekStatus.NOT_FOUND ||
+                     status == SeekStatus.END);
         } else {
-          assertEquals(TermsEnum.SeekStatus.FOUND, status);
+          assertEquals(SeekStatus.FOUND, status);
         }
       }
 

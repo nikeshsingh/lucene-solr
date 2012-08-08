@@ -24,6 +24,7 @@ import org.apache.lucene.index.DocTermOrds;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.solr.SolrTestCaseJ4;
 import org.junit.After;
 import org.junit.BeforeClass;
@@ -93,8 +94,8 @@ public class TestFaceting extends SolrTestCaseJ4 {
       if (te == null) {
         br = null;
       } else {
-        TermsEnum.SeekStatus status = te.seekCeil(new BytesRef(s));
-        if (status == TermsEnum.SeekStatus.END) {
+        SeekStatus status = te.seekCeil(new BytesRef(s));
+        if (status == SeekStatus.END) {
           br = null;
         } else {
           br = te.term();
@@ -109,7 +110,7 @@ public class TestFaceting extends SolrTestCaseJ4 {
 
     // test seeking before term
     if (size>0) {
-      assertEquals(size>0, te.seekCeil(new BytesRef("000"), true) != TermsEnum.SeekStatus.END);
+      assertEquals(size>0, te.seekCeil(new BytesRef("000"), true) != SeekStatus.END);
       assertEquals(0, te.ord());
       assertEquals(t(0), te.term().utf8ToString());
     }

@@ -42,6 +42,7 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FieldCacheSanityChecker;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.PagedBytes;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util.packed.GrowableWriter;
 import org.apache.lucene.util.packed.PackedInts;
 

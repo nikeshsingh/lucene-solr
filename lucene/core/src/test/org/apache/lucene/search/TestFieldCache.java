@@ -37,6 +37,7 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util._TestUtil;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -227,7 +228,7 @@ public class TestFieldCache extends LuceneTestCase {
     for (int i = 0; i < num; i++) {
       int k = _TestUtil.nextInt(random(), 1, nTerms-1);
       BytesRef val1 = termsIndex.lookup(k, val);
-      assertEquals(TermsEnum.SeekStatus.FOUND, tenum.seekCeil(val1));
+      assertEquals(SeekStatus.FOUND, tenum.seekCeil(val1));
       assertEquals(val1, tenum.term());
     }
     

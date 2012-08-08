@@ -24,6 +24,7 @@ import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.SeekStatus;
 
  
 public class SrndTermQuery extends SimpleTerm {
@@ -53,8 +54,8 @@ public class SrndTermQuery extends SimpleTerm {
     if (terms != null) {
       TermsEnum termsEnum = terms.iterator(null);
 
-      TermsEnum.SeekStatus status = termsEnum.seekCeil(new BytesRef(getTermText()));
-      if (status == TermsEnum.SeekStatus.FOUND) {
+      SeekStatus status = termsEnum.seekCeil(new BytesRef(getTermText()));
+      if (status == SeekStatus.FOUND) {
         mtv.visitMatchingTerm(getLuceneTerm(fieldName));
       }
     }

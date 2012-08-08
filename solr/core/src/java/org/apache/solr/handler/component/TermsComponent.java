@@ -19,6 +19,7 @@ package org.apache.solr.handler.component;
 import org.apache.lucene.index.*;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util.StringHelper;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.*;
@@ -163,7 +164,7 @@ public class TermsComponent extends SearchComponent {
      BytesRef term = null;
 
       if (lowerBytes != null) {
-        if (termsEnum.seekCeil(lowerBytes, true) == TermsEnum.SeekStatus.END) {
+        if (termsEnum.seekCeil(lowerBytes, true) == SeekStatus.END) {
           termsEnum = null;
         } else {
           term = termsEnum.term();

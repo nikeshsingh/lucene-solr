@@ -23,6 +23,7 @@ import java.util.Comparator;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.SeekStatus;
 
 /**
  * Abstract class for enumerating a subset of all terms. 

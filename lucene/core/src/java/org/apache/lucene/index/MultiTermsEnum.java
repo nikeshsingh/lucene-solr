@@ -20,6 +20,7 @@ package org.apache.lucene.index;
 import org.apache.lucene.util.PriorityQueue;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.SeekStatus;
 
 import java.io.IOException;
 import java.util.Arrays;

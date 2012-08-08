@@ -83,10 +83,11 @@ abstract class Writer extends DocValuesConsumer {
    *          docvalues of type {@link Type#BYTES_FIXED_SORTED} and
    *          {@link Type#BYTES_VAR_SORTED}.
    * @return a new {@link Writer} instance for the given {@link Type}
+   * @throws IOException if an {@link IOException} occurs during consumer creation
    * @see PackedInts#getReader(org.apache.lucene.store.DataInput)
    */
   public static DocValuesConsumer create(Type type, String id, Directory directory,
-      Comparator<BytesRef> comp, Counter bytesUsed, IOContext context, float acceptableOverheadRatio) {
+      Comparator<BytesRef> comp, Counter bytesUsed, IOContext context, float acceptableOverheadRatio) throws IOException {
     if (comp == null) {
       comp = BytesRef.getUTF8SortedAsUnicodeComparator();
     }

@@ -30,6 +30,7 @@ import org.apache.lucene.store.BaseDirectoryWrapper;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.SeekStatus;
 
 public class TestFilterAtomicReader extends LuceneTestCase {
 
@@ -162,7 +163,7 @@ public class TestFilterAtomicReader extends LuceneTestCase {
       assertTrue(terms.term().utf8ToString().indexOf('e') != -1);
     }
     
-    assertEquals(TermsEnum.SeekStatus.FOUND, terms.seekCeil(new BytesRef("one")));
+    assertEquals(SeekStatus.FOUND, terms.seekCeil(new BytesRef("one")));
     
     DocsAndPositionsEnum positions = terms.docsAndPositions(MultiFields.getLiveDocs(reader), null);
     while (positions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {

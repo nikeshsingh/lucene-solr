@@ -28,6 +28,7 @@ import org.apache.lucene.spatial.prefix.tree.SpatialPrefixTree;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.OpenBitSet;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util.StringHelper;
 
 import java.io.IOException;
@@ -106,10 +107,10 @@ RE "scan" threshold:
     while(!cells.isEmpty()) {
       final Node cell = cells.removeFirst();
       final BytesRef cellTerm = new BytesRef(cell.getTokenBytes());
-      TermsEnum.SeekStatus seekStat = termsEnum.seekCeil(cellTerm);
-      if (seekStat == TermsEnum.SeekStatus.END)
+      SeekStatus seekStat = termsEnum.seekCeil(cellTerm);
+      if (seekStat == SeekStatus.END)
         break;
-      if (seekStat == TermsEnum.SeekStatus.NOT_FOUND)
+      if (seekStat == SeekStatus.NOT_FOUND)
         continue;
       if (cell.getLevel() == detailLevel || cell.isLeaf()) {
         docsEnum = termsEnum.docs(acceptDocs, docsEnum, 0);

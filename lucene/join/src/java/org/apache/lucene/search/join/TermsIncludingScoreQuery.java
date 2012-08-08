@@ -34,6 +34,7 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefHash;
 import org.apache.lucene.util.FixedBitSet;
+import org.apache.lucene.util.SeekStatus;
 
 import java.io.IOException;
 import java.util.Locale;
@@ -182,8 +183,8 @@ class TermsIncludingScoreQuery extends Query {
         }
 
         scoreUpto = upto;
-        TermsEnum.SeekStatus status = termsEnum.seekCeil(terms.get(ords[upto++], spare), true);
-        if (status == TermsEnum.SeekStatus.FOUND) {
+        SeekStatus status = termsEnum.seekCeil(terms.get(ords[upto++], spare), true);
+        if (status == SeekStatus.FOUND) {
           docsEnum = reuse = termsEnum.docs(acceptDocs, reuse, 0);
         }
       } while (docsEnum == null);
@@ -251,8 +252,8 @@ class TermsIncludingScoreQuery extends Query {
           }
 
           scoreUpto = upto;
-          TermsEnum.SeekStatus status = termsEnum.seekCeil(terms.get(ords[upto++], spare), true);
-          if (status == TermsEnum.SeekStatus.FOUND) {
+          SeekStatus status = termsEnum.seekCeil(terms.get(ords[upto++], spare), true);
+          if (status == SeekStatus.FOUND) {
             docsEnum = reuse = termsEnum.docs(acceptDocs, reuse, 0);
           }
         } while (docsEnum == null);

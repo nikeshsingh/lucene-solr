@@ -20,6 +20,7 @@ package org.apache.lucene.index;
 import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
 
 import java.io.IOException;

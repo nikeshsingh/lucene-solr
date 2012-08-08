@@ -23,6 +23,7 @@ import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.OpenBitSet;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util.StringHelper;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.SolrParams;
@@ -306,7 +307,7 @@ class JoinQuery extends Query {
       if (prefix == null) {
         term = termsEnum.next();
       } else {
-        if (termsEnum.seekCeil(prefix, true) != TermsEnum.SeekStatus.END) {
+        if (termsEnum.seekCeil(prefix, true) != SeekStatus.END) {
           term = termsEnum.term();
         }
       }
@@ -377,9 +378,9 @@ class JoinQuery extends Query {
         if (intersects) {
           fromTermHits++;
           fromTermHitsTotalDf++;
-          TermsEnum.SeekStatus status = toTermsEnum.seekCeil(term);
-          if (status == TermsEnum.SeekStatus.END) break;
-          if (status == TermsEnum.SeekStatus.FOUND) {
+          SeekStatus status = toTermsEnum.seekCeil(term);
+          if (status == SeekStatus.END) break;
+          if (status == SeekStatus.FOUND) {
             toTermHits++;
             int df = toTermsEnum.docFreq();
             toTermHitsTotalDf += df;

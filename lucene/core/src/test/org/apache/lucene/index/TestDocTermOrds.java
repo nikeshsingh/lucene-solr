@@ -35,6 +35,7 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.util._TestUtil;
 
@@ -329,8 +330,8 @@ public class TestDocTermOrds extends LuceneTestCase {
         Terms terms = MultiFields.getTerms(r, "field");
         if (terms != null) {
           TermsEnum termsEnum = terms.iterator(null);
-          TermsEnum.SeekStatus result = termsEnum.seekCeil(prefixRef, false);
-          if (result != TermsEnum.SeekStatus.END) {
+          SeekStatus result = termsEnum.seekCeil(prefixRef, false);
+          if (result != SeekStatus.END) {
             assertFalse("term=" + termsEnum.term().utf8ToString() + " matches prefix=" + prefixRef.utf8ToString(), StringHelper.startsWith(termsEnum.term(), prefixRef));
           } else {
             // ok

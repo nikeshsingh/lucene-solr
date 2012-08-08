@@ -22,6 +22,7 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.SeekStatus;
 
 public class TestMultiPassIndexSplitter extends LuceneTestCase {
   IndexReader input;
@@ -71,7 +72,7 @@ public class TestMultiPassIndexSplitter extends LuceneTestCase {
     Document doc = ir.document(0);
     assertEquals("0", doc.get("id"));
     TermsEnum te = MultiFields.getTerms(ir, "id").iterator(null);
-    assertEquals(TermsEnum.SeekStatus.NOT_FOUND, te.seekCeil(new BytesRef("1")));
+    assertEquals(SeekStatus.NOT_FOUND, te.seekCeil(new BytesRef("1")));
     assertNotSame("1", te.term().utf8ToString());
     ir.close();
     ir = DirectoryReader.open(dirs[1]);
@@ -79,7 +80,7 @@ public class TestMultiPassIndexSplitter extends LuceneTestCase {
     doc = ir.document(0);
     assertEquals("1", doc.get("id"));
     te = MultiFields.getTerms(ir, "id").iterator(null);
-    assertEquals(TermsEnum.SeekStatus.NOT_FOUND, te.seekCeil(new BytesRef("0")));
+    assertEquals(SeekStatus.NOT_FOUND, te.seekCeil(new BytesRef("0")));
 
     assertNotSame("0", te.term().utf8ToString());
     ir.close();
@@ -89,10 +90,10 @@ public class TestMultiPassIndexSplitter extends LuceneTestCase {
     assertEquals("2", doc.get("id"));
 
     te = MultiFields.getTerms(ir, "id").iterator(null);
-    assertEquals(TermsEnum.SeekStatus.NOT_FOUND, te.seekCeil(new BytesRef("1")));
+    assertEquals(SeekStatus.NOT_FOUND, te.seekCeil(new BytesRef("1")));
     assertNotSame("1", te.term());
 
-    assertEquals(TermsEnum.SeekStatus.NOT_FOUND, te.seekCeil(new BytesRef("0")));
+    assertEquals(SeekStatus.NOT_FOUND, te.seekCeil(new BytesRef("0")));
     assertNotSame("0", te.term().utf8ToString());
     ir.close();
     for (Directory d : dirs)
@@ -130,7 +131,7 @@ public class TestMultiPassIndexSplitter extends LuceneTestCase {
     // make sure the deleted doc is not here
     TermsEnum te = MultiFields.getTerms(ir, "id").iterator(null);
     Term t = new Term("id", (NUM_DOCS - 1) + "");
-    assertEquals(TermsEnum.SeekStatus.NOT_FOUND, te.seekCeil(new BytesRef(t.text())));
+    assertEquals(SeekStatus.NOT_FOUND, te.seekCeil(new BytesRef(t.text())));
     assertNotSame(t.text(), te.term().utf8ToString());
     ir.close();
     for (Directory d : dirs)

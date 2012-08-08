@@ -29,6 +29,7 @@ import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LineFileDocs;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util._TestUtil;
@@ -111,7 +112,7 @@ public class TestTermsEnum extends LuceneTestCase {
             System.out.println("TEST: iter seekCeil target=" + target.utf8ToString() + " exists=" + exists);
           }
           // seekCeil
-          final TermsEnum.SeekStatus status = termsEnum.seekCeil(target, random().nextBoolean());
+          final SeekStatus status = termsEnum.seekCeil(target, random().nextBoolean());
           if (VERBOSE) {
             System.out.println("  got " + status);
           }
@@ -119,14 +120,14 @@ public class TestTermsEnum extends LuceneTestCase {
           if (upto < 0) {
             upto = -(upto+1);
             if (upto >= terms.size()) {
-              assertEquals(TermsEnum.SeekStatus.END, status);
+              assertEquals(SeekStatus.END, status);
               upto = -1;
             } else {
-              assertEquals(TermsEnum.SeekStatus.NOT_FOUND, status);
+              assertEquals(SeekStatus.NOT_FOUND, status);
               assertEquals(terms.get(upto), termsEnum.term());
             }
           } else {
-            assertEquals(TermsEnum.SeekStatus.FOUND, status);
+            assertEquals(SeekStatus.FOUND, status);
             assertEquals(terms.get(upto), termsEnum.term());
           }
         } else {
@@ -672,18 +673,18 @@ public class TestTermsEnum extends LuceneTestCase {
           System.out.println("  seekCeil");
         }
 
-        final TermsEnum.SeekStatus result = te.seekCeil(t, random().nextBoolean());
+        final SeekStatus result = te.seekCeil(t, random().nextBoolean());
         if (VERBOSE) {
           System.out.println("  got " + result);
         }
 
         if (loc >= 0) {
-          assertEquals(TermsEnum.SeekStatus.FOUND, result);
+          assertEquals(SeekStatus.FOUND, result);
         } else if (loc == END_LOC) {
-          assertEquals(TermsEnum.SeekStatus.END, result);
+          assertEquals(SeekStatus.END, result);
         } else {
           assert loc >= -validTerms.length;
-          assertEquals(TermsEnum.SeekStatus.NOT_FOUND, result);
+          assertEquals(SeekStatus.NOT_FOUND, result);
         }
       }
 

@@ -24,6 +24,7 @@ import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefIterator;
+import org.apache.lucene.util.SeekStatus;
 
 /** Iterator to seek ({@link #seekCeil(BytesRef)}, {@link
  * #seekExact(BytesRef,boolean)}) or step through ({@link
@@ -51,13 +52,6 @@ public abstract class TermsEnum implements BytesRefIterator {
     return atts;
   }
   
-  /** Represents returned result from {@link #seekCeil}.
-   *  If status is FOUND, then the precise term was found.
-   *  If status is NOT_FOUND, then a different term was
-   *  found.  If the status is END, the end of the iteration
-   *  was hit. */
-  public static enum SeekStatus {END, FOUND, NOT_FOUND};
-
   /** Attempts to seek to the exact term, returning
    *  true if the term is found.  If this returns false, the
    *  enum is unpositioned.  For some codecs, seekExact may

@@ -5,6 +5,7 @@ import java.io.IOException;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
 
 /*

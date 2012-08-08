@@ -19,6 +19,7 @@ package org.apache.lucene.queryparser.surround.query;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.index.IndexReader;
@@ -64,10 +65,10 @@ public class SrndPrefixQuery extends SimpleTerm {
       TermsEnum termsEnum = terms.iterator(null);
 
       boolean skip = false;
-      TermsEnum.SeekStatus status = termsEnum.seekCeil(new BytesRef(getPrefix()));
-      if (status == TermsEnum.SeekStatus.FOUND) {
+      SeekStatus status = termsEnum.seekCeil(new BytesRef(getPrefix()));
+      if (status == SeekStatus.FOUND) {
         mtv.visitMatchingTerm(getLucenePrefixTerm(fieldName));
-      } else if (status == TermsEnum.SeekStatus.NOT_FOUND) {
+      } else if (status == SeekStatus.NOT_FOUND) {
         if (StringHelper.startsWith(termsEnum.term(), prefixRef)) {
           mtv.visitMatchingTerm(new Term(fieldName, termsEnum.term().utf8ToString()));
         } else {

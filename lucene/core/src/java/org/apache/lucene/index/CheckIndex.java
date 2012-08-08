@@ -44,6 +44,7 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CommandLineUtil;
 import org.apache.lucene.util.FixedBitSet;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util.StringHelper;
 
 /**
@@ -1038,7 +1039,7 @@ public class CheckIndex {
         
         // Test seek to last term:
         if (lastTerm != null) {
-          if (termsEnum.seekCeil(lastTerm) != TermsEnum.SeekStatus.FOUND) { 
+          if (termsEnum.seekCeil(lastTerm) != SeekStatus.FOUND) { 
             throw new RuntimeException("seek to last term " + lastTerm + " failed");
           }
           
@@ -1080,7 +1081,7 @@ public class CheckIndex {
             // Seek by term
             long totDocCount = 0;
             for(int i=seekCount-1;i>=0;i--) {
-              if (termsEnum.seekCeil(seekTerms[i]) != TermsEnum.SeekStatus.FOUND) {
+              if (termsEnum.seekCeil(seekTerms[i]) != SeekStatus.FOUND) {
                 throw new RuntimeException("seek to existing term " + seekTerms[i] + " failed");
               }
               

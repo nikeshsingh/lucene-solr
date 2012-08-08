@@ -262,14 +262,14 @@ public abstract class TermGroupFacetCollector extends AbstractGroupFacetCollecto
       }
 
       if (facetPrefix != null) {
-        TermsEnum.SeekStatus seekStatus;
+        SeekStatus seekStatus;
         if (facetOrdTermsEnum != null) {
           seekStatus = facetOrdTermsEnum.seekCeil(facetPrefix, true);
         } else {
-          seekStatus = TermsEnum.SeekStatus.END;
+          seekStatus = SeekStatus.END;
         }
 
-        if (seekStatus != TermsEnum.SeekStatus.END) {
+        if (seekStatus != SeekStatus.END) {
           startFacetOrd = (int) facetOrdTermsEnum.ord();
         } else {
           startFacetOrd = 0;
@@ -280,7 +280,7 @@ public abstract class TermGroupFacetCollector extends AbstractGroupFacetCollecto
         BytesRef facetEndPrefix = BytesRef.deepCopyOf(facetPrefix);
         facetEndPrefix.append(UnicodeUtil.BIG_TERM);
         seekStatus = facetOrdTermsEnum.seekCeil(facetEndPrefix, true);
-        if (seekStatus != TermsEnum.SeekStatus.END) {
+        if (seekStatus != SeekStatus.END) {
           endFacetOrd = (int) facetOrdTermsEnum.ord();
         } else {
           endFacetOrd = facetFieldDocTermOrds.numTerms(); // Don't include null...

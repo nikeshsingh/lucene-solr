@@ -24,6 +24,7 @@ import org.apache.lucene.search.Filter;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
+import org.apache.lucene.util.SeekStatus;
 
 import java.io.IOException;
 import java.util.Set;
@@ -81,7 +82,7 @@ public class TermsFilter extends Filter {
       if (terms != null) { // TODO this check doesn't make sense, decide which variable its supposed to be for
         br.copyBytes(term.bytes());
         assert termsEnum != null;
-        if (termsEnum.seekCeil(br) == TermsEnum.SeekStatus.FOUND) {
+        if (termsEnum.seekCeil(br) == SeekStatus.FOUND) {
           docs = termsEnum.docs(acceptDocs, docs, 0);
           while (docs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
             result.set(docs.docID());

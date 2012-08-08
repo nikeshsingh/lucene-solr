@@ -44,6 +44,7 @@ import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.OpenBitSet;
+import org.apache.lucene.util.SeekStatus;
 import org.apache.lucene.util._TestUtil;
 import org.junit.BeforeClass;
 
@@ -283,7 +284,7 @@ public class TestCodecs extends LuceneTestCase {
     assertNull(termsEnum.next());
 
     for(int i=0;i<NUM_TERMS;i++) {
-      assertEquals(termsEnum.seekCeil(new BytesRef(terms[i].text2)), TermsEnum.SeekStatus.FOUND);
+      assertEquals(termsEnum.seekCeil(new BytesRef(terms[i].text2)), SeekStatus.FOUND);
     }
 
     assertNull(fieldsEnum.next());
@@ -468,8 +469,8 @@ public class TestCodecs extends LuceneTestCase {
 
         // Test random seek:
         TermData term = field.terms[random().nextInt(field.terms.length)];
-        TermsEnum.SeekStatus status = termsEnum.seekCeil(new BytesRef(term.text2));
-        assertEquals(status, TermsEnum.SeekStatus.FOUND);
+        SeekStatus status = termsEnum.seekCeil(new BytesRef(term.text2));
+        assertEquals(status, SeekStatus.FOUND);
         assertEquals(term.docs.length, termsEnum.docFreq());
         if (field.omitTF) {
           this.verifyDocs(term.docs, term.positions, _TestUtil.docs(random(), termsEnum, null, null, 0), false);
@@ -488,7 +489,7 @@ public class TestCodecs extends LuceneTestCase {
           // ok -- skip it
         }
         if (success) {
-          assertEquals(status, TermsEnum.SeekStatus.FOUND);
+          assertEquals(status, SeekStatus.FOUND);
           assertTrue(termsEnum.term().bytesEquals(new BytesRef(term.text2)));
           assertEquals(term.docs.length, termsEnum.docFreq());
           if (field.omitTF) {
@@ -505,8 +506,8 @@ public class TestCodecs extends LuceneTestCase {
         for(int i=0;i<100;i++) {
           final String text2 = _TestUtil.randomUnicodeString(random()) + ".";
           status = termsEnum.seekCeil(new BytesRef(text2));
-          assertTrue(status == TermsEnum.SeekStatus.NOT_FOUND ||
-                     status == TermsEnum.SeekStatus.END);
+          assertTrue(status == SeekStatus.NOT_FOUND ||
+                     status == SeekStatus.END);
         }
 
         // Seek to each term, backwards:
@@ -514,7 +515,7 @@ public class TestCodecs extends LuceneTestCase {
           System.out.println("TEST: seek terms backwards");
         }
         for(int i=field.terms.length-1;i>=0;i--) {
-          assertEquals(Thread.currentThread().getName() + ": field=" + field.fieldInfo.name + " term=" + field.terms[i].text2, TermsEnum.SeekStatus.FOUND, termsEnum.seekCeil(new BytesRef(field.terms[i].text2)));
+          assertEquals(Thread.currentThread().getName() + ": field=" + field.fieldInfo.name + " term=" + field.terms[i].text2, SeekStatus.FOUND, termsEnum.seekCeil(new BytesRef(field.terms[i].text2)));
           assertEquals(field.terms[i].docs.length, termsEnum.docFreq());
         }
 

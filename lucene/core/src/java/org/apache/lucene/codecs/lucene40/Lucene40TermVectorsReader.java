@@ -41,6 +41,7 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.SeekStatus;
 
 /**
  * Lucene 4.0 Term Vectors reader.

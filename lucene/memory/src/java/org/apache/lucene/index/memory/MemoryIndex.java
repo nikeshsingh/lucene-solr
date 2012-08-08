@@ -61,6 +61,7 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Constants; // for javadocs
 import org.apache.lucene.util.RamUsageEstimator;
+import org.apache.lucene.util.SeekStatus;
 
 /**
  * High-performance single-document main memory Apache Lucene fulltext search index. 

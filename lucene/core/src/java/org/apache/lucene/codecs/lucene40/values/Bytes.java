@@ -121,11 +121,12 @@ public final class Bytes {
    *          {@link Type#BYTES_VAR_SORTED}.
    * @param context I/O Context
    * @return a new {@link Writer} instance
+   * @throws IOException if an {@link IOException} occurs during writer creation
    * @see PackedInts#getReader(org.apache.lucene.store.DataInput)
    */
   public static DocValuesConsumer getWriter(Directory dir, String id, Mode mode,
       boolean fixedSize, Comparator<BytesRef> sortComparator,
-      Counter bytesUsed, IOContext context, float acceptableOverheadRatio) {
+      Counter bytesUsed, IOContext context, float acceptableOverheadRatio) throws IOException {
     // TODO -- i shouldn't have to specify fixed? can
     // track itself & do the write thing at write time?
     if (sortComparator == null) {
