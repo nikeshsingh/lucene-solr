@@ -26,6 +26,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.CharBuffer;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
@@ -77,6 +79,7 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.junit.Assert;
 
+import com.carrotsearch.randomizedtesting.RandomizedContext;
 import com.carrotsearch.randomizedtesting.generators.RandomInts;
 import com.carrotsearch.randomizedtesting.generators.RandomPicks;
 
@@ -185,15 +188,15 @@ public class _TestUtil {
     ByteArrayOutputStream bos = new ByteArrayOutputStream(1024);
     CheckIndex checker = new CheckIndex(dir);
     checker.setCrossCheckTermVectors(crossCheckTermVectors);
-    checker.setInfoStream(new PrintStream(bos), false);
+    checker.setInfoStream(new PrintStream(bos, false, "UTF-8"), false);
     CheckIndex.Status indexStatus = checker.checkIndex(null);
     if (indexStatus == null || indexStatus.clean == false) {
       System.out.println("CheckIndex failed");
-      System.out.println(bos.toString());
+      System.out.println(bos.toString("UTF-8"));
       throw new RuntimeException("CheckIndex failed");
     } else {
       if (LuceneTestCase.INFOSTREAM) {
-        System.out.println(bos.toString());
+        System.out.println(bos.toString("UTF-8"));
       }
       return indexStatus;
     }
@@ -210,7 +213,23 @@ public class _TestUtil {
 
   /** start and end are BOTH inclusive */
   public static int nextInt(Random r, int start, int end) {
-    return start + r.nextInt(end-start+1);
+    return RandomInts.randomIntBetween(r, start, end);
+  }
+
+  /** start and end are BOTH inclusive */
+  public static long nextLong(Random r, long start, long end) {
+    assert end >= start;
+    final BigInteger range = BigInteger.valueOf(end).add(BigInteger.valueOf(1)).subtract(BigInteger.valueOf(start));
+    if (range.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) <= 0) {
+      return start + r.nextInt(range.intValue());
+    } else {
+      // probably not evenly distributed when range is large, but OK for tests
+      final BigInteger augend = new BigDecimal(range).multiply(new BigDecimal(r.nextDouble())).toBigInteger();
+      final long result = BigInteger.valueOf(start).add(augend).longValue();
+      assert result >= start;
+      assert result <= end;
+      return result;
+    }
   }
 
   public static String randomSimpleString(Random r, int maxLength) {
@@ -661,10 +680,12 @@ public class _TestUtil {
     if (mp instanceof LogMergePolicy) {
       LogMergePolicy lmp = (LogMergePolicy) mp;
       lmp.setMergeFactor(Math.min(5, lmp.getMergeFactor()));
+      lmp.setUseCompoundFile(true);
     } else if (mp instanceof TieredMergePolicy) {
       TieredMergePolicy tmp = (TieredMergePolicy) mp;
       tmp.setMaxMergeAtOnce(Math.min(5, tmp.getMaxMergeAtOnce()));
       tmp.setSegmentsPerTier(Math.min(5, tmp.getSegmentsPerTier()));
+      tmp.setUseCompoundFile(true);
     }
     MergeScheduler ms = w.getConfig().getMergeScheduler();
     if (ms instanceof ConcurrentMergeScheduler) {
@@ -711,8 +732,12 @@ public class _TestUtil {
     }
     String newSuffix = suffix == null ? ".tmp" : suffix;
     File result;
+    // just pull one long always: we don't want to rely upon what may or may not
+    // already exist. otherwise tests might not reproduce, depending on when you last
+    // ran 'ant clean'
+    final Random random = new Random(RandomizedContext.current().getRandom().nextLong());
     do {
-      result = genTempFile(prefix, newSuffix, directory);
+      result = genTempFile(random, prefix, newSuffix, directory);
     } while (!result.createNewFile());
     return result;
   }
@@ -726,12 +751,12 @@ public class _TestUtil {
   private static class TempFileLocker {};
   private static TempFileLocker tempFileLocker = new TempFileLocker();
 
-  private static File genTempFile(String prefix, String suffix, File directory) {
+  private static File genTempFile(Random random, String prefix, String suffix, File directory) {
     int identify = 0;
 
     synchronized (tempFileLocker) {
       if (counter == 0) {
-        int newInt = new Random().nextInt();
+        int newInt = random.nextInt();
         counter = ((newInt / 65535) & 0xFFFF) + 0x2710;
         counterBase = counter;
       }
@@ -832,7 +857,7 @@ public class _TestUtil {
   // Returns a DocsEnum, but randomly sometimes uses a
   // DocsAndFreqsEnum, DocsAndPositionsEnum.  Returns null
   // if field/term doesn't exist:
-  public static DocsEnum docs(Random random, IndexReader r, String field, BytesRef term, Bits liveDocs, DocsEnum reuse, boolean needsFreqs) throws IOException {
+  public static DocsEnum docs(Random random, IndexReader r, String field, BytesRef term, Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
     final Terms terms = MultiFields.getTerms(r, field);
     if (terms == null) {
       return null;
@@ -841,45 +866,30 @@ public class _TestUtil {
     if (!termsEnum.seekExact(term, random.nextBoolean())) {
       return null;
     }
-    if (random.nextBoolean()) {
-      if (random.nextBoolean()) {
-        // TODO: cast re-use to D&PE if we can...?
-        DocsAndPositionsEnum docsAndPositions = termsEnum.docsAndPositions(liveDocs, null, true);
-        if (docsAndPositions == null) {
-          docsAndPositions = termsEnum.docsAndPositions(liveDocs, null, false);
-        }
-        if (docsAndPositions != null) {
-          return docsAndPositions;
-        }
-      }
-      final DocsEnum docsAndFreqs = termsEnum.docs(liveDocs, reuse, true);
-      if (docsAndFreqs != null) {
-        return docsAndFreqs;
-      }
-    }
-    return termsEnum.docs(liveDocs, reuse, needsFreqs);
+    return docs(random, termsEnum, liveDocs, reuse, flags);
   }
 
   // Returns a DocsEnum from a positioned TermsEnum, but
   // randomly sometimes uses a DocsAndFreqsEnum, DocsAndPositionsEnum.
-  public static DocsEnum docs(Random random, TermsEnum termsEnum, Bits liveDocs, DocsEnum reuse, boolean needsFreqs) throws IOException {
+  public static DocsEnum docs(Random random, TermsEnum termsEnum, Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
     if (random.nextBoolean()) {
       if (random.nextBoolean()) {
-        // TODO: cast re-use to D&PE if we can...?
-        DocsAndPositionsEnum docsAndPositions = termsEnum.docsAndPositions(liveDocs, null, true);
-        if (docsAndPositions == null) {
-          docsAndPositions = termsEnum.docsAndPositions(liveDocs, null, false);
+        final int posFlags;
+        switch (random.nextInt(4)) {
+          case 0: posFlags = 0; break;
+          case 1: posFlags = DocsAndPositionsEnum.FLAG_OFFSETS; break;
+          case 2: posFlags = DocsAndPositionsEnum.FLAG_PAYLOADS; break;
+          default: posFlags = DocsAndPositionsEnum.FLAG_OFFSETS | DocsAndPositionsEnum.FLAG_PAYLOADS; break;
         }
+        // TODO: cast to DocsAndPositionsEnum?
+        DocsAndPositionsEnum docsAndPositions = termsEnum.docsAndPositions(liveDocs, null, posFlags);
         if (docsAndPositions != null) {
           return docsAndPositions;
         }
       }
-      final DocsEnum docsAndFreqs = termsEnum.docs(liveDocs, null, true);
-      if (docsAndFreqs != null) {
-        return docsAndFreqs;
-      }
+      flags |= DocsEnum.FLAG_FREQS;
     }
-    return termsEnum.docs(liveDocs, null, needsFreqs);
+    return termsEnum.docs(liveDocs, reuse, flags);
   }
   
   public static CharSequence stringToCharSequence(String string, Random random) {

@@ -39,22 +39,19 @@ public final class StringField extends Field {
     TYPE_NOT_STORED.setIndexed(true);
     TYPE_NOT_STORED.setOmitNorms(true);
     TYPE_NOT_STORED.setIndexOptions(IndexOptions.DOCS_ONLY);
+    TYPE_NOT_STORED.setTokenized(false);
     TYPE_NOT_STORED.freeze();
 
     TYPE_STORED.setIndexed(true);
     TYPE_STORED.setOmitNorms(true);
     TYPE_STORED.setIndexOptions(IndexOptions.DOCS_ONLY);
     TYPE_STORED.setStored(true);
+    TYPE_STORED.setTokenized(false);
     TYPE_STORED.freeze();
   }
 
   /** Creates a new StringField. */
   public StringField(String name, String value, Store stored) {
     super(name, value, stored == Store.YES ? TYPE_STORED : TYPE_NOT_STORED);
-  }
-
-  @Override
-  public String stringValue() {
-    return (fieldsData == null) ? null : fieldsData.toString();
   }
 }

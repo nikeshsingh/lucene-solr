@@ -74,18 +74,18 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
       }
       //latitude
       SchemaField lat = subField(field, i);
-      f[i] = lat.createField(String.valueOf(latLon[LAT]), lat.omitNorms() ? 1F : boost);
+      f[i] = lat.createField(String.valueOf(latLon[LAT]), lat.indexed() && !lat.omitNorms() ? boost : 1f);
       i++;
       //longitude
       SchemaField lon = subField(field, i);
-      f[i] = lon.createField(String.valueOf(latLon[LON]), lon.omitNorms() ? 1F : boost);
+      f[i] = lon.createField(String.valueOf(latLon[LON]), lon.indexed() && !lon.omitNorms() ? boost : 1f);
 
     }
 
     if (field.stored()) {
       FieldType customType = new FieldType();
       customType.setStored(true);
-      f[f.length - 1] = createField(field.getName(), externalVal, customType, boost);
+      f[f.length - 1] = createField(field.getName(), externalVal, customType, 1f);
     }
     return f;
   }
@@ -485,6 +485,11 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
       return (float)(dist * qWeight);
     }
 
+    @Override
+    public float freq() throws IOException {
+      return 1;
+    }
+
     public Explanation explain(int doc) throws IOException {
       advance(doc);
       boolean matched = this.doc == doc;
@@ -595,6 +600,7 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
     // don't bother making the hash expensive - the center latitude + min longitude will be very uinque 
     long hash = Double.doubleToLongBits(latCenter);
     hash = hash * 31 + Double.doubleToLongBits(lonMin);
+    hash = hash * 31 + (long)super.hashCode();
     return (int)(hash >> 32 + hash);
   }
 

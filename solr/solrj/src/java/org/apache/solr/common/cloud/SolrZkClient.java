@@ -207,8 +207,8 @@ public class SolrZkClient {
   /**
    * @param path
    * @return true if path exists
-   * @throws KeeperException
    * @param retryOnConnLoss  
+   * @throws KeeperException
    * @throws InterruptedException
    */
   public Boolean exists(final String path, boolean retryOnConnLoss)
@@ -654,7 +654,11 @@ public class SolrZkClient {
   public void close() throws InterruptedException {
     if (isClosed) return; // it's okay if we over close - same as solrcore
     isClosed = true;
-    keeper.close();
+    try {
+      keeper.close();
+    } finally {
+      connManager.close();
+    }
     numCloses.incrementAndGet();
   }
 
@@ -678,6 +682,30 @@ public class SolrZkClient {
   
   public SolrZooKeeper getSolrZooKeeper() {
     return keeper;
+  }
+
+  // yeah, it's recursive :(
+  public void clean(String path) throws InterruptedException, KeeperException {
+    List<String> children;
+    try {
+      children = getChildren(path, null, true);
+    } catch (NoNodeException r) {
+      return;
+    }
+    for (String string : children) {
+      if (path.equals("/")) {
+        clean(path + string);
+      } else {
+        clean(path + "/" + string);
+      }
+    }
+    try {
+      if (!path.equals("/")) {
+        delete(path, -1, true);
+      }
+    } catch (NoNodeException r) {
+      return;
+    }
   }
 
 }

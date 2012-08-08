@@ -18,12 +18,11 @@ package org.apache.solr.cloud;
  */
 
 import java.io.IOException;
-import java.net.MalformedURLException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeoutException;
 
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.HttpSolrServer;
@@ -60,7 +59,7 @@ import org.slf4j.LoggerFactory;
 public class RecoveryStrategy extends Thread implements SafeStopThread {
   private static final int MAX_RETRIES = 500;
   private static final int INTERRUPTED = MAX_RETRIES + 1;
-  private static final int START_TIMEOUT = 100;
+  private static final int STARTING_RECOVERY_DELAY = 1000;
   
   private static final String REPLICATION_HANDLER = "/replication";
 
@@ -137,7 +136,7 @@ public class RecoveryStrategy extends Thread implements SafeStopThread {
       }
       
       ModifiableSolrParams solrParams = new ModifiableSolrParams();
-      solrParams.set(ReplicationHandler.MASTER_URL, leaderUrl + "replication");
+      solrParams.set(ReplicationHandler.MASTER_URL, leaderUrl);
       
       if (isClosed()) retries = INTERRUPTED;
       boolean success = replicationHandler.doFetch(solrParams, true); // TODO: look into making sure force=true does not download files we already have
@@ -162,8 +161,7 @@ public class RecoveryStrategy extends Thread implements SafeStopThread {
     }
   }
 
-  private void commitOnLeader(String leaderUrl) throws MalformedURLException,
-      SolrServerException, IOException {
+  private void commitOnLeader(String leaderUrl) throws SolrServerException, IOException {
     HttpSolrServer server = new HttpSolrServer(leaderUrl);
     server.setConnectionTimeout(30000);
     server.setSoTimeout(30000);
@@ -176,7 +174,7 @@ public class RecoveryStrategy extends Thread implements SafeStopThread {
   }
 
   private void sendPrepRecoveryCmd(String leaderBaseUrl,
-      String leaderCoreName) throws MalformedURLException, SolrServerException,
+      String leaderCoreName) throws SolrServerException,
       IOException {
     HttpSolrServer server = new HttpSolrServer(leaderBaseUrl);
     server.setConnectionTimeout(45000);
@@ -246,7 +244,10 @@ public class RecoveryStrategy extends Thread implements SafeStopThread {
     UpdateLog.RecentUpdates recentUpdates = ulog.getRecentUpdates();
     try {
       recentVersions = recentUpdates.getVersions(ulog.numRecordsToKeep);
-    } finally {
+    } catch (Throwable t) {
+      SolrException.log(log, "Corrupt tlog - ignoring", t);
+      recentVersions = new ArrayList<Long>(0);
+    }finally {
       recentUpdates.close();
     }
 
@@ -281,6 +282,7 @@ public class RecoveryStrategy extends Thread implements SafeStopThread {
         // last operation at the time of startup had the GAP flag set...
         // this means we were previously doing a full index replication
         // that probably didn't complete and buffering updates in the meantime.
+        log.info("Looks like a previous replication recovery did not complete - skipping peer sync");
         firstTime = false;    // skip peersync
       }
     }
@@ -317,7 +319,7 @@ public class RecoveryStrategy extends Thread implements SafeStopThread {
             SolrQueryRequest req = new LocalSolrQueryRequest(core,
                 new ModifiableSolrParams());
             core.getUpdateHandler().commit(new CommitUpdateCommand(req, false));
-            log.info("Sync Recovery was successful - registering as Active");
+            log.info("PeerSync Recovery was successful - registering as Active");
             // System.out
             // .println("Sync Recovery was successful - registering as Active "
             // + zkController.getNodeName());
@@ -346,10 +348,10 @@ public class RecoveryStrategy extends Thread implements SafeStopThread {
             return;
           }
 
-          log.info("Sync Recovery was not successful - trying replication");
+          log.info("PeerSync Recovery was not successful - trying replication");
         }
         //System.out.println("Sync Recovery was not successful - trying replication");
-
+        log.info("Starting Replication Recovery");
         log.info("Begin buffering updates");
         ulog.bufferUpdates();
         replayed = false;
@@ -362,7 +364,7 @@ public class RecoveryStrategy extends Thread implements SafeStopThread {
           replay(ulog);
           replayed = true;
 
-          log.info("Recovery was successful - registering as Active");
+          log.info("Replication Recovery was successful - registering as Active");
           // if there are pending recovery requests, don't advert as active
           zkController.publish(core.getCoreDescriptor(), ZkStateReader.ACTIVE);
           close = true;
@@ -412,10 +414,11 @@ public class RecoveryStrategy extends Thread implements SafeStopThread {
         }
 
         try {
-          // if (!isClosed()) Thread.sleep(Math.min(START_TIMEOUT * retries, 60000));
-          for (int i = 0; i<Math.min(retries, 600); i++) {
+          // start at 1 sec and work up to a couple min
+          double loopCount = Math.min(Math.pow(2, retries), 600); 
+          for (int i = 0; i < loopCount; i++) {
             if (isClosed()) break; // check if someone closed us
-            Thread.sleep(START_TIMEOUT);
+            Thread.sleep(STARTING_RECOVERY_DELAY);
           }
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
@@ -430,7 +433,7 @@ public class RecoveryStrategy extends Thread implements SafeStopThread {
   }
 
   private Future<RecoveryInfo> replay(UpdateLog ulog)
-      throws InterruptedException, ExecutionException, TimeoutException {
+      throws InterruptedException, ExecutionException {
     Future<RecoveryInfo> future = ulog.applyBufferedUpdates();
     if (future == null) {
       // no replay needed\

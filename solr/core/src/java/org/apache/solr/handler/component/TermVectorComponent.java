@@ -92,7 +92,7 @@ public class TermVectorComponent extends SearchComponent implements SolrCoreAwar
    * <p>
    * Does simple (non-glob-supporting) parsing on the 
    * {@link TermVectorParams#FIELDS} param if specified, otherwise it returns 
-   * the concrete field values specified in {@link CommonParams.FL} -- 
+   * the concrete field values specified in {@link CommonParams#FL} -- 
    * ignoring functions, transformers, or literals.  
    * </p>
    * <p>
@@ -252,22 +252,22 @@ public class TermVectorComponent extends SearchComponent implements SolrCoreAwar
     // once we find it...
     final StoredFieldVisitor getUniqValue = new StoredFieldVisitor() {
       @Override 
-      public void stringField(FieldInfo fieldInfo, String value) throws IOException {
+      public void stringField(FieldInfo fieldInfo, String value) {
         uniqValues.add(value);
       }
 
       @Override 
-      public void intField(FieldInfo fieldInfo, int value) throws IOException {
+      public void intField(FieldInfo fieldInfo, int value) {
         uniqValues.add(Integer.toString(value));
       }
 
       @Override 
-      public void longField(FieldInfo fieldInfo, long value) throws IOException {
+      public void longField(FieldInfo fieldInfo, long value) {
         uniqValues.add(Long.toString(value));
       }
 
       @Override
-      public Status needsField(FieldInfo fieldInfo) throws IOException {
+      public Status needsField(FieldInfo fieldInfo) {
         return (fieldInfo.name.equals(finalUniqFieldName)) ? Status.YES : Status.NO;
       }
     };
@@ -329,28 +329,19 @@ public class TermVectorComponent extends SearchComponent implements SolrCoreAwar
         termInfo.add("tf", freq);
       }
 
-      dpEnum = termsEnum.docsAndPositions(null, dpEnum, fieldOptions.offsets);
-      boolean useOffsets = fieldOptions.offsets;
-      if (dpEnum == null) {
-        useOffsets = false;
-        dpEnum = termsEnum.docsAndPositions(null, dpEnum, false);
-      }
-
+      dpEnum = termsEnum.docsAndPositions(null, dpEnum);
+      boolean useOffsets = false;
       boolean usePositions = false;
       if (dpEnum != null) {
         dpEnum.nextDoc();
         usePositions = fieldOptions.positions;
-      }
-
-      NamedList<Number> theOffsets = null;
-      if (useOffsets) {
-        theOffsets = new NamedList<Number>();
-        termInfo.add("offsets", theOffsets);
+        useOffsets = fieldOptions.offsets;
       }
 
       NamedList<Integer> positionsNL = null;
+      NamedList<Number> theOffsets = null;
 
-      if (usePositions || theOffsets != null) {
+      if (usePositions || useOffsets) {
         for (int i = 0; i < freq; i++) {
           final int pos = dpEnum.nextPosition();
           if (usePositions && pos >= 0) {
@@ -359,6 +350,15 @@ public class TermVectorComponent extends SearchComponent implements SolrCoreAwar
               termInfo.add("positions", positionsNL);
             }
             positionsNL.add("position", pos);
+          }
+
+          if (useOffsets && theOffsets == null) {
+            if (dpEnum.startOffset() == -1) {
+              useOffsets = false;
+            } else {
+              theOffsets = new NamedList<Number>();
+              termInfo.add("offsets", theOffsets);
+            }
           }
 
           if (theOffsets != null) {

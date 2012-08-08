@@ -24,16 +24,19 @@ import java.util.Map;
 
 import junit.framework.Assert;
 
+import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.core.CoreDescriptor;
+import org.apache.solr.util.ExternalPaths;
 import org.apache.zookeeper.CreateMode;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+@Slow
 public class ZkControllerTest extends SolrTestCaseJ4 {
 
   private static final String COLLECTION_NAME = "collection1";
@@ -120,11 +123,11 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
             }
           });
 
-      zkController.uploadToZK(getFile("solr/conf"),
+      zkController.uploadToZK(new File(ExternalPaths.EXAMPLE_HOME + "/collection1/conf"),
           ZkController.CONFIGS_ZKNODE + "/config1");
       
       // uploading again should overwrite, not error...
-      zkController.uploadToZK(getFile("solr/conf"),
+      zkController.uploadToZK(new File(ExternalPaths.EXAMPLE_HOME + "/collection1/conf"),
           ZkController.CONFIGS_ZKNODE + "/config1");
 
       if (DEBUG) {
@@ -179,7 +182,7 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
             }
           });
       
-      System.setProperty("bootstrap_confdir", getFile("solr/conf")
+      System.setProperty("bootstrap_confdir", getFile("solr/collection1/conf")
           .getAbsolutePath());
       
       final int numShards = 2;
@@ -199,7 +202,7 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
       
       assertNotNull(reader.getLeaderUrl("collection1", "shard1", 15000));
       
-      assertEquals("Shard(s) missing from cloudstate", 2, zkController.getZkStateReader().getCloudState().getSlice("collection1", "shard1").getShards().size());
+      assertEquals("Shard(s) missing from cloudstate", 2, zkController.getZkStateReader().getClusterState().getSlice("collection1", "shard1").getShards().size());
       
       // unregister current leader
       final ZkNodeProps shard1LeaderProps = reader.getLeaderProps(
@@ -221,10 +224,10 @@ public class ZkControllerTest extends SolrTestCaseJ4 {
           reader.getLeaderUrl("collection1", "shard1", 15000));
 
       for(int i=0;i<30;i++) {
-        if(zkController.getZkStateReader().getCloudState().getSlice("collection1", "shard1").getShards().size()==1) break; 
+        if(zkController.getZkStateReader().getClusterState().getSlice("collection1", "shard1").getShards().size()==1) break; 
         Thread.sleep(500);
       }
-      assertEquals("shard was not unregistered", 1, zkController.getZkStateReader().getCloudState().getSlice("collection1", "shard1").getShards().size());
+      assertEquals("shard was not unregistered", 1, zkController.getZkStateReader().getClusterState().getSlice("collection1", "shard1").getShards().size());
     } finally {
       System.clearProperty("solrcloud.skip.autorecovery");
       System.clearProperty(ZkStateReader.NUM_SHARDS_PROP);

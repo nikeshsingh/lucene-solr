@@ -17,8 +17,6 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import java.io.IOException;
-
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
@@ -27,6 +25,7 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.store.BaseDirectoryWrapper;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util._TestUtil;
@@ -36,13 +35,15 @@ import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
  * Test indexes ~82M docs with 26 terms each, so you get > Integer.MAX_VALUE terms/docs pairs
  * @lucene.experimental
  */
-@SuppressCodecs({ "SimpleText", "Memory" })
+@SuppressCodecs({ "SimpleText", "Memory", "Direct" })
 public class Test2BPostings extends LuceneTestCase {
 
   @Nightly
   public void test() throws Exception {
-    MockDirectoryWrapper dir = newFSDirectory(_TestUtil.getTempDir("2BPostings"));
-    dir.setThrottling(MockDirectoryWrapper.Throttling.NEVER);
+    BaseDirectoryWrapper dir = newFSDirectory(_TestUtil.getTempDir("2BPostings"));
+    if (dir instanceof MockDirectoryWrapper) {
+      ((MockDirectoryWrapper)dir).setThrottling(MockDirectoryWrapper.Throttling.NEVER);
+    }
     dir.setCheckIndexOnClose(false); // don't double-checkindex
     
     IndexWriter w = new IndexWriter(dir,
@@ -94,7 +95,7 @@ public class Test2BPostings extends LuceneTestCase {
     }
     
     @Override
-    public boolean incrementToken() throws IOException {
+    public boolean incrementToken() {
       if (index <= 'z') {
         buffer[0] = (char) index++;
         return true;
@@ -103,7 +104,7 @@ public class Test2BPostings extends LuceneTestCase {
     }
     
     @Override
-    public void reset() throws IOException {
+    public void reset() {
       index = 'a';
     }
   }

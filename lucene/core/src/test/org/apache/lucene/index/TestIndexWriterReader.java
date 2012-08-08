@@ -53,7 +53,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
                                  t.field(), new BytesRef(t.text()),
                                  MultiFields.getLiveDocs(r),
                                  null,
-                                 false);
+                                 0);
 
     if (td != null) {
       while (td.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
@@ -411,6 +411,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
       this.mainWriter = mainWriter;
       addDir = newDirectory();
       IndexWriter writer = new IndexWriter(addDir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMaxBufferedDocs(2));
+      _TestUtil.reduceOpenFiles(writer);
       for (int i = 0; i < NUM_INIT_DOCS; i++) {
         Document doc = DocHelper.createDocument(i, "addindex", 4);
         writer.addDocument(doc);
@@ -707,7 +708,7 @@ public class TestIndexWriterReader extends LuceneTestCase {
 
   // Stress test reopen during addIndexes
   public void testDuringAddIndexes() throws Exception {
-    MockDirectoryWrapper dir1 = newDirectory();
+    Directory dir1 = newDirectory();
     final IndexWriter writer = new IndexWriter(
         dir1,
         newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())).
@@ -780,8 +781,10 @@ public class TestIndexWriterReader extends LuceneTestCase {
 
     assertEquals(0, excs.size());
     r.close();
-    final Collection<String> openDeletedFiles = dir1.getOpenDeletedFiles();
-    assertEquals("openDeleted=" + openDeletedFiles, 0, openDeletedFiles.size());
+    if (dir1 instanceof MockDirectoryWrapper) {
+      final Collection<String> openDeletedFiles = ((MockDirectoryWrapper)dir1).getOpenDeletedFiles();
+      assertEquals("openDeleted=" + openDeletedFiles, 0, openDeletedFiles.size());
+    }
 
     writer.close();
 
@@ -975,16 +978,16 @@ public class TestIndexWriterReader extends LuceneTestCase {
     // Don't proceed if picked Codec is in the list of illegal ones.
     final String format = _TestUtil.getPostingsFormat("f");
     assumeFalse("Format: " + format + " does not support ReaderTermsIndexDivisor!",
-        (format.equals("SimpleText") || format.equals("Memory")));
+                (format.equals("SimpleText") || format.equals("Memory") || format.equals("Direct")));
 
     Directory dir = newDirectory();
     IndexWriter w = new IndexWriter(dir, conf);
     Document doc = new Document();
     doc.add(new TextField("f", "val", Field.Store.NO));
     w.addDocument(doc);
-    IndexReader r = DirectoryReader.open(w, true).getSequentialSubReaders()[0];
+    SegmentReader r = getOnlySegmentReader(DirectoryReader.open(w, true));
     try {
-      _TestUtil.docs(random(), r, "f", new BytesRef("val"), null, null, false);
+      _TestUtil.docs(random(), r, "f", new BytesRef("val"), null, null, 0);
       fail("should have failed to seek since terms index was not loaded.");
     } catch (IllegalStateException e) {
       // expected - we didn't load the term index

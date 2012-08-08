@@ -103,7 +103,7 @@ public class TestKeywordAnalyzer extends BaseTokenStreamTestCase {
                                  new BytesRef("Q36"),
                                  MultiFields.getLiveDocs(reader),
                                  null,
-                                 false);
+                                 0);
     assertTrue(td.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
     td = _TestUtil.docs(random(),
                         reader,
@@ -111,7 +111,7 @@ public class TestKeywordAnalyzer extends BaseTokenStreamTestCase {
                         new BytesRef("Q37"),
                         MultiFields.getLiveDocs(reader),
                         null,
-                        false);
+                        0);
     assertTrue(td.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
   }
 
@@ -127,6 +127,6 @@ public class TestKeywordAnalyzer extends BaseTokenStreamTestCase {
   
   /** blast some random strings through the analyzer */
   public void testRandomStrings() throws Exception {
-    checkRandomData(random(), new KeywordAnalyzer(), 10000*RANDOM_MULTIPLIER);
+    checkRandomData(random(), new KeywordAnalyzer(), 1000*RANDOM_MULTIPLIER);
   }
 }

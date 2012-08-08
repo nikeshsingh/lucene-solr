@@ -31,7 +31,7 @@ import org.apache.lucene.util._TestUtil;
 public class TestIndexWriterForceMerge extends LuceneTestCase {
   public void testPartialMerge() throws IOException {
 
-    MockDirectoryWrapper dir = newDirectory();
+    Directory dir = newDirectory();
 
     final Document doc = new Document();
     doc.add(newStringField("content", "aaa", Field.Store.NO));
@@ -72,7 +72,7 @@ public class TestIndexWriterForceMerge extends LuceneTestCase {
   }
 
   public void testMaxNumSegments2() throws IOException {
-    MockDirectoryWrapper dir = newDirectory();
+    Directory dir = newDirectory();
 
     final Document doc = new Document();
     doc.add(newStringField("content", "aaa", Field.Store.NO));
@@ -121,7 +121,7 @@ public class TestIndexWriterForceMerge extends LuceneTestCase {
    */
   public void testForceMergeTempSpaceUsage() throws IOException {
 
-    MockDirectoryWrapper dir = newDirectory();
+    MockDirectoryWrapper dir = newMockDirectory();
     IndexWriter writer  = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMaxBufferedDocs(10).setMergePolicy(newLogMergePolicy()));
     if (VERBOSE) {
       System.out.println("TEST: config1=" + writer.getConfig());
@@ -187,7 +187,7 @@ public class TestIndexWriterForceMerge extends LuceneTestCase {
       if (0 == pass) {
         writer.close();
         DirectoryReader reader = DirectoryReader.open(dir);
-        assertEquals(1, reader.getSequentialSubReaders().length);
+        assertEquals(1, reader.getSequentialSubReaders().size());
         reader.close();
       } else {
         // Get another segment to flush so we can verify it is
@@ -197,7 +197,7 @@ public class TestIndexWriterForceMerge extends LuceneTestCase {
         writer.close();
 
         DirectoryReader reader = DirectoryReader.open(dir);
-        assertTrue(reader.getSequentialSubReaders().length > 1);
+        assertTrue(reader.getSequentialSubReaders().size() > 1);
         reader.close();
 
         SegmentInfos infos = new SegmentInfos();

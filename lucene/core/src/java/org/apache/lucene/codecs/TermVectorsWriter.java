@@ -21,6 +21,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.Comparator;
 
+import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
@@ -143,9 +144,9 @@ public abstract class TermVectorsWriter implements Closeable {
    *  merging (bulk-byte copying, etc). */
   public int merge(MergeState mergeState) throws IOException {
     int docCount = 0;
-    for (MergeState.IndexReaderAndLiveDocs reader : mergeState.readers) {
-      final int maxDoc = reader.reader.maxDoc();
-      final Bits liveDocs = reader.liveDocs;
+    for (AtomicReader reader : mergeState.readers) {
+      final int maxDoc = reader.maxDoc();
+      final Bits liveDocs = reader.getLiveDocs();
       for (int docID = 0; docID < maxDoc; docID++) {
         if (liveDocs != null && !liveDocs.get(docID)) {
           // skip deleted docs
@@ -153,7 +154,7 @@ public abstract class TermVectorsWriter implements Closeable {
         }
         // NOTE: it's very important to first assign to vectors then pass it to
         // termVectorsWriter.addAllDocVectors; see LUCENE-1282
-        Fields vectors = reader.reader.getTermVectors(docID);
+        Fields vectors = reader.getTermVectors(docID);
         addAllDocVectors(vectors, mergeState.fieldInfos);
         docCount++;
         mergeState.checkAbort.work(300);
@@ -223,16 +224,9 @@ public abstract class TermVectorsWriter implements Closeable {
         // TODO: we need a "query" API where we can ask (via
         // flex API) what this term was indexed with...
         // Both positions & offsets:
-        docsAndPositionsEnum = termsEnum.docsAndPositions(null, null, true);
-        final boolean hasOffsets;
+        docsAndPositionsEnum = termsEnum.docsAndPositions(null, null);
+        boolean hasOffsets = false;
         boolean hasPositions = false;
-        if (docsAndPositionsEnum == null) {
-          // Fallback: no offsets
-          docsAndPositionsEnum = termsEnum.docsAndPositions(null, null, false);
-          hasOffsets = false;
-        } else {
-          hasOffsets = true;
-        }
 
         if (docsAndPositionsEnum != null) {
           final int docID = docsAndPositionsEnum.nextDoc();
@@ -241,23 +235,19 @@ public abstract class TermVectorsWriter implements Closeable {
 
           for(int posUpto=0; posUpto<freq; posUpto++) {
             final int pos = docsAndPositionsEnum.nextPosition();
+            final int startOffset = docsAndPositionsEnum.startOffset();
+            final int endOffset = docsAndPositionsEnum.endOffset();
             if (!startedField) {
               assert numTerms > 0;
               hasPositions = pos != -1;
+              hasOffsets = startOffset != -1;
               startField(fieldInfo, numTerms, hasPositions, hasOffsets);
               startTerm(termsEnum.term(), freq);
               startedField = true;
             }
-            final int startOffset;
-            final int endOffset;
             if (hasOffsets) {
-              startOffset = docsAndPositionsEnum.startOffset();
-              endOffset = docsAndPositionsEnum.endOffset();
               assert startOffset != -1;
               assert endOffset != -1;
-            } else {
-              startOffset = -1;
-              endOffset = -1;
             }
             assert !hasPositions || pos >= 0;
             addPosition(pos, startOffset, endOffset);

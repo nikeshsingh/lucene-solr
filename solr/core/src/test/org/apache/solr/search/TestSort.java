@@ -198,12 +198,12 @@ public class TestSort extends SolrTestCaseJ4 {
       DirectoryReader reader = DirectoryReader.open(dir);
       IndexSearcher searcher = new IndexSearcher(reader);
       // System.out.println("segments="+searcher.getIndexReader().getSequentialSubReaders().length);
-      assertTrue(reader.getSequentialSubReaders().length > 1);
+      assertTrue(reader.getSequentialSubReaders().size() > 1);
 
       for (int i=0; i<qiter; i++) {
         Filter filt = new Filter() {
           @Override
-          public DocIdSet getDocIdSet(AtomicReaderContext context, Bits acceptDocs) throws IOException {
+          public DocIdSet getDocIdSet(AtomicReaderContext context, Bits acceptDocs) {
             return BitsFilteredDocIdSet.wrap(randSet(context.reader().maxDoc()), acceptDocs);
           }
         };

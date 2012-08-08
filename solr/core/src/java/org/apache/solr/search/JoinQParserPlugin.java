@@ -135,7 +135,7 @@ class JoinQuery extends Query {
     private float queryWeight;
     ResponseBuilder rb;
 
-    public JoinQueryWeight(SolrIndexSearcher searcher) throws IOException {
+    public JoinQueryWeight(SolrIndexSearcher searcher) {
       this.fromSearcher = searcher;
       SolrRequestInfo info = SolrRequestInfo.getRequestInfo();
       if (info != null) {
@@ -175,7 +175,7 @@ class JoinQuery extends Query {
           final RefCounted<SolrIndexSearcher> ref = fromRef;
           info.addCloseHook(new Closeable() {
             @Override
-            public void close() throws IOException {
+            public void close() {
               ref.decref();
             }
           });
@@ -183,7 +183,7 @@ class JoinQuery extends Query {
 
         info.addCloseHook(new Closeable() {
           @Override
-          public void close() throws IOException {
+          public void close() {
             fromCore.close();
           }
         });
@@ -341,7 +341,7 @@ class JoinQuery extends Query {
         if (freq < minDocFreqFrom) {
           fromTermDirectCount++;
           // OK to skip liveDocs, since we check for intersection with docs matching query
-          fromDeState.docsEnum = fromDeState.termsEnum.docs(null, fromDeState.docsEnum, false);
+          fromDeState.docsEnum = fromDeState.termsEnum.docs(null, fromDeState.docsEnum, 0);
           DocsEnum docsEnum = fromDeState.docsEnum;
 
           if (docsEnum instanceof MultiDocsEnum) {
@@ -406,7 +406,7 @@ class JoinQuery extends Query {
               toTermDirectCount++;
 
               // need to use liveDocs here so we don't map to any deleted ones
-              toDeState.docsEnum = toDeState.termsEnum.docs(toDeState.liveDocs, toDeState.docsEnum, false);
+              toDeState.docsEnum = toDeState.termsEnum.docs(toDeState.liveDocs, toDeState.docsEnum, 0);
               DocsEnum docsEnum = toDeState.docsEnum;              
 
               if (docsEnum instanceof MultiDocsEnum) {
@@ -532,6 +532,11 @@ class JoinQuery extends Query {
     public float score() throws IOException {
       return score;
     }
+    
+    @Override
+    public float freq() throws IOException {
+      return 1;
+    }
 
     @Override
     public int advance(int target) throws IOException {
@@ -549,7 +554,7 @@ class JoinQuery extends Query {
 
   @Override
   public boolean equals(Object o) {
-    if (getClass() != o.getClass()) return false;
+    if (!super.equals(o)) return false;
     JoinQuery other = (JoinQuery)o;
     return this.fromField.equals(other.fromField)
            && this.toField.equals(other.toField)
@@ -562,7 +567,9 @@ class JoinQuery extends Query {
 
   @Override
   public int hashCode() {
-    int h = q.hashCode() + (int)fromCoreOpenTime;
+    int h = super.hashCode();
+    h = h * 31 + q.hashCode();
+    h = h * 31 + (int)fromCoreOpenTime;
     h = h * 31 + fromField.hashCode();
     h = h * 31 + toField.hashCode();
     return h;

@@ -23,6 +23,7 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.DirectoryFactory;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.util.RefCounted;
 
 /**
  * The state in this class can be easily shared between SolrCores across
@@ -30,15 +31,21 @@ import org.apache.solr.core.SolrCore;
  * 
  */
 public abstract class SolrCoreState {
+  private final Object deleteLock = new Object();
+  
+  public Object getUpdateLock() {
+    return deleteLock;
+  }
   
   /**
    * Force the creation of a new IndexWriter using the settings from the given
    * SolrCore.
    * 
    * @param core
+   * @param rollback close IndexWriter if false, else rollback
    * @throws IOException
    */
-  public abstract void newIndexWriter(SolrCore core) throws IOException;
+  public abstract void newIndexWriter(SolrCore core, boolean rollback) throws IOException;
   
   /**
    * Get the current IndexWriter. If a new IndexWriter must be created, use the
@@ -46,7 +53,7 @@ public abstract class SolrCoreState {
    * 
    * @throws IOException
    */
-  public abstract IndexWriter getIndexWriter(SolrCore core) throws IOException;
+  public abstract RefCounted<IndexWriter> getIndexWriter(SolrCore core) throws IOException;
   
   /**
    * Decrement the number of references to this state. When then number of

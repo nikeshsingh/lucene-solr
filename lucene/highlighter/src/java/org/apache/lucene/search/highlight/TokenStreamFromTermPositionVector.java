@@ -60,18 +60,14 @@ public final class TokenStreamFromTermPositionVector extends TokenStream {
     BytesRef text;
     DocsAndPositionsEnum dpEnum = null;
     while((text = termsEnum.next()) != null) {
-      dpEnum = termsEnum.docsAndPositions(null, dpEnum, true);
-      final boolean hasOffsets;
-      if (dpEnum == null) {
-        hasOffsets = false;
-        dpEnum = termsEnum.docsAndPositions(null, dpEnum, false);
-      } else {
-        hasOffsets = true;
-      }
+      dpEnum = termsEnum.docsAndPositions(null, dpEnum);
+      assert dpEnum != null; // presumably checked by TokenSources.hasPositions earlier
+      boolean hasOffsets = true;
       dpEnum.nextDoc();
       final int freq = dpEnum.freq();
       for (int j = 0; j < freq; j++) {
         int pos = dpEnum.nextPosition();
+        hasOffsets &= dpEnum.startOffset() >= 0;
         Token token;
         if (hasOffsets) {
           token = new Token(text.utf8ToString(),
@@ -105,7 +101,7 @@ public final class TokenStreamFromTermPositionVector extends TokenStream {
   };
   
   @Override
-  public boolean incrementToken() throws IOException {
+  public boolean incrementToken() {
     if (this.tokensAtCurrentPosition.hasNext()) {
       final Token next = this.tokensAtCurrentPosition.next();
       clearAttributes();
@@ -119,7 +115,7 @@ public final class TokenStreamFromTermPositionVector extends TokenStream {
   }
 
   @Override
-  public void reset() throws IOException {
+  public void reset() {
     this.tokensAtCurrentPosition = this.positionedTokens.iterator();
   }
 }

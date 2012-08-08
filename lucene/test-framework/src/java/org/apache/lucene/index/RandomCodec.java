@@ -28,9 +28,12 @@ import java.util.Random;
 import java.util.Set;
 
 import org.apache.lucene.codecs.PostingsFormat;
+import org.apache.lucene.codecs.asserting.AssertingPostingsFormat;
+import org.apache.lucene.codecs.bloom.TestBloomFilteredLucene40Postings;
 import org.apache.lucene.codecs.lucene40.Lucene40Codec;
 import org.apache.lucene.codecs.lucene40.Lucene40PostingsFormat;
 import org.apache.lucene.codecs.lucene40ords.Lucene40WithOrds;
+import org.apache.lucene.codecs.memory.DirectPostingsFormat;
 import org.apache.lucene.codecs.memory.MemoryPostingsFormat;
 import org.apache.lucene.codecs.mockintblock.MockFixedIntBlockPostingsFormat;
 import org.apache.lucene.codecs.mockintblock.MockVariableIntBlockPostingsFormat;
@@ -39,6 +42,7 @@ import org.apache.lucene.codecs.mocksep.MockSepPostingsFormat;
 import org.apache.lucene.codecs.nestedpulsing.NestedPulsingPostingsFormat;
 import org.apache.lucene.codecs.pulsing.Pulsing40PostingsFormat;
 import org.apache.lucene.codecs.simpletext.SimpleTextPostingsFormat;
+import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util._TestUtil;
 
 /**
@@ -71,7 +75,7 @@ public class RandomCodec extends Lucene40Codec {
       codec = formats.get(Math.abs(perFieldSeed ^ name.hashCode()) % formats.size());
       if (codec instanceof SimpleTextPostingsFormat && perFieldSeed % 5 != 0) {
         // make simpletext rarer, choose again
-        codec = formats.get(Math.abs(perFieldSeed ^ name.toUpperCase(Locale.ENGLISH).hashCode()) % formats.size());
+        codec = formats.get(Math.abs(perFieldSeed ^ name.toUpperCase(Locale.ROOT).hashCode()) % formats.size());
       }
       previousMappings.put(name, codec);
       // Safety:
@@ -86,12 +90,19 @@ public class RandomCodec extends Lucene40Codec {
     // block via CL:
     int minItemsPerBlock = _TestUtil.nextInt(random, 2, 100);
     int maxItemsPerBlock = 2*(Math.max(2, minItemsPerBlock-1)) + random.nextInt(100);
+    int lowFreqCutoff = _TestUtil.nextInt(random, 2, 100);
 
     add(avoidCodecs,
         new Lucene40PostingsFormat(minItemsPerBlock, maxItemsPerBlock),
+        new DirectPostingsFormat(LuceneTestCase.rarely(random) ? 1 : (LuceneTestCase.rarely(random) ? Integer.MAX_VALUE : maxItemsPerBlock),
+                                 LuceneTestCase.rarely(random) ? 1 : (LuceneTestCase.rarely(random) ? Integer.MAX_VALUE : lowFreqCutoff)),
         new Pulsing40PostingsFormat(1 + random.nextInt(20), minItemsPerBlock, maxItemsPerBlock),
         // add pulsing again with (usually) different parameters
         new Pulsing40PostingsFormat(1 + random.nextInt(20), minItemsPerBlock, maxItemsPerBlock),
+        //TODO as a PostingsFormat which wraps others, we should allow TestBloomFilteredLucene40Postings to be constructed 
+        //with a choice of concrete PostingsFormats. Maybe useful to have a generic means of marking and dealing 
+        //with such "wrapper" classes?
+        new TestBloomFilteredLucene40Postings(),                
         new MockSepPostingsFormat(),
         new MockFixedIntBlockPostingsFormat(_TestUtil.nextInt(random, 1, 2000)),
         new MockVariableIntBlockPostingsFormat( _TestUtil.nextInt(random, 1, 127)),
@@ -99,10 +110,14 @@ public class RandomCodec extends Lucene40Codec {
         new NestedPulsingPostingsFormat(),
         new Lucene40WithOrds(),
         new SimpleTextPostingsFormat(),
+        new AssertingPostingsFormat(),
         new MemoryPostingsFormat(true, random.nextFloat()),
         new MemoryPostingsFormat(false, random.nextFloat()));
 
     Collections.shuffle(formats, random);
+
+    // Avoid too many open files:
+    formats.subList(4, formats.size()).clear();
   }
 
   public RandomCodec(Random random) {

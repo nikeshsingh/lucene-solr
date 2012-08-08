@@ -29,7 +29,6 @@ import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.similarities.PerFieldSimilarityWrapper;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LineFileDocs;
@@ -44,7 +43,7 @@ public class TestCustomNorms extends LuceneTestCase {
 
   public void testFloatNorms() throws IOException {
 
-    MockDirectoryWrapper dir = newDirectory();
+    Directory dir = newDirectory();
     IndexWriterConfig config = newIndexWriterConfig(TEST_VERSION_CURRENT,
         new MockAnalyzer(random()));
     Similarity provider = new MySimProvider();
@@ -85,7 +84,7 @@ public class TestCustomNorms extends LuceneTestCase {
   }
 
   public void testExceptionOnRandomType() throws IOException {
-    MockDirectoryWrapper dir = newDirectory();
+    Directory dir = newDirectory();
     IndexWriterConfig config = newIndexWriterConfig(TEST_VERSION_CURRENT,
         new MockAnalyzer(random()));
     Similarity provider = new MySimProvider();
@@ -145,25 +144,24 @@ public class TestCustomNorms extends LuceneTestCase {
     writer.close();
     assertEquals(numAdded, reader.numDocs());
     IndexReaderContext topReaderContext = reader.getTopReaderContext();
-    AtomicReaderContext[] leaves = topReaderContext.leaves();
-    for (int j = 0; j < leaves.length; j++) {
-      AtomicReader atomicReader = leaves[j].reader();
-    Source source = random().nextBoolean() ? atomicReader.normValues("foo").getSource() : atomicReader.normValues("foo").getDirectSource();
-    Bits liveDocs = atomicReader.getLiveDocs();
-    Type t = source.getType();
-    for (int i = 0; i < atomicReader.maxDoc(); i++) {
-        assertEquals(0, source.getFloat(i), 0.000f);
-    }
-    
-
-    source = random().nextBoolean() ? atomicReader.normValues("bar").getSource() : atomicReader.normValues("bar").getDirectSource();
-    for (int i = 0; i < atomicReader.maxDoc(); i++) {
-      if (liveDocs == null || liveDocs.get(i)) {
-        assertEquals("type: " + t, 1, source.getFloat(i), 0.000f);
-      } else {
-        assertEquals("type: " + t, 0, source.getFloat(i), 0.000f);
+    for (final AtomicReaderContext ctx : topReaderContext.leaves()) {
+      AtomicReader atomicReader = ctx.reader();
+      Source source = random().nextBoolean() ? atomicReader.normValues("foo").getSource() : atomicReader.normValues("foo").getDirectSource();
+      Bits liveDocs = atomicReader.getLiveDocs();
+      Type t = source.getType();
+      for (int i = 0; i < atomicReader.maxDoc(); i++) {
+          assertEquals(0, source.getFloat(i), 0.000f);
       }
-    }
+      
+  
+      source = random().nextBoolean() ? atomicReader.normValues("bar").getSource() : atomicReader.normValues("bar").getDirectSource();
+      for (int i = 0; i < atomicReader.maxDoc(); i++) {
+        if (liveDocs == null || liveDocs.get(i)) {
+          assertEquals("type: " + t, 1, source.getFloat(i), 0.000f);
+        } else {
+          assertEquals("type: " + t, 0, source.getFloat(i), 0.000f);
+        }
+      }
     }
     reader.close();
     dir.close();

@@ -53,6 +53,7 @@ import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.LineFileDocs;
+import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.UnicodeUtil;
@@ -66,7 +67,8 @@ import org.apache.lucene.util.fst.FST.BytesReader;
 import org.apache.lucene.util.fst.PairOutputs.Pair;
 import org.apache.lucene.util.packed.PackedInts;
 
-@SuppressCodecs({ "SimpleText", "Memory" })
+@SuppressCodecs({ "SimpleText", "Memory", "Direct" })
+@Slow
 public class TestFSTs extends LuceneTestCase {
 
   private MockDirectoryWrapper dir;
@@ -74,7 +76,7 @@ public class TestFSTs extends LuceneTestCase {
   @Override
   public void setUp() throws Exception {
     super.setUp();
-    dir = newDirectory();
+    dir = newMockDirectory();
     dir.setPreventDoubleWrite(false);
   }
 
@@ -261,7 +263,7 @@ public class TestFSTs extends LuceneTestCase {
       final PositiveIntOutputs outputs = PositiveIntOutputs.getSingleton(random().nextBoolean());
       final List<FSTTester.InputOutput<Long>> pairs = new ArrayList<FSTTester.InputOutput<Long>>(terms.length);
       for(int idx=0;idx<terms.length;idx++) {
-        pairs.add(new FSTTester.InputOutput<Long>(terms[idx], random().nextLong() & Long.MAX_VALUE));
+        pairs.add(new FSTTester.InputOutput<Long>(terms[idx], _TestUtil.nextLong(random(), 0, Long.MAX_VALUE)));
       }
       new FSTTester<Long>(random(), dir, inputMode, pairs, outputs, false).doTest();
     }
@@ -630,7 +632,7 @@ public class TestFSTs extends LuceneTestCase {
 
         final int num = atLeast(100);
         for(int iter=0;iter<num;iter++) {
-          Long v = minLong + random.nextLong() % (maxLong - minLong);
+          Long v = _TestUtil.nextLong(random, minLong, maxLong);
           IntsRef input = Util.getByOutput(fstLong, v);
           assertTrue(validOutputs.contains(v) || input == null);
         }
@@ -1094,18 +1096,11 @@ public class TestFSTs extends LuceneTestCase {
   // file, up until a time limit
   public void testRealTerms() throws Exception {
 
-    // TODO: is this necessary? we use the annotation...
-    final String defaultFormat = _TestUtil.getPostingsFormat("abracadabra");
-    if (defaultFormat.equals("SimpleText") || defaultFormat.equals("Memory")) {
-      // no
-      Codec.setDefault(_TestUtil.alwaysPostingsFormat(new Lucene40PostingsFormat()));
-    }
-
     final LineFileDocs docs = new LineFileDocs(random(), true);
     final int RUN_TIME_MSEC = atLeast(500);
     final IndexWriterConfig conf = newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMaxBufferedDocs(-1).setRAMBufferSizeMB(64);
     final File tempDir = _TestUtil.getTempDir("fstlines");
-    final MockDirectoryWrapper dir = newFSDirectory(tempDir);
+    final Directory dir = newFSDirectory(tempDir);
     final IndexWriter writer = new IndexWriter(dir, conf);
     final long stopTime = System.currentTimeMillis() + RUN_TIME_MSEC;
     Document doc;
@@ -1296,7 +1291,7 @@ public class TestFSTs extends LuceneTestCase {
           ord++;
           if (ord % 500000 == 0) {
             System.out.println(
-                String.format(Locale.ENGLISH, 
+                String.format(Locale.ROOT, 
                     "%6.2fs: %9d...", ((System.currentTimeMillis() - tStart) / 1000.0), ord));
           }
           if (ord >= limit) {
@@ -1635,7 +1630,7 @@ public class TestFSTs extends LuceneTestCase {
         String idString;
         if (cycle == 0) {
           // PKs are assigned sequentially
-          idString = String.format("%07d", id);
+          idString = String.format(Locale.ROOT, "%07d", id);
         } else {
           while(true) {
             final String s = Long.toString(random().nextLong());
@@ -1666,7 +1661,7 @@ public class TestFSTs extends LuceneTestCase {
       for(int idx=0;idx<NUM_IDS/10;idx++) {
         String idString;
         if (cycle == 0) {
-          idString = String.format("%07d", (NUM_IDS + idx));
+          idString = String.format(Locale.ROOT, "%07d", (NUM_IDS + idx));
         } else {
           while(true) {
             idString = Long.toString(random().nextLong());
@@ -1708,8 +1703,8 @@ public class TestFSTs extends LuceneTestCase {
           exists = false;
           final int idv = random().nextInt(NUM_IDS-1);
           if (cycle == 0) {
-            id = String.format("%07da", idv);
-            nextID = String.format("%07d", idv+1);
+            id = String.format(Locale.ROOT, "%07da", idv);
+            nextID = String.format(Locale.ROOT, "%07d", idv+1);
           } else {
             id = sortedAllIDsList.get(idv) + "a";
             nextID = sortedAllIDsList.get(idv+1);

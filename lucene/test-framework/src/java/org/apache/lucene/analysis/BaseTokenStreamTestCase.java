@@ -25,16 +25,9 @@ import java.io.Reader;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.Writer;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Random;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Set;
+import java.util.*;
 
 import org.apache.lucene.analysis.tokenattributes.*;
-import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
@@ -45,10 +38,10 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Attribute;
 import org.apache.lucene.util.AttributeImpl;
 import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.LineFileDocs;
-import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.Rethrow;
+import org.apache.lucene.util._TestUtil;
 
 /** 
  * Base class for all Lucene unit tests that use TokenStreams. 
@@ -437,7 +430,11 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
     boolean useCharFilter = random.nextBoolean();
     Directory dir = null;
     RandomIndexWriter iw = null;
-    if (rarely(random)) {
+    final String postingsFormat =  _TestUtil.getPostingsFormat("dummy");
+    boolean codecOk = iterations * maxWordLength < 100000 ||
+        !(postingsFormat.equals("Memory") ||
+            postingsFormat.equals("SimpleText"));
+    if (rarely(random) && codecOk) {
       dir = newFSDirectory(_TestUtil.getTempDir("bttc"));
       iw = new RandomIndexWriter(new Random(seed), dir, a);
     }
@@ -476,14 +473,6 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
     }
   }
 
-  static final Set<String> doesntSupportOffsets = new HashSet<String>() {{ 
-    add("Lucene3x"); 
-    add("MockFixedIntBlock");
-    add("MockVariableIntBlock");
-    add("MockSep");
-    add("MockRandom");
-  }};
-  
   private static void checkRandomData(Random random, Analyzer a, int iterations, int maxWordLength, boolean useCharFilter, boolean simple, boolean offsetsAreCorrect, RandomIndexWriter iw) throws IOException {
 
     final LineFileDocs docs = new LineFileDocs(random);
@@ -598,7 +587,7 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
       } else {
         // TODO: we can make ascii easier to read if we
         // don't escape...
-        sb.append(String.format("\\u%04x", c));
+        sb.append(String.format(Locale.ROOT, "\\u%04x", c));
       }
       charUpto += Character.charCount(c);
     }

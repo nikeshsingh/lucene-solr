@@ -32,7 +32,6 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
-import org.apache.lucene.document.Document;
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.FieldInfo;
@@ -443,7 +442,7 @@ public class MemoryIndex {
         }
 
         @Override
-        public void setScorer(Scorer scorer) throws IOException {
+        public void setScorer(Scorer scorer) {
           this.scorer = scorer;
         }
 
@@ -770,13 +769,13 @@ public class MemoryIndex {
             }
 
             @Override
-            public long getSumDocFreq() throws IOException {
+            public long getSumDocFreq() {
               // each term has df=1
               return info.sortedTerms.length;
             }
 
             @Override
-            public int getDocCount() throws IOException {
+            public int getDocCount() {
               return info.sortedTerms.length > 0 ? 1 : 0;
             }
               
@@ -873,7 +872,7 @@ public class MemoryIndex {
       }
 
       @Override
-      public DocsEnum docs(Bits liveDocs, DocsEnum reuse, boolean needsFreqs) {
+      public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) {
         if (reuse == null || !(reuse instanceof MemoryDocsEnum)) {
           reuse = new MemoryDocsEnum();
         }
@@ -881,10 +880,7 @@ public class MemoryIndex {
       }
 
       @Override
-      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, boolean needsOffsets) {
-        if (needsOffsets) {
-          return null;
-        }
+      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) {
         if (reuse == null || !(reuse instanceof MemoryDocsAndPositionsEnum)) {
           reuse = new MemoryDocsAndPositionsEnum();
         }
@@ -1065,7 +1061,7 @@ public class MemoryIndex {
     }
 
     @Override
-    public DocValues docValues(String field) throws IOException {
+    public DocValues docValues(String field) {
       return null;
     }
     
@@ -1075,7 +1071,7 @@ public class MemoryIndex {
     private Similarity cachedSimilarity;
     
     @Override
-    public DocValues normValues(String field) throws IOException {
+    public DocValues normValues(String field) {
       DocValues norms = cachedNormValues;
       Similarity sim = getSimilarity();
       if (!field.equals(cachedFieldName) || sim != cachedSimilarity) { // not cached?

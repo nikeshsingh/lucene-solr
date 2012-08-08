@@ -37,6 +37,7 @@ import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 
@@ -126,8 +127,10 @@ public class TokenSources {
   private static boolean hasPositions(Terms vector) throws IOException {
     final TermsEnum termsEnum = vector.iterator(null);
     if (termsEnum.next() != null) {
-      DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null, false);
+      DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null, DocsAndPositionsEnum.FLAG_PAYLOADS);
       if (dpEnum != null) {
+        int doc = dpEnum.nextDoc();
+        assert doc >= 0 && doc != DocIdSetIterator.NO_MORE_DOCS;
         int pos = dpEnum.nextPosition();
         if (pos >= 0) {
           return true;
@@ -191,7 +194,7 @@ public class TokenSources {
       }
 
       @Override
-      public boolean incrementToken() throws IOException {
+      public boolean incrementToken() {
         if (currentToken >= tokens.length) {
           return false;
         }
@@ -219,18 +222,21 @@ public class TokenSources {
     DocsAndPositionsEnum dpEnum = null;
     while ((text = termsEnum.next()) != null) {
 
-      dpEnum = termsEnum.docsAndPositions(null, dpEnum, true);
+      dpEnum = termsEnum.docsAndPositions(null, dpEnum);
       if (dpEnum == null) {
         throw new IllegalArgumentException(
             "Required TermVector Offset information was not found");
       }
-
       final String term = text.utf8ToString();
 
       dpEnum.nextDoc();
       final int freq = dpEnum.freq();
       for(int posUpto=0;posUpto<freq;posUpto++) {
         final int pos = dpEnum.nextPosition();
+        if (dpEnum.startOffset() < 0) {
+          throw new IllegalArgumentException(
+              "Required TermVector Offset information was not found");
+        }
         final Token token = new Token(term,
                                       dpEnum.startOffset(),
                                       dpEnum.endOffset());

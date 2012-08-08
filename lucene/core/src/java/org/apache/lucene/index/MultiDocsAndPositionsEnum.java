@@ -17,10 +17,10 @@ package org.apache.lucene.index;
  * limitations under the License.
  */
 
-import org.apache.lucene.util.ReaderUtil;
 import org.apache.lucene.util.BytesRef;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 /**
  * Exposes flex API, merged from flex API of sub-segments.
@@ -47,7 +47,7 @@ public final class MultiDocsAndPositionsEnum extends DocsAndPositionsEnum {
     return this.parent == parent;
   }
 
-  public MultiDocsAndPositionsEnum reset(final EnumWithSlice[] subs, final int numSubs) throws IOException {
+  public MultiDocsAndPositionsEnum reset(final EnumWithSlice[] subs, final int numSubs) {
     this.numSubs = numSubs;
     this.subs = new EnumWithSlice[subs.length];
     for(int i=0;i<subs.length;i++) {
@@ -56,6 +56,7 @@ public final class MultiDocsAndPositionsEnum extends DocsAndPositionsEnum {
       this.subs[i].slice = subs[i].slice;
     }
     upto = -1;
+    doc = -1;
     current = null;
     return this;
   }
@@ -70,6 +71,7 @@ public final class MultiDocsAndPositionsEnum extends DocsAndPositionsEnum {
 
   @Override
   public int freq() throws IOException {
+    assert current != null;
     return current.freq();
   }
 
@@ -148,7 +150,17 @@ public final class MultiDocsAndPositionsEnum extends DocsAndPositionsEnum {
   // TODO: implement bulk read more efficiently than super
   public final static class EnumWithSlice {
     public DocsAndPositionsEnum docsAndPositionsEnum;
-    public ReaderUtil.Slice slice;
+    public ReaderSlice slice;
+    
+    @Override
+    public String toString() {
+      return slice.toString()+":"+docsAndPositionsEnum;
+    }
+  }
+  
+  @Override
+  public String toString() {
+    return "MultiDocsAndPositionsEnum(" + Arrays.toString(getSubs()) + ")";
   }
 }
 

@@ -19,6 +19,10 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -27,17 +31,21 @@ import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.AlreadyClosedException;
+import org.apache.lucene.store.BaseDirectoryWrapper;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.ThreadInterruptedException;
 import org.apache.lucene.util._TestUtil;
+import org.apache.lucene.util.LuceneTestCase.Slow;
 
 /**
  * MultiThreaded IndexWriter tests
  */
+@Slow
 public class TestIndexWriterWithThreads extends LuceneTestCase {
 
   // Used by test cases below
@@ -123,7 +131,7 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
       if (VERBOSE) {
         System.out.println("\nTEST: iter=" + iter);
       }
-      MockDirectoryWrapper dir = newDirectory();
+      MockDirectoryWrapper dir = newMockDirectory();
       IndexWriter writer = new IndexWriter(
           dir,
           newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).
@@ -216,7 +224,7 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
                                       new BytesRef("aaa"),
                                       MultiFields.getLiveDocs(reader),
                                       null,
-                                      false);
+                                      0);
       int count = 0;
       while(tdocs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
         count++;
@@ -238,7 +246,7 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
       if (VERBOSE) {
         System.out.println("TEST: iter=" + iter);
       }
-      MockDirectoryWrapper dir = newDirectory();
+      MockDirectoryWrapper dir = newMockDirectory();
 
       IndexWriter writer = new IndexWriter(
           dir,
@@ -295,7 +303,7 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
   // Runs test, with one thread, using the specific failure
   // to trigger an IOException
   public void _testSingleThreadFailure(MockDirectoryWrapper.Failure failure) throws IOException {
-    MockDirectoryWrapper dir = newDirectory();
+    MockDirectoryWrapper dir = newMockDirectory();
 
     IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random()))
       .setMaxBufferedDocs(2).setMergeScheduler(new ConcurrentMergeScheduler()));
@@ -428,7 +436,7 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
   //  and closes before the second IndexWriter time's out trying to get the Lock,
   //  we should see both documents
   public void testOpenTwoIndexWritersOnDifferentThreads() throws IOException, InterruptedException {
-     final MockDirectoryWrapper dir = newDirectory();
+     final Directory dir = newDirectory();
      CountDownLatch oneIWConstructed = new CountDownLatch(1);
      DelayedIndexAndCloseRunnable thread1 = new DelayedIndexAndCloseRunnable(
          dir, oneIWConstructed);
@@ -456,41 +464,134 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
      dir.close();
   }
   
-   static class DelayedIndexAndCloseRunnable extends Thread {
-     private final Directory dir;
-     boolean failed = false;
-     Throwable failure = null;
-     private final CountDownLatch startIndexing = new CountDownLatch(1);
-     private CountDownLatch iwConstructed;
+  static class DelayedIndexAndCloseRunnable extends Thread {
+    private final Directory dir;
+    boolean failed = false;
+    Throwable failure = null;
+    private final CountDownLatch startIndexing = new CountDownLatch(1);
+    private CountDownLatch iwConstructed;
 
-     public DelayedIndexAndCloseRunnable(Directory dir,
-         CountDownLatch iwConstructed) {
-       this.dir = dir;
-       this.iwConstructed = iwConstructed;
-     }
+    public DelayedIndexAndCloseRunnable(Directory dir,
+                                        CountDownLatch iwConstructed) {
+      this.dir = dir;
+      this.iwConstructed = iwConstructed;
+    }
 
-     public void startIndexing() {
-       this.startIndexing.countDown();
-     }
+    public void startIndexing() {
+      this.startIndexing.countDown();
+    }
 
-     @Override
-     public void run() {
-       try {
-         Document doc = new Document();
-         Field field = newTextField("field", "testData", Field.Store.YES);
-         doc.add(field);
-         IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(
-             TEST_VERSION_CURRENT, new MockAnalyzer(random())));
-         iwConstructed.countDown();
-         startIndexing.await();
-         writer.addDocument(doc);
-         writer.close();
-       } catch (Throwable e) {
-         failed = true;
-         failure = e;
-         failure.printStackTrace(System.out);
-         return;
-       }
-     }
-   }
+    @Override
+    public void run() {
+      try {
+        Document doc = new Document();
+        Field field = newTextField("field", "testData", Field.Store.YES);
+        doc.add(field);
+        IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(
+                                                                       TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+        iwConstructed.countDown();
+        startIndexing.await();
+        writer.addDocument(doc);
+        writer.close();
+      } catch (Throwable e) {
+        failed = true;
+        failure = e;
+        failure.printStackTrace(System.out);
+        return;
+      }
+    }
+  }
+
+  // LUCENE-4147
+  public void testRollbackAndCommitWithThreads() throws Exception {
+    final BaseDirectoryWrapper d = newFSDirectory(_TestUtil.getTempDir("RollbackAndCommitWithThreads"));
+    if (d instanceof MockDirectoryWrapper) {
+      ((MockDirectoryWrapper)d).setPreventDoubleWrite(false);
+    }
+
+    final int threadCount = _TestUtil.nextInt(random(), 2, 6);
+
+    final AtomicReference<IndexWriter> writerRef = new AtomicReference<IndexWriter>();
+    writerRef.set(new IndexWriter(d, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))));
+    final LineFileDocs docs = new LineFileDocs(random());
+    final Thread[] threads = new Thread[threadCount];
+    final int iters = atLeast(1000);
+    final AtomicBoolean failed = new AtomicBoolean();
+    final Lock rollbackLock = new ReentrantLock();
+    final Lock commitLock = new ReentrantLock();
+    for(int threadID=0;threadID<threadCount;threadID++) {
+      threads[threadID] = new Thread() {
+          @Override
+          public void run() {
+            for(int iter=0;iter<iters && !failed.get();iter++) {
+              //final int x = random().nextInt(5);
+              final int x = random().nextInt(3);
+              try {
+                switch(x) {
+                case 0:
+                  rollbackLock.lock();
+                  if (VERBOSE) {
+                    System.out.println("\nTEST: " + Thread.currentThread().getName() + ": now rollback");
+                  }
+                  try {
+                    writerRef.get().rollback();
+                    if (VERBOSE) {
+                      System.out.println("TEST: " + Thread.currentThread().getName() + ": rollback done; now open new writer");
+                    }
+                    writerRef.set(new IndexWriter(d, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))));
+                  } finally {
+                    rollbackLock.unlock();
+                  }
+                  break;
+                case 1:
+                  commitLock.lock();
+                  if (VERBOSE) {
+                    System.out.println("\nTEST: " + Thread.currentThread().getName() + ": now commit");
+                  }
+                  try {
+                    if (random().nextBoolean()) {
+                      writerRef.get().prepareCommit();
+                    }
+                    writerRef.get().commit();
+                  } catch (AlreadyClosedException ace) {
+                    // ok
+                  } catch (NullPointerException npe) {
+                    // ok
+                  } finally {
+                    commitLock.unlock();
+                  }
+                  break;
+                case 2:
+                  if (VERBOSE) {
+                    System.out.println("\nTEST: " + Thread.currentThread().getName() + ": now add");
+                  }
+                  try {
+                    writerRef.get().addDocument(docs.nextDoc());
+                  } catch (AlreadyClosedException ace) {
+                    // ok
+                  } catch (NullPointerException npe) {
+                    // ok
+                  } catch (AssertionError ae) {
+                    // ok
+                  }
+                  break;
+                }
+              } catch (Throwable t) {
+                failed.set(true);
+                throw new RuntimeException(t);
+              }
+            }
+          }
+        };
+      threads[threadID].start();
+    }
+
+    for(int threadID=0;threadID<threadCount;threadID++) {
+      threads[threadID].join();
+    }
+
+    assertTrue(!failed.get());
+    writerRef.get().close();
+    d.close();
+  }
 }

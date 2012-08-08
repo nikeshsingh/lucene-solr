@@ -43,9 +43,8 @@ public class TestPayloads extends LuceneTestCase {
     
     // Simple tests to test the Payload class
     public void testPayload() throws Exception {
-        byte[] testData = "This is a test!".getBytes();
-        BytesRef payload = new BytesRef(testData);
-        assertEquals("Wrong payload length.", testData.length, payload.length);
+        BytesRef payload = new BytesRef("This is a test!");
+        assertEquals("Wrong payload length.", "This is a test!".length(), payload.length);
         
         BytesRef clone = payload.clone();
         assertEquals(payload.length, clone.length);
@@ -73,7 +72,7 @@ public class TestPayloads extends LuceneTestCase {
         // enabled in only some documents
         d.add(newTextField("f3", "This field has payloads in some docs", Field.Store.NO));
         // only add payload data for field f2
-        analyzer.setPayloadData("f2", "somedata".getBytes(), 0, 1);
+        analyzer.setPayloadData("f2", "somedata".getBytes("UTF-8"), 0, 1);
         writer.addDocument(d);
         // flush
         writer.close();
@@ -96,8 +95,8 @@ public class TestPayloads extends LuceneTestCase {
         d.add(newTextField("f2", "This field has payloads in all docs", Field.Store.NO));
         d.add(newTextField("f3", "This field has payloads in some docs", Field.Store.NO));
         // add payload data for field f2 and f3
-        analyzer.setPayloadData("f2", "somedata".getBytes(), 0, 1);
-        analyzer.setPayloadData("f3", "somedata".getBytes(), 0, 3);
+        analyzer.setPayloadData("f2", "somedata".getBytes("UTF-8"), 0, 1);
+        analyzer.setPayloadData("f3", "somedata".getBytes("UTF-8"), 0, 3);
         writer.addDocument(d);
 
         // force merge
@@ -189,8 +188,7 @@ public class TestPayloads extends LuceneTestCase {
           tps[i] = MultiFields.getTermPositionsEnum(reader,
                                                     MultiFields.getLiveDocs(reader),
                                                     terms[i].field(),
-                                                    new BytesRef(terms[i].text()),
-                                                    false);
+                                                    new BytesRef(terms[i].text()));
         }
         
         while (tps[0].nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
@@ -227,8 +225,7 @@ public class TestPayloads extends LuceneTestCase {
         DocsAndPositionsEnum tp = MultiFields.getTermPositionsEnum(reader,
                                                                    MultiFields.getLiveDocs(reader),
                                                                    terms[0].field(),
-                                                                   new BytesRef(terms[0].text()),
-                                                                   false);
+                                                                   new BytesRef(terms[0].text()));
         tp.nextDoc();
         tp.nextPosition();
         // NOTE: prior rev of this test was failing to first
@@ -256,8 +253,7 @@ public class TestPayloads extends LuceneTestCase {
         tp = MultiFields.getTermPositionsEnum(reader,
                                               MultiFields.getLiveDocs(reader),
                                               terms[1].field(),
-                                              new BytesRef(terms[1].text()),
-                                              false);
+                                              new BytesRef(terms[1].text()));
         tp.nextDoc();
         tp.nextPosition();
         assertEquals("Wrong payload length.", 1, tp.getPayload().length);
@@ -300,8 +296,7 @@ public class TestPayloads extends LuceneTestCase {
         tp = MultiFields.getTermPositionsEnum(reader,
                                               MultiFields.getLiveDocs(reader),
                                               fieldName,
-                                              new BytesRef(singleTerm),
-                                              false);
+                                              new BytesRef(singleTerm));
         tp.nextDoc();
         tp.nextPosition();
         
@@ -502,7 +497,7 @@ public class TestPayloads extends LuceneTestCase {
         DocsAndPositionsEnum tp = null;
         while (terms.next() != null) {
           String termText = terms.term().utf8ToString();
-          tp = terms.docsAndPositions(liveDocs, tp, false);
+          tp = terms.docsAndPositions(liveDocs, tp);
           while(tp.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
             int freq = tp.freq();
             for (int i = 0; i < freq; i++) {

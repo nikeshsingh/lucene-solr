@@ -31,7 +31,6 @@ import java.util.Random;
 import java.util.Set;
 
 import junit.framework.Assert;
-import junit.framework.TestCase;
 
 import org.apache.lucene.search.FieldCache;
 import org.apache.solr.client.solrj.SolrServer;
@@ -189,7 +188,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
   }
 
   protected void createServers(int numShards) throws Exception {
-    controlJetty = createJetty(testDir, testDir + "/control/data", null, getSolrConfigFile(), getSchemaFile());
+    controlJetty = createJetty(new File(getSolrHome()), testDir + "/control/data", null, getSolrConfigFile(), getSchemaFile());
 
     controlClient = createNewSolrServer(controlJetty.getLocalPort());
 
@@ -197,7 +196,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
     StringBuilder sb = new StringBuilder();
     for (int i = 0; i < numShards; i++) {
       if (sb.length() > 0) sb.append(',');
-      JettySolrRunner j = createJetty(testDir,
+      JettySolrRunner j = createJetty(new File(getSolrHome()),
           testDir + "/shard" + i + "/data", null, getSolrConfigFile(),
           getSchemaFile());
       jettys.add(j);
@@ -247,17 +246,17 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
     jettys.clear();
   }
   
-  public JettySolrRunner createJetty(File baseDir, String dataDir) throws Exception {
-    return createJetty(baseDir, dataDir, null, null, null);
+  public JettySolrRunner createJetty(File solrHome, String dataDir) throws Exception {
+    return createJetty(solrHome, dataDir, null, null, null);
   }
 
-  public JettySolrRunner createJetty(File baseDir, String dataDir, String shardId) throws Exception {
-    return createJetty(baseDir, dataDir, shardId, null, null);
+  public JettySolrRunner createJetty(File solrHome, String dataDir, String shardId) throws Exception {
+    return createJetty(solrHome, dataDir, shardId, null, null);
   }
   
-  public JettySolrRunner createJetty(File baseDir, String dataDir, String shardList, String solrConfigOverride, String schemaOverride) throws Exception {
+  public JettySolrRunner createJetty(File solrHome, String dataDir, String shardList, String solrConfigOverride, String schemaOverride) throws Exception {
 
-    JettySolrRunner jetty = new JettySolrRunner(getSolrHome(), "/solr", 0, solrConfigOverride, schemaOverride);
+    JettySolrRunner jetty = new JettySolrRunner(solrHome.getAbsolutePath(), "/solr", 0, solrConfigOverride, schemaOverride);
     jetty.setShards(shardList);
     jetty.setDataDir(dataDir);
     jetty.start();
@@ -451,31 +450,44 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
 //    System.out.println("resp b:" + b);
     boolean ordered = (flags & UNORDERED) == 0;
 
+    if (!ordered) {
+      Map mapA = new HashMap(a.size());
+      for (int i=0; i<a.size(); i++) {
+        Object prev = mapA.put(a.getName(i), a.getVal(i));
+      }
+
+      Map mapB = new HashMap(b.size());
+      for (int i=0; i<b.size(); i++) {
+        Object prev = mapB.put(b.getName(i), b.getVal(i));
+      }
+
+      return compare(mapA, mapB, flags, handle);
+    }
+
     int posa = 0, posb = 0;
     int aSkipped = 0, bSkipped = 0;
 
     for (; ;) {
-      if (posa >= a.size() || posb >= b.size()) {
+      if (posa >= a.size() && posb >= b.size()) {
         break;
       }
 
-      String namea, nameb;
-      Object vala, valb = null;
+      String namea = null, nameb = null;
+      Object vala = null, valb = null;
 
-      int flagsa, flagsb;
-      for (; ;) {
+      int flagsa = 0, flagsb = 0;
+      while (posa < a.size()) {
         namea = a.getName(posa);
         vala = a.getVal(posa);
         posa++;
         flagsa = flags(handle, namea);
         if ((flagsa & SKIP) != 0) {
+          namea = null; vala = null;
           aSkipped++;
           continue;
         }
         break;
       }
-
-      if (!ordered) posb = 0;  // reset if not ordered
 
       while (posb < b.size()) {
         nameb = b.getName(posb);
@@ -483,15 +495,14 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
         posb++;
         flagsb = flags(handle, nameb);
         if ((flagsb & SKIP) != 0) {
+          nameb = null; valb = null;
           bSkipped++;
           continue;
         }
         if (eq(namea, nameb)) {
           break;
         }
-        if (ordered) {
-          return "." + namea + "!=" + nameb + " (unordered or missing)";
-        }
+        return "." + namea + "!=" + nameb + " (unordered or missing)";
         // if unordered, continue until we find the right field.
       }
 
@@ -504,7 +515,7 @@ public abstract class BaseDistributedSearchTestCase extends SolrTestCaseJ4 {
 
 
     if (a.size() - aSkipped != b.size() - bSkipped) {
-      return ".size()==" + a.size() + "," + b.size() + "skipped=" + aSkipped + "," + bSkipped;
+      return ".size()==" + a.size() + "," + b.size() + " skipped=" + aSkipped + "," + bSkipped;
     }
 
     return null;

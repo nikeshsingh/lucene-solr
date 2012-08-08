@@ -28,10 +28,12 @@ import org.apache.lucene.document.FieldType;
 import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.Terms;
@@ -46,7 +48,6 @@ import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefIterator;
-import org.apache.lucene.util.ReaderUtil;
 import org.apache.lucene.util.Version;
 
 /**
@@ -497,14 +498,11 @@ public class SpellChecker implements java.io.Closeable {
 
       final IndexReader reader = searcher.getIndexReader();
       if (reader.maxDoc() > 0) {
-        new ReaderUtil.Gather(reader) {
-          @Override
-          protected void add(int base, AtomicReader r) throws IOException {
-            Terms terms = r.terms(F_WORD);
-            if (terms != null)
-              termsEnums.add(terms.iterator(null));
-          }
-        }.run();
+        for (final AtomicReaderContext ctx : reader.getTopReaderContext().leaves()) {
+          Terms terms = ctx.reader().terms(F_WORD);
+          if (terms != null)
+            termsEnums.add(terms.iterator(null));
+        }
       }
       
       boolean isEmpty = termsEnums.isEmpty();

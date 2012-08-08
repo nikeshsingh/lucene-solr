@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 import org.apache.lucene.search.SearcherManager; // javadocs
 import org.apache.lucene.store.Directory;
@@ -57,10 +56,9 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
   /** Returns a IndexReader reading the index in the given
    *  Directory
    * @param directory the index directory
-   * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    */
-  public static DirectoryReader open(final Directory directory) throws CorruptIndexException, IOException {
+  public static DirectoryReader open(final Directory directory) throws IOException {
     return StandardDirectoryReader.open(directory, null, DEFAULT_TERMS_INDEX_DIVISOR);
   }
   
@@ -77,10 +75,12 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
    *  memory usage, at the expense of higher latency when
    *  loading a TermInfo.  The default value is 1.  Set this
    *  to -1 to skip loading the terms index entirely.
-   * @throws CorruptIndexException if the index is corrupt
+   *  <b>NOTE:</b> divisor settings &gt; 1 do not apply to all PostingsFormat
+   *  implementations, including the default one in this release. It only makes
+   *  sense for terms indexes that can efficiently re-sample terms at load time.
    * @throws IOException if there is a low-level IO error
    */
-  public static DirectoryReader open(final Directory directory, int termInfosIndexDivisor) throws CorruptIndexException, IOException {
+  public static DirectoryReader open(final Directory directory, int termInfosIndexDivisor) throws IOException {
     return StandardDirectoryReader.open(directory, null, termInfosIndexDivisor);
   }
   
@@ -103,17 +103,16 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
    *
    * @lucene.experimental
    */
-  public static DirectoryReader open(final IndexWriter writer, boolean applyAllDeletes) throws CorruptIndexException, IOException {
+  public static DirectoryReader open(final IndexWriter writer, boolean applyAllDeletes) throws IOException {
     return writer.getReader(applyAllDeletes);
   }
 
   /** Expert: returns an IndexReader reading the index in the given
    *  {@link IndexCommit}.
    * @param commit the commit point to open
-   * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    */
-  public static DirectoryReader open(final IndexCommit commit) throws CorruptIndexException, IOException {
+  public static DirectoryReader open(final IndexCommit commit) throws IOException {
     return StandardDirectoryReader.open(commit.getDirectory(), commit, DEFAULT_TERMS_INDEX_DIVISOR);
   }
 
@@ -130,10 +129,12 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
    *  memory usage, at the expense of higher latency when
    *  loading a TermInfo.  The default value is 1.  Set this
    *  to -1 to skip loading the terms index entirely.
-   * @throws CorruptIndexException if the index is corrupt
+   *  <b>NOTE:</b> divisor settings &gt; 1 do not apply to all PostingsFormat
+   *  implementations, including the default one in this release. It only makes
+   *  sense for terms indexes that can efficiently re-sample terms at load time.
    * @throws IOException if there is a low-level IO error
    */
-  public static DirectoryReader open(final IndexCommit commit, int termInfosIndexDivisor) throws CorruptIndexException, IOException {
+  public static DirectoryReader open(final IndexCommit commit, int termInfosIndexDivisor) throws IOException {
     return StandardDirectoryReader.open(commit.getDirectory(), commit, termInfosIndexDivisor);
   }
 
@@ -312,9 +313,8 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
    * Returns <code>true</code> if an index exists at the specified directory.
    * @param  directory the directory to check for an index
    * @return <code>true</code> if an index exists; <code>false</code> otherwise
-   * @throws IOException if there is a problem with accessing the index
    */
-  public static boolean indexExists(Directory directory) throws IOException {
+  public static boolean indexExists(Directory directory) {
     try {
       new SegmentInfos().read(directory);
       return true;
@@ -332,7 +332,7 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
    * Subclasses of {@code DirectoryReader} should take care to not allow
    * modification of this internal array, e.g. {@link #doOpenIfChanged()}.
    */
-  protected DirectoryReader(Directory directory, AtomicReader[] segmentReaders) throws CorruptIndexException, IOException {
+  protected DirectoryReader(Directory directory, AtomicReader[] segmentReaders) {
     super(segmentReaders);
     this.directory = directory;
   }
@@ -349,32 +349,29 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
    * If this reader does not support reopen, return {@code null}, so
    * client code is happy. This should be consistent with {@link #isCurrent}
    * (should always return {@code true}) if reopen is not supported.
-   * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    * @return null if there are no changes; else, a new
    * DirectoryReader instance.
    */
-  protected abstract DirectoryReader doOpenIfChanged() throws CorruptIndexException, IOException;
+  protected abstract DirectoryReader doOpenIfChanged() throws IOException;
 
   /** Implement this method to support {@link #openIfChanged(DirectoryReader,IndexCommit)}.
    * If this reader does not support reopen from a specific {@link IndexCommit},
    * throw {@link UnsupportedOperationException}.
-   * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    * @return null if there are no changes; else, a new
    * DirectoryReader instance.
    */
-  protected abstract DirectoryReader doOpenIfChanged(final IndexCommit commit) throws CorruptIndexException, IOException;
+  protected abstract DirectoryReader doOpenIfChanged(final IndexCommit commit) throws IOException;
 
   /** Implement this method to support {@link #openIfChanged(DirectoryReader,IndexWriter,boolean)}.
    * If this reader does not support reopen from {@link IndexWriter},
    * throw {@link UnsupportedOperationException}.
-   * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    * @return null if there are no changes; else, a new
    * DirectoryReader instance.
    */
-  protected abstract DirectoryReader doOpenIfChanged(IndexWriter writer, boolean applyAllDeletes) throws CorruptIndexException, IOException;
+  protected abstract DirectoryReader doOpenIfChanged(IndexWriter writer, boolean applyAllDeletes) throws IOException;
 
   /**
    * Version number when this IndexReader was opened.
@@ -408,16 +405,15 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
    * {@link #openIfChanged} to get a new reader that sees the
    * changes.</p>
    *
-   * @throws CorruptIndexException if the index is corrupt
    * @throws IOException           if there is a low-level IO error
    */
-  public abstract boolean isCurrent() throws CorruptIndexException, IOException;
+  public abstract boolean isCurrent() throws IOException;
 
   /**
    * Expert: return the IndexCommit that this reader has opened.
    * <p/>
    * @lucene.experimental
    */
-  public abstract IndexCommit getIndexCommit() throws CorruptIndexException, IOException;
+  public abstract IndexCommit getIndexCommit() throws IOException;
 
 }

@@ -32,6 +32,7 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermContext;
 import org.apache.lucene.index.memory.MemoryIndex;
 import org.apache.lucene.search.*;
 import org.apache.lucene.search.spans.FieldMaskingSpanQuery;
@@ -43,7 +44,6 @@ import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
 import org.apache.lucene.search.spans.Spans;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.TermContext;
 
 /**
  * Class used to extract {@link WeightedSpanTerm}s from a {@link Query} based on whether 
@@ -431,7 +431,7 @@ public class WeightedSpanTermExtractor {
     Map<String,WeightedSpanTerm> terms = new PositionCheckingMap<String>();
     extract(query, terms);
 
-    int totalNumDocs = reader.numDocs();
+    int totalNumDocs = reader.maxDoc();
     Set<String> weightedTerms = terms.keySet();
     Iterator<String> it = weightedTerms.iterator();
 
@@ -439,12 +439,8 @@ public class WeightedSpanTermExtractor {
       while (it.hasNext()) {
         WeightedSpanTerm weightedSpanTerm = terms.get(it.next());
         int docFreq = reader.docFreq(new Term(fieldName, weightedSpanTerm.term));
-        // docFreq counts deletes
-        if(totalNumDocs < docFreq) {
-          docFreq = totalNumDocs;
-        }
         // IDF algorithm taken from DefaultSimilarity class
-        float idf = (float) (Math.log((float) totalNumDocs / (double) (docFreq + 1)) + 1.0);
+        float idf = (float) (Math.log(totalNumDocs / (double) (docFreq + 1)) + 1.0);
         weightedSpanTerm.weight *= idf;
       }
     } finally {

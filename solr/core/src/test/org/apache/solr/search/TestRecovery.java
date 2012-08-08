@@ -17,24 +17,25 @@
 package org.apache.solr.search;
 
 
-import org.apache.lucene.util.BytesRef;
-import org.apache.noggit.JSONUtil;
 import org.apache.noggit.ObjectBuilder;
 import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.common.util.ByteUtils;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.update.DirectUpdateHandler2;
 import org.apache.solr.update.UpdateLog;
 import org.apache.solr.update.UpdateHandler;
-import org.apache.solr.update.UpdateLog;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.RandomAccessFile;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.Arrays;
+import java.util.Deque;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -60,13 +61,26 @@ public class TestRecovery extends SolrTestCaseJ4 {
   }
   
   @AfterClass
-  public static void afterClass() throws Exception {
+  public static void afterClass() {
     if (savedFactory == null) {
       System.clearProperty("solr.directoryFactory");
     } else {
       System.setProperty("solr.directoryFactory", savedFactory);
     }
   }
+
+
+  // since we make up fake versions in these tests, we can get messed up by a DBQ with a real version
+  // since Solr can think following updates were reordered.
+  @Override
+  public void clearIndex() {
+    try {
+      deleteByQueryAndGetVersion("*:*", params("_version_", Long.toString(-Long.MAX_VALUE), DISTRIB_UPDATE_PARAM,FROM_LEADER));
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
+
 
   @Test
   public void testLogReplay() throws Exception {
@@ -545,7 +559,22 @@ public class TestRecovery extends SolrTestCaseJ4 {
 
       assertTrue((ulog.getStartingOperation() & UpdateLog.FLAG_GAP) == 0);
 
+      ulog.bufferUpdates();
+      // simulate receiving no updates
+      ulog.applyBufferedUpdates();
+      updateJ(jsonAdd(sdoc("id","Q7", "_version_","117")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER)); // do another add to make sure flags are back to normal
 
+      req.close();
+      h.close();
+      createCore();
+
+      req = req();
+      uhandler = req.getCore().getUpdateHandler();
+      ulog = uhandler.getUpdateLog();
+
+      assertTrue((ulog.getStartingOperation() & UpdateLog.FLAG_GAP) == 0); // check flags on Q7
+
+      logReplayFinish.acquire();
       assertEquals(UpdateLog.State.ACTIVE, ulog.getState()); // leave each test method in a good state
     } finally {
       DirectUpdateHandler2.commitOnClose = true;
@@ -892,7 +921,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
 
       // WARNING... assumes format of .00000n where n is less than 9
       long logNumber = Long.parseLong(fname.substring(fname.lastIndexOf(".") + 1));
-      String fname2 = String.format(Locale.ENGLISH, 
+      String fname2 = String.format(Locale.ROOT,
           UpdateLog.LOG_FILENAME_PATTERN,
           UpdateLog.TLOG_NAME,
           logNumber + 1);

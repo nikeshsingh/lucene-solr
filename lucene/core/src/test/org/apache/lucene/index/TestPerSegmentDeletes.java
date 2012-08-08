@@ -227,7 +227,7 @@ public class TestPerSegmentDeletes extends LuceneTestCase {
     Terms cterms = fields.terms(term.field);
     TermsEnum ctermsEnum = cterms.iterator(null);
     if (ctermsEnum.seekExact(new BytesRef(term.text()), false)) {
-      DocsEnum docsEnum = _TestUtil.docs(random(), ctermsEnum, bits, null, false);
+      DocsEnum docsEnum = _TestUtil.docs(random(), ctermsEnum, bits, null, 0);
       return toArray(docsEnum);
     }
     return null;
@@ -258,7 +258,7 @@ public class TestPerSegmentDeletes extends LuceneTestCase {
 
     @Override
     public MergeSpecification findMerges(SegmentInfos segmentInfos)
-        throws CorruptIndexException, IOException {
+        throws IOException {
       MergeSpecification ms = new MergeSpecification();
       if (doMerge) {
         OneMerge om = new OneMerge(segmentInfos.asList().subList(start, start + length));
@@ -272,13 +272,13 @@ public class TestPerSegmentDeletes extends LuceneTestCase {
     @Override
     public MergeSpecification findForcedMerges(SegmentInfos segmentInfos,
         int maxSegmentCount, Map<SegmentInfoPerCommit,Boolean> segmentsToMerge)
-        throws CorruptIndexException, IOException {
+        throws IOException {
       return null;
     }
 
     @Override
     public MergeSpecification findForcedDeletesMerges(
-        SegmentInfos segmentInfos) throws CorruptIndexException, IOException {
+        SegmentInfos segmentInfos) throws IOException {
       return null;
     }
 

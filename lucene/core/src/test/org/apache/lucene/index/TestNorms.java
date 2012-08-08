@@ -31,6 +31,7 @@ import org.apache.lucene.search.similarities.PerFieldSimilarityWrapper;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LineFileDocs;
+import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util._TestUtil;
@@ -39,7 +40,8 @@ import org.apache.lucene.util._TestUtil;
  * Test that norms info is preserved during index life - including
  * separate norms, addDocument, addIndexes, forceMerge.
  */
-@SuppressCodecs({ "SimpleText", "Memory" })
+@SuppressCodecs({ "SimpleText", "Memory", "Direct" })
+@Slow
 public class TestNorms extends LuceneTestCase {
   final String byteTestField = "normsTestByte";
 
@@ -175,8 +177,7 @@ public class TestNorms extends LuceneTestCase {
     otherDir.close();
   }
 
-  public void buildIndex(Directory dir, boolean writeNorms) throws IOException,
-      CorruptIndexException {
+  public void buildIndex(Directory dir, boolean writeNorms) throws IOException {
     Random random = random();
     IndexWriterConfig config = newIndexWriterConfig(TEST_VERSION_CURRENT,
         new MockAnalyzer(random()));

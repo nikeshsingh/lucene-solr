@@ -377,6 +377,11 @@ public class Field implements IndexableField {
    * @see org.apache.lucene.search.similarities.DefaultSimilarity#encodeNormValue(float)
    */
   public void setBoost(float boost) {
+    if (boost != 1.0f) {
+      if (type.indexed() == false || type.omitNorms()) {
+        throw new IllegalArgumentException("You cannot set an index-time boost on an unindexed field, or one that omits norms");
+      }
+    }
     this.boost = boost;
   }
 
@@ -469,7 +474,7 @@ public class Field implements IndexableField {
         boolean used;
 
         @Override
-        public boolean incrementToken() throws IOException {
+        public boolean incrementToken() {
           if (used) {
             return false;
           }
@@ -480,7 +485,7 @@ public class Field implements IndexableField {
         }
 
         @Override
-        public void reset() throws IOException {
+        public void reset() {
           used = false;
         }
       };

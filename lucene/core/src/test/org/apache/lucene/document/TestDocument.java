@@ -51,8 +51,8 @@ public class TestDocument extends LuceneTestCase {
     FieldType ft = new FieldType();
     ft.setStored(true);
     IndexableField stringFld = new Field("string", binaryVal, ft);
-    IndexableField binaryFld = new StoredField("binary", binaryVal.getBytes());
-    IndexableField binaryFld2 = new StoredField("binary", binaryVal2.getBytes());
+    IndexableField binaryFld = new StoredField("binary", binaryVal.getBytes("UTF-8"));
+    IndexableField binaryFld2 = new StoredField("binary", binaryVal2.getBytes("UTF-8"));
     
     doc.add(stringFld);
     doc.add(binaryFld);
@@ -62,7 +62,6 @@ public class TestDocument extends LuceneTestCase {
     assertTrue(binaryFld.binaryValue() != null);
     assertTrue(binaryFld.fieldType().stored());
     assertFalse(binaryFld.fieldType().indexed());
-    assertFalse(binaryFld.fieldType().tokenized());
     
     String binaryTest = doc.getBinaryValue("binary").utf8ToString();
     assertTrue(binaryTest.equals(binaryVal));
@@ -290,34 +289,5 @@ public class TestDocument extends LuceneTestCase {
     } catch (IllegalArgumentException iae) {
       // expected
     }
-  }
-
-  public void testBoost() throws Exception {
-    Directory dir = newDirectory();
-    IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
-    iwc.setMergePolicy(newLogMergePolicy());
-    IndexWriter iw = new IndexWriter(dir, iwc);
-    Document doc = new Document();
-    doc.add(new StringField("field1", "sometext", Field.Store.YES));
-    doc.add(new TextField("field2", "sometext", Field.Store.NO));
-    doc.add(new StringField("foo", "bar", Field.Store.NO));
-    iw.addDocument(doc); // add an 'ok' document
-    try {
-      doc = new Document();
-      // try to boost with norms omitted
-      StringField field = new StringField("foo", "baz", Field.Store.NO);
-      field.setBoost(5.0f);
-      doc.add(field);
-      iw.addDocument(doc);
-      fail("didn't get any exception, boost silently discarded");
-    } catch (UnsupportedOperationException expected) {
-      // expected
-    }
-    DirectoryReader ir = DirectoryReader.open(iw, false);
-    assertEquals(1, ir.numDocs());
-    assertEquals("sometext", ir.document(0).get("field1"));
-    ir.close();
-    iw.close();
-    dir.close();
   }
 }

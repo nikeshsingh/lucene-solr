@@ -18,7 +18,6 @@ package org.apache.lucene.codecs;
  */
 
 import java.io.IOException;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.TreeMap;
@@ -30,7 +29,6 @@ import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.FieldsEnum;
 import org.apache.lucene.index.IndexFileNames;
-import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
@@ -41,7 +39,6 @@ import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.CodecUtil;
 import org.apache.lucene.util.DoubleBarrelLRUCache;
 
 /** Handles a terms dict, but decouples all details of
@@ -686,35 +683,26 @@ public class BlockTermsReader extends FieldsProducer {
       }
 
       @Override
-      public DocsEnum docs(Bits liveDocs, DocsEnum reuse, boolean needsFreqs) throws IOException {
+      public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
         //System.out.println("BTR.docs this=" + this);
-        if (needsFreqs && fieldInfo.getIndexOptions() == IndexOptions.DOCS_ONLY) {
-          return null;
-        }
         decodeMetaData();
         //System.out.println("BTR.docs:  state.docFreq=" + state.docFreq);
-        return postingsReader.docs(fieldInfo, state, liveDocs, reuse, needsFreqs);
+        return postingsReader.docs(fieldInfo, state, liveDocs, reuse, flags);
       }
 
       @Override
-      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, boolean needsOffsets) throws IOException {
+      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) throws IOException {
         if (fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) < 0) {
           // Positions were not indexed:
           return null;
         }
 
-        if (needsOffsets &&
-            fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) < 0) {
-          // Offsets were not indexed:
-          return null;
-        }
-
         decodeMetaData();
-        return postingsReader.docsAndPositions(fieldInfo, state, liveDocs, reuse, needsOffsets);
+        return postingsReader.docsAndPositions(fieldInfo, state, liveDocs, reuse, flags);
       }
 
       @Override
-      public void seekExact(BytesRef target, TermState otherState) throws IOException {
+      public void seekExact(BytesRef target, TermState otherState) {
         //System.out.println("BTR.seekExact termState target=" + target.utf8ToString() + " " + target + " this=" + this);
         assert otherState != null && otherState instanceof BlockTermState;
         assert !doOrd || ((BlockTermState) otherState).ord < numTerms;

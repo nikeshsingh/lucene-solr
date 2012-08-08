@@ -93,7 +93,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
    * and add docs to it.
    */
   public void testCommitOnCloseAbort() throws IOException {
-    MockDirectoryWrapper dir = newDirectory();
+    Directory dir = newDirectory();
     IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig( TEST_VERSION_CURRENT, new MockAnalyzer(random())).setMaxBufferedDocs(10));
     for (int i = 0; i < 14; i++) {
       TestIndexWriter.addDoc(writer);
@@ -139,7 +139,9 @@ public class TestIndexWriterCommit extends LuceneTestCase {
 
     // On abort, writer in fact may write to the same
     // segments_N file:
-    dir.setPreventDoubleWrite(false);
+    if (dir instanceof MockDirectoryWrapper) {
+      ((MockDirectoryWrapper)dir).setPreventDoubleWrite(false);
+    }
 
     for(int i=0;i<12;i++) {
       for(int j=0;j<17;j++) {
@@ -179,7 +181,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     final String idFormat = _TestUtil.getPostingsFormat("id");
     final String contentFormat = _TestUtil.getPostingsFormat("content");
     assumeFalse("This test cannot run with Memory codec", idFormat.equals("Memory") || contentFormat.equals("Memory"));
-    MockDirectoryWrapper dir = newDirectory();
+    MockDirectoryWrapper dir = newMockDirectory();
     Analyzer analyzer;
     if (random().nextBoolean()) {
       // no payloads
@@ -258,11 +260,13 @@ public class TestIndexWriterCommit extends LuceneTestCase {
    * and close().
    */
   public void testCommitOnCloseForceMerge() throws IOException {
-    MockDirectoryWrapper dir = newDirectory();
+    Directory dir = newDirectory();
     // Must disable throwing exc on double-write: this
     // test uses IW.rollback which easily results in
     // writing to same file more than once
-    dir.setPreventDoubleWrite(false);
+    if (dir instanceof MockDirectoryWrapper) {
+      ((MockDirectoryWrapper)dir).setPreventDoubleWrite(false);
+    }
     IndexWriter writer = new IndexWriter(
         dir,
         newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())).
@@ -282,7 +286,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
 
     // Reader should see index as multi-seg at this
     // point:
-    assertTrue("Reader incorrectly sees one segment", reader.getSequentialSubReaders().length > 1);
+    assertTrue("Reader incorrectly sees one segment", reader.getSequentialSubReaders().size() > 1);
     reader.close();
 
     // Abort the writer:
@@ -293,7 +297,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     reader = DirectoryReader.open(dir);
 
     // Reader should still see index as multi-segment
-    assertTrue("Reader incorrectly sees one segment", reader.getSequentialSubReaders().length > 1);
+    assertTrue("Reader incorrectly sees one segment", reader.getSequentialSubReaders().size() > 1);
     reader.close();
 
     if (VERBOSE) {
@@ -312,7 +316,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     reader = DirectoryReader.open(dir);
 
     // Reader should see index as one segment
-    assertEquals("Reader incorrectly sees more than one segment", 1, reader.getSequentialSubReaders().length);
+    assertEquals("Reader incorrectly sees more than one segment", 1, reader.getSequentialSubReaders().size());
     reader.close();
     dir.close();
   }
@@ -543,8 +547,10 @@ public class TestIndexWriterCommit extends LuceneTestCase {
 
   // LUCENE-1274: test writer.prepareCommit()
   public void testPrepareCommitRollback() throws IOException {
-    MockDirectoryWrapper dir = newDirectory();
-    dir.setPreventDoubleWrite(false);
+    Directory dir = newDirectory();
+    if (dir instanceof MockDirectoryWrapper) {
+      ((MockDirectoryWrapper)dir).setPreventDoubleWrite(false);
+    }
 
     IndexWriter writer = new IndexWriter(
         dir,

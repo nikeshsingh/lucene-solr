@@ -41,7 +41,7 @@ import org.apache.lucene.util._TestUtil;
 //   - test pulling docs in 2nd round trip...
 //   - filter too
 
-@SuppressCodecs({ "SimpleText", "Memory" })
+@SuppressCodecs({ "SimpleText", "Memory", "Direct" })
 public class TestShardSearching extends ShardSearchingTestBase {
 
   private static class PreviousSearchState {
@@ -77,8 +77,7 @@ public class TestShardSearching extends ShardSearchingTestBase {
       System.out.println("TEST: numNodes=" + numNodes + " runTimeSec=" + runTimeSec + " maxSearcherAgeSeconds=" + maxSearcherAgeSeconds);
     }
 
-    start(_TestUtil.getTempDir("TestShardSearching").toString(),
-          numNodes,
+    start(numNodes,
           runTimeSec,
           maxSearcherAgeSeconds
           );
@@ -311,13 +310,13 @@ public class TestShardSearching extends ShardSearchingTestBase {
 
     final int numNodes = shardSearcher.nodeVersions.length;
     int[] base = new int[numNodes];
-    final IndexReader[] subs = ((CompositeReader) mockSearcher.getIndexReader()).getSequentialSubReaders();
-    assertEquals(numNodes, subs.length);
+    final List<? extends IndexReader> subs = ((CompositeReader) mockSearcher.getIndexReader()).getSequentialSubReaders();
+    assertEquals(numNodes, subs.size());
 
     int docCount = 0;
     for(int nodeID=0;nodeID<numNodes;nodeID++) {
       base[nodeID] = docCount;
-      docCount += subs[nodeID].maxDoc();
+      docCount += subs.get(nodeID).maxDoc();
     }
 
     if (VERBOSE) {

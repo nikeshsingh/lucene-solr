@@ -344,6 +344,7 @@ public class MemoryPostingsFormat extends PostingsFormat {
       docID = -1;
       accum = 0;
       docUpto = 0;
+      freq = 1;
       payloadLen = 0;
       this.numDocs = numDocs;
       return this;
@@ -427,8 +428,7 @@ public class MemoryPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public int freq() throws IOException {
-      assert indexOptions != IndexOptions.DOCS_ONLY;
+    public int freq() {
       return freq;
     }
   }
@@ -627,7 +627,7 @@ public class MemoryPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public int freq() throws IOException {
+    public int freq() {
       return freq;
     }
   }
@@ -647,7 +647,7 @@ public class MemoryPostingsFormat extends PostingsFormat {
       fstEnum = new BytesRefFSTEnum<BytesRef>(fst);
     }
 
-    private void decodeMetaData() throws IOException {
+    private void decodeMetaData() {
       if (!didDecode) {
         buffer.reset(current.output.bytes, 0, current.output.length);
         docFreq = buffer.readVInt();
@@ -696,13 +696,11 @@ public class MemoryPostingsFormat extends PostingsFormat {
     }
     
     @Override
-    public DocsEnum docs(Bits liveDocs, DocsEnum reuse, boolean needsFreqs) throws IOException {
+    public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) {
       decodeMetaData();
       FSTDocsEnum docsEnum;
 
-      if (needsFreqs && field.getIndexOptions() == IndexOptions.DOCS_ONLY) {
-        return null;
-      } else if (reuse == null || !(reuse instanceof FSTDocsEnum)) {
+      if (reuse == null || !(reuse instanceof FSTDocsEnum)) {
         docsEnum = new FSTDocsEnum(field.getIndexOptions(), field.hasPayloads());
       } else {
         docsEnum = (FSTDocsEnum) reuse;        
@@ -714,13 +712,9 @@ public class MemoryPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, boolean needsOffsets) throws IOException {
+    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) {
 
       boolean hasOffsets = field.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0;
-      if (needsOffsets && !hasOffsets) {
-        return null; // not available
-      }
-      
       if (field.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) < 0) {
         return null;
       }
@@ -757,13 +751,13 @@ public class MemoryPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public int docFreq() throws IOException {
+    public int docFreq() {
       decodeMetaData();
       return docFreq;
     }
 
     @Override
-    public long totalTermFreq() throws IOException {
+    public long totalTermFreq() {
       decodeMetaData();
       return totalTermFreq;
     }
@@ -817,17 +811,17 @@ public class MemoryPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public long getSumDocFreq() throws IOException {
+    public long getSumDocFreq() {
       return sumDocFreq;
     }
 
     @Override
-    public int getDocCount() throws IOException {
+    public int getDocCount() {
       return docCount;
     }
 
     @Override
-    public long size() throws IOException {
+    public long size() {
       return termCount;
     }
 

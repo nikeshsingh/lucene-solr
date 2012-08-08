@@ -17,7 +17,6 @@ package org.apache.solr.common.cloud;
  * limitations under the License.
  */
 
-import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeoutException;
 
@@ -48,6 +47,8 @@ class ConnectionManager implements Watcher {
 
   private OnReconnect onReconnect;
 
+  private volatile boolean isClosed = false;
+
   public ConnectionManager(String name, SolrZkClient client, String zkServerAddress, int zkClientTimeout, ZkClientConnectionStrategy strat, OnReconnect onConnect) {
     this.name = name;
     this.client = client;
@@ -69,6 +70,8 @@ class ConnectionManager implements Watcher {
       log.info("Watcher " + this + " name:" + name + " got event " + event
           + " path:" + event.getPath() + " type:" + event.getType());
     }
+    
+    checkClosed();
 
     state = event.getState();
     if (state == KeeperState.SyncConnected) {
@@ -82,11 +85,18 @@ class ConnectionManager implements Watcher {
         connectionStrategy.reconnect(zkServerAddress, zkClientTimeout, this,
             new ZkClientConnectionStrategy.ZkUpdate() {
               @Override
-              public void update(SolrZooKeeper keeper)
-                  throws InterruptedException, TimeoutException, IOException {
+              public void update(SolrZooKeeper keeper) throws TimeoutException {
                 synchronized (connectionStrategy) {
-                  waitForConnected(SolrZkClient.DEFAULT_CLIENT_CONNECT_TIMEOUT);
-                  client.updateKeeper(keeper);
+                  checkClosed();
+                  try {
+                    waitForConnected(SolrZkClient.DEFAULT_CLIENT_CONNECT_TIMEOUT);
+                    checkClosed();
+                    client.updateKeeper(keeper);
+                  } catch (InterruptedException e) {
+                    // we must have been asked to stop
+                    throw new RuntimeException("Giving up on connecting - we were interrupted");
+                  }
+                  checkClosed();
                   if (onReconnect != null) {
                     onReconnect.command();
                   }
@@ -96,6 +106,7 @@ class ConnectionManager implements Watcher {
                 }
                 
               }
+
             });
       } catch (Exception e) {
         SolrException.log(log, "", e);
@@ -110,7 +121,13 @@ class ConnectionManager implements Watcher {
   }
 
   public synchronized boolean isConnected() {
-    return connected;
+    return !isClosed && connected;
+  }
+  
+  // we use a volatile rather than sync
+  // to avoid deadlock on shutdown
+  public void close() {
+    this.isClosed = true;
   }
 
   public synchronized KeeperState state() {
@@ -118,15 +135,23 @@ class ConnectionManager implements Watcher {
   }
 
   public synchronized void waitForConnected(long waitForConnection)
-      throws InterruptedException, TimeoutException, IOException {
+      throws InterruptedException, TimeoutException {
     long expire = System.currentTimeMillis() + waitForConnection;
     long left = waitForConnection;
     while (!connected && left > 0) {
       wait(left);
+      checkClosed();
       left = expire - System.currentTimeMillis();
     }
     if (!connected) {
       throw new TimeoutException("Could not connect to ZooKeeper " + zkServerAddress + " within " + waitForConnection + " ms");
+    }
+  }
+  
+  private synchronized void checkClosed() {
+    if (isClosed) {
+      log.info("Not acting because I am closed");
+      return;
     }
   }
 

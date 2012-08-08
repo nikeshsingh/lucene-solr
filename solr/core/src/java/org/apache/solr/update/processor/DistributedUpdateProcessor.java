@@ -19,9 +19,12 @@ package org.apache.solr.update.processor;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
@@ -33,7 +36,7 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.SolrInputField;
-import org.apache.solr.common.cloud.CloudState;
+import org.apache.solr.common.cloud.ClusterState;
 import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.cloud.ZkNodeProps;
@@ -130,6 +133,8 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
   private boolean forwardToLeader = false;
   private List<Node> nodes;
 
+  private int numNodes;
+
   
   public DistributedUpdateProcessor(SolrQueryRequest req,
       SolrQueryResponse rsp, UpdateRequestProcessor next) {
@@ -153,18 +158,21 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
     CoreDescriptor coreDesc = req.getCore().getCoreDescriptor();
     
     this.zkEnabled  = coreDesc.getCoreContainer().isZooKeeperAware();
+    zkController = req.getCore().getCoreDescriptor().getCoreContainer().getZkController();
+    if (zkEnabled) {
+      numNodes =  zkController.getZkStateReader().getClusterState().getLiveNodes().size();
+    }
     //this.rsp = reqInfo != null ? reqInfo.getRsp() : null;
 
-    
-    zkController = req.getCore().getCoreDescriptor().getCoreContainer().getZkController();
+   
     
     cloudDesc = coreDesc.getCloudDescriptor();
     
     if (cloudDesc != null) {
       collection = cloudDesc.getCollectionName();
     }
-    
-    cmdDistrib = new SolrCmdDistributor();
+
+    cmdDistrib = new SolrCmdDistributor(numNodes);
   }
 
   private List<Node> setupRequest(int hash) {
@@ -172,11 +180,14 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
 
     // if we are in zk mode...
     if (zkEnabled) {
+      // set num nodes
+      numNodes = zkController.getClusterState().getLiveNodes().size();
+      
       // the leader is...
       // TODO: if there is no leader, wait and look again
       // TODO: we are reading the leader from zk every time - we should cache
       // this and watch for changes?? Just pull it from ZkController cluster state probably?
-      String shardId = getShard(hash, collection, zkController.getCloudState()); // get the right shard based on the hash...
+      String shardId = getShard(hash, collection, zkController.getClusterState()); // get the right shard based on the hash...
 
       try {
         // TODO: if we find out we cannot talk to zk anymore, we should probably realize we are not
@@ -204,8 +215,22 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
                   coreName, null, ZkStateReader.DOWN);
           if (replicaProps != null) {
             nodes = new ArrayList<Node>(replicaProps.size());
+            // check for test param that lets us miss replicas
+            String[] skipList = req.getParams().getParams("test.distrib.skip.servers");
+            Set<String> skipListSet = null;
+            if (skipList != null) {
+              skipListSet = new HashSet<String>(skipList.length);
+              skipListSet.addAll(Arrays.asList(skipList));
+            }
+            
             for (ZkCoreNodeProps props : replicaProps) {
-              nodes.add(new StdNode(props));
+              if (skipList != null) {
+                if (!skipListSet.contains(props.getCoreUrl())) {
+                  nodes.add(new StdNode(props));
+                }
+              } else {
+                nodes.add(new StdNode(props));
+              }
             }
           }
           
@@ -227,11 +252,11 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
   }
 
 
-  private String getShard(int hash, String collection, CloudState cloudState) {
+  private String getShard(int hash, String collection, ClusterState clusterState) {
     // ranges should be part of the cloud state and eventually gotten from zk
 
     // get the shard names
-    return cloudState.getShard(hash, collection);
+    return clusterState.getShard(hash, collection);
   }
 
   // used for deleteByQuery to get the list of nodes this leader should forward to
@@ -285,7 +310,10 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
     
     boolean dropCmd = false;
     if (!forwardToLeader) {
-      dropCmd = versionAdd(cmd);
+      // clone the original doc
+      SolrInputDocument clonedDoc = cmd.solrDoc.deepCopy();
+      dropCmd = versionAdd(cmd, clonedDoc);
+      cmd.solrDoc = clonedDoc;
     }
 
     if (dropCmd) {
@@ -393,10 +421,11 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
 
   /**
    * @param cmd
+   * @param cloneDoc needs the version if it's assigned
    * @return whether or not to drop this cmd
    * @throws IOException
    */
-  private boolean versionAdd(AddUpdateCommand cmd) throws IOException {
+  private boolean versionAdd(AddUpdateCommand cmd, SolrInputDocument cloneDoc) throws IOException {
     BytesRef idBytes = cmd.getIndexedId();
 
     if (vinfo == null || idBytes == null) {
@@ -443,16 +472,16 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
         // realtime-get to work reliably.
         // TODO: if versions aren't stored, do we need to set on the cmd anyway for some reason?
         // there may be other reasons in the future for a version on the commands
+
+        boolean checkDeleteByQueries = false;
+
         if (versionsStored) {
 
           long bucketVersion = bucket.highest;
 
           if (leaderLogic) {
 
-            boolean updated = getUpdatedDocument(cmd);
-            if (updated && versionOnUpdate == -1) {
-              versionOnUpdate = 1;  // implied "doc must exist" for now...
-            }
+            boolean updated = getUpdatedDocument(cmd, versionOnUpdate);
 
             if (versionOnUpdate != 0) {
               Long lastVersion = vinfo.lookupVersion(cmd.getIndexedId());
@@ -469,6 +498,7 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
             long version = vinfo.getNewClock();
             cmd.setVersion(version);
             cmd.getSolrInputDocument().setField(VersionInfo.VERSION_FIELD, version);
+            cloneDoc.setField(VersionInfo.VERSION_FIELD, version);
             bucket.updateHighest(version);
           } else {
             // The leader forwarded us this update.
@@ -484,7 +514,7 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
             // if we aren't the leader, then we need to check that updates were not re-ordered
             if (bucketVersion != 0 && bucketVersion < versionOnUpdate) {
               // we're OK... this update has a version higher than anything we've seen
-              // in this bucket so far, so we know that no reordering has yet occured.
+              // in this bucket so far, so we know that no reordering has yet occurred.
               bucket.updateHighest(versionOnUpdate);
             } else {
               // there have been updates higher than the current update.  we need to check
@@ -494,11 +524,16 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
                 // This update is a repeat, or was reordered.  We need to drop this update.
                 return true;
               }
+
+              // also need to re-apply newer deleteByQuery commands
+              checkDeleteByQueries = true;
             }
           }
         }
 
+        // TODO: possibly set checkDeleteByQueries as a flag on the command?
         doLocalAdd(cmd);
+
       }  // end synchronized (bucket)
     } finally {
       vinfo.unlockForUpdate();
@@ -509,7 +544,7 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
 
   // TODO: may want to switch to using optimistic locking in the future for better concurrency
   // that's why this code is here... need to retry in a loop closely around/in versionAdd
-  boolean getUpdatedDocument(AddUpdateCommand cmd) throws IOException {
+  boolean getUpdatedDocument(AddUpdateCommand cmd, long versionOnUpdate) throws IOException {
     SolrInputDocument sdoc = cmd.getSolrInputDocument();
     boolean update = false;
     for (SolrInputField sif : sdoc.values()) {
@@ -525,12 +560,16 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
     SolrInputDocument oldDoc = RealTimeGetComponent.getInputDocument(cmd.getReq().getCore(), id);
 
     if (oldDoc == null) {
-      // not found... allow this in the future (depending on the details of the update, or if the user explicitly sets it).
-      // could also just not change anything here and let the optimistic locking throw the error
-      throw new SolrException(ErrorCode.CONFLICT, "Document not found for update.  id=" + cmd.getPrintableId());
+      // create a new doc by default if an old one wasn't found
+      if (versionOnUpdate <= 0) {
+        oldDoc = new SolrInputDocument();
+      } else {
+        // could just let the optimistic locking throw the error
+        throw new SolrException(ErrorCode.CONFLICT, "Document not found for update.  id=" + cmd.getPrintableId());
+      }
+    } else {
+      oldDoc.remove(VERSION_FIELD);
     }
-
-    oldDoc.remove(VERSION_FIELD);
 
     for (SolrInputField sif : sdoc.values()) {
       Object val = sif.getValue();
@@ -654,16 +693,16 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
     // FROM: we are a replica receiving a DBQ from our leader
     //       - log + execute the local DBQ
     DistribPhase phase = 
-      DistribPhase.parseParam(req.getParams().get(DISTRIB_UPDATE_PARAM));
+    DistribPhase.parseParam(req.getParams().get(DISTRIB_UPDATE_PARAM));
 
     if (zkEnabled && DistribPhase.NONE == phase) {
       boolean leaderForAnyShard = false;  // start off by assuming we are not a leader for any shard
 
-      Map<String,Slice> slices = zkController.getCloudState().getSlices(collection);
+      Map<String,Slice> slices = zkController.getClusterState().getSlices(collection);
       if (slices == null) {
         throw new SolrException(ErrorCode.BAD_REQUEST,
             "Cannot find collection:" + collection + " in "
-                + zkController.getCloudState().getCollections());
+                + zkController.getClusterState().getCollections());
       }
 
       ModifiableSolrParams params = new ModifiableSolrParams(req.getParams());
@@ -712,7 +751,10 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
 
     if (zkEnabled && DistribPhase.TOLEADER == phase) {
       // This core should be a leader
+      isLeader = true;
       replicas = setupRequest();
+    } else if (DistribPhase.FROMLEADER == phase) {
+      isLeader = false;
     }
 
     if (vinfo == null) {
@@ -772,8 +814,6 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
     }
 
 
-
-    // TODO: need to handle reorders to replicas somehow
     // forward to all replicas
     if (leaderLogic && replicas != null) {
       ModifiableSolrParams params = new ModifiableSolrParams(req.getParams());
@@ -957,13 +997,13 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
 
   
   private List<Node> getCollectionUrls(SolrQueryRequest req, String collection, String shardZkNodeName) {
-    CloudState cloudState = req.getCore().getCoreDescriptor()
-        .getCoreContainer().getZkController().getCloudState();
+    ClusterState clusterState = req.getCore().getCoreDescriptor()
+        .getCoreContainer().getZkController().getClusterState();
     List<Node> urls = new ArrayList<Node>();
-    Map<String,Slice> slices = cloudState.getSlices(collection);
+    Map<String,Slice> slices = clusterState.getSlices(collection);
     if (slices == null) {
       throw new ZooKeeperException(ErrorCode.BAD_REQUEST,
-          "Could not find collection in zk: " + cloudState);
+          "Could not find collection in zk: " + clusterState);
     }
     for (Map.Entry<String,Slice> sliceEntry : slices.entrySet()) {
       Slice replicas = slices.get(sliceEntry.getKey());
@@ -972,7 +1012,7 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
       
       for (Entry<String,ZkNodeProps> entry : shardMap.entrySet()) {
         ZkCoreNodeProps nodeProps = new ZkCoreNodeProps(entry.getValue());
-        if (cloudState.liveNodesContain(nodeProps.getNodeName()) && !entry.getKey().equals(shardZkNodeName)) {
+        if (clusterState.liveNodesContain(nodeProps.getNodeName()) && !entry.getKey().equals(shardZkNodeName)) {
           urls.add(new StdNode(nodeProps));
         }
       }

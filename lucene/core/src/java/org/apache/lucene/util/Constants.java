@@ -18,6 +18,7 @@ package org.apache.lucene.util;
  */
 
 import java.lang.reflect.Field;
+import java.util.Collections;
 import org.apache.lucene.LucenePackage;
 
 /**
@@ -56,6 +57,7 @@ public final class Constants {
     new Boolean(true).booleanValue(); // prevent inlining in foreign class files
   
   public static final boolean JRE_IS_MINIMUM_JAVA7;
+  public static final boolean JRE_IS_MINIMUM_JAVA8;
   
   /** True iff running on a 64bit JVM */
   public static final boolean JRE_IS_64BIT;
@@ -93,6 +95,19 @@ public final class Constants {
       v7 = false;
     }
     JRE_IS_MINIMUM_JAVA7 = v7;
+    
+    if (JRE_IS_MINIMUM_JAVA7) {
+      // this method only exists in Java 8:
+      boolean v8 = true;
+      try {
+        Collections.class.getMethod("emptySortedSet");
+      } catch (NoSuchMethodException nsme) {
+        v8 = false;
+      }
+      JRE_IS_MINIMUM_JAVA8 = v8;
+    } else {
+      JRE_IS_MINIMUM_JAVA8 = false;
+    }
   }
 
   // this method prevents inlining the final version constant in compiled classes,
@@ -117,9 +132,14 @@ public final class Constants {
     Package pkg = LucenePackage.get();
     String v = (pkg == null) ? null : pkg.getImplementationVersion();
     if (v == null) {
-      v = LUCENE_MAIN_VERSION + "-SNAPSHOT";
-    } else if (!v.startsWith(LUCENE_MAIN_VERSION)) {
-      v = LUCENE_MAIN_VERSION + "-SNAPSHOT " + v;
+      String parts[] = LUCENE_MAIN_VERSION.split("\\.");
+      if (parts.length == 4) {
+        // alpha/beta
+        assert parts[2].equals("0");
+        v = parts[0] + "." + parts[1] + "-SNAPSHOT";
+      } else {
+        v = LUCENE_MAIN_VERSION + "-SNAPSHOT";
+      }
     }
     LUCENE_VERSION = ident(v);
   }

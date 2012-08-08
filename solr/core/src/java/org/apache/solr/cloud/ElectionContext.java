@@ -5,7 +5,7 @@ import java.util.Map;
 
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
-import org.apache.solr.common.cloud.CloudState;
+import org.apache.solr.common.cloud.ClusterState;
 import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
@@ -16,6 +16,8 @@ import org.apache.solr.core.SolrCore;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.NodeExistsException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -62,7 +64,7 @@ public abstract class ElectionContext {
 }
 
 class ShardLeaderElectionContextBase extends ElectionContext {
-  
+  private static Logger log = LoggerFactory.getLogger(ShardLeaderElectionContextBase.class);
   protected final SolrZkClient zkClient;
   protected String shardId;
   protected String collection;
@@ -96,6 +98,8 @@ class ShardLeaderElectionContextBase extends ElectionContext {
           CreateMode.EPHEMERAL, true);
     }
     
+    // TODO: above we make it looks like leaderProps could be true, but here
+    // you would get an NPE if it was.
     ZkNodeProps m = new ZkNodeProps(Overseer.QUEUE_OPERATION,
         "leader", ZkStateReader.SHARD_ID_PROP, shardId,
         ZkStateReader.COLLECTION_PROP, collection, ZkStateReader.BASE_URL_PROP,
@@ -108,6 +112,8 @@ class ShardLeaderElectionContextBase extends ElectionContext {
 
 // add core container and stop passing core around...
 final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
+  private static Logger log = LoggerFactory.getLogger(ShardLeaderElectionContext.class);
+  
   private ZkController zkController;
   private CoreContainer cc;
   private SyncStrategy syncStrategy = new SyncStrategy();
@@ -128,8 +134,6 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
       String coreName = leaderProps.get(ZkStateReader.CORE_NAME_PROP);
       SolrCore core = null;
       try {
-        // the first time we are run, we will get a startupCore - after
-        // we will get null and must use cc.getCore
      
         core = cc.getCore(coreName);
 
@@ -148,17 +152,19 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
           if (zkClient.exists(leaderPath, true)) {
             zkClient.delete(leaderPath, -1, true);
           }
-//          System.out.println("I may be the new Leader:" + leaderPath
-//              + " - I need to try and sync");
+          log.info("I may be the new leader - try and sync");
+          // we are going to attempt to be the leader
+          // first cancel any current recovery
+          core.getUpdateHandler().getSolrCoreState().cancelRecovery();
           boolean success = syncStrategy.sync(zkController, core, leaderProps);
           if (!success && anyoneElseActive()) {
             rejoinLeaderElection(leaderSeqPath, core);
             return;
           } 
         }
+        log.info("I am the new leader: " + ZkCoreNodeProps.getCoreUrl(leaderProps));
         
         // If I am going to be the leader I have to be active
-        // System.out.println("I am leader go active");
         core.getUpdateHandler().getSolrCoreState().cancelRecovery();
         zkController.publish(core.getCoreDescriptor(), ZkStateReader.ACTIVE);
         
@@ -178,7 +184,8 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
     // remove our ephemeral and re join the election
     // System.out.println("sync failed, delete our election node:"
     // + leaderSeqPath);
-
+    log.info("There is a better leader candidate than us - going back into recovery");
+    
     zkController.publish(core.getCoreDescriptor(), ZkStateReader.DOWN);
     
     cancelElection();
@@ -189,8 +196,8 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
   }
   
   private boolean shouldIBeLeader(ZkNodeProps leaderProps) {
-    CloudState cloudState = zkController.getZkStateReader().getCloudState();
-    Map<String,Slice> slices = cloudState.getSlices(this.collection);
+    ClusterState clusterState = zkController.getZkStateReader().getClusterState();
+    Map<String,Slice> slices = clusterState.getSlices(this.collection);
     Slice slice = slices.get(shardId);
     Map<String,ZkNodeProps> shards = slice.getShards();
     boolean foundSomeoneElseActive = false;
@@ -200,7 +207,7 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
       if (new ZkCoreNodeProps(shard.getValue()).getCoreUrl().equals(
               new ZkCoreNodeProps(leaderProps).getCoreUrl())) {
         if (state.equals(ZkStateReader.ACTIVE)
-          && cloudState.liveNodesContain(shard.getValue().get(
+          && clusterState.liveNodesContain(shard.getValue().get(
               ZkStateReader.NODE_NAME_PROP))) {
           // we are alive
           return true;
@@ -208,7 +215,7 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
       }
       
       if ((state.equals(ZkStateReader.ACTIVE))
-          && cloudState.liveNodesContain(shard.getValue().get(
+          && clusterState.liveNodesContain(shard.getValue().get(
               ZkStateReader.NODE_NAME_PROP))
           && !new ZkCoreNodeProps(shard.getValue()).getCoreUrl().equals(
               new ZkCoreNodeProps(leaderProps).getCoreUrl())) {
@@ -220,8 +227,8 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
   }
   
   private boolean anyoneElseActive() {
-    CloudState cloudState = zkController.getZkStateReader().getCloudState();
-    Map<String,Slice> slices = cloudState.getSlices(this.collection);
+    ClusterState clusterState = zkController.getZkStateReader().getClusterState();
+    Map<String,Slice> slices = clusterState.getSlices(this.collection);
     Slice slice = slices.get(shardId);
     Map<String,ZkNodeProps> shards = slice.getShards();
 
@@ -230,7 +237,7 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
 
       
       if ((state.equals(ZkStateReader.ACTIVE))
-          && cloudState.liveNodesContain(shard.getValue().get(
+          && clusterState.liveNodesContain(shard.getValue().get(
               ZkStateReader.NODE_NAME_PROP))) {
         return true;
       }
@@ -244,12 +251,13 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
 final class OverseerElectionContext extends ElectionContext {
   
   private final SolrZkClient zkClient;
-  private final ZkStateReader stateReader;
+  private Overseer overseer;
 
-  public OverseerElectionContext(final String zkNodeName, ZkStateReader stateReader) {
-    super(zkNodeName, "/overseer_elect", "/overseer_elect/leader", null, stateReader.getZkClient());
-    this.stateReader = stateReader;
-    this.zkClient = stateReader.getZkClient();
+
+  public OverseerElectionContext(SolrZkClient zkClient, Overseer overseer, final String zkNodeName) {
+    super(zkNodeName, "/overseer_elect", "/overseer_elect/leader", null, zkClient);
+    this.overseer = overseer;
+    this.zkClient = zkClient;
   }
 
   @Override
@@ -271,7 +279,7 @@ final class OverseerElectionContext extends ElectionContext {
           CreateMode.EPHEMERAL, true);
     }
   
-    new Overseer(stateReader, id);
+    overseer.start(id);
   }
   
 }

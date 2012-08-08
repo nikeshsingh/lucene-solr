@@ -19,6 +19,7 @@ package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Random;
 
 import org.apache.lucene.analysis.MockAnalyzer;
@@ -67,8 +68,7 @@ public class TestTypePromotion extends LuceneTestCase {
     Int, Float, Byte
   }
 
-  private void runTest(EnumSet<Type> types, TestType type)
-      throws CorruptIndexException, IOException {
+  private void runTest(EnumSet<Type> types, TestType type) throws IOException {
     Directory dir = newDirectory();
     IndexWriter writer = new IndexWriter(dir,
         newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
@@ -118,13 +118,13 @@ public class TestTypePromotion extends LuceneTestCase {
 
   
   private void assertValues(TestType type, Directory dir, long[] values, Type[] sourceType)
-      throws CorruptIndexException, IOException {
+      throws IOException {
     DirectoryReader reader = DirectoryReader.open(dir);
-    assertEquals(1, reader.getSequentialSubReaders().length);
+    assertEquals(1, reader.getSequentialSubReaders().size());
     IndexReaderContext topReaderContext = reader.getTopReaderContext();
-    AtomicReaderContext[] children = topReaderContext.leaves();
-    assertEquals(1, children.length);
-    DocValues docValues = children[0].reader().docValues("promote");
+    List<AtomicReaderContext> leaves = topReaderContext.leaves();
+    assertEquals(1, leaves.size());
+    DocValues docValues = leaves.get(0).reader().docValues("promote");
     Source directSource = docValues.getDirectSource();
     for (int i = 0; i < values.length; i++) {
       int id = Integer.parseInt(reader.document(i).get("id"));
@@ -180,7 +180,7 @@ public class TestTypePromotion extends LuceneTestCase {
 
   public void index(IndexWriter writer,
       Type valueType, long[] values, Type[] sourceTypes, int offset, int num)
-      throws CorruptIndexException, IOException {
+      throws IOException {
     final Field valField;
 
     if (VERBOSE) {
@@ -321,8 +321,7 @@ public class TestTypePromotion extends LuceneTestCase {
     runTest(INTEGERS, TestType.Int);
   }
 
-  public void testPromotFloatingPoint() throws CorruptIndexException,
-      IOException {
+  public void testPromotFloatingPoint() throws IOException {
     runTest(FLOATS, TestType.Float);
   }
   
@@ -372,10 +371,10 @@ public class TestTypePromotion extends LuceneTestCase {
     writer.forceMerge(1);
     writer.close();
     DirectoryReader reader = DirectoryReader.open(dir);
-    assertEquals(1, reader.getSequentialSubReaders().length);
+    assertEquals(1, reader.getSequentialSubReaders().size());
     IndexReaderContext topReaderContext = reader.getTopReaderContext();
-    AtomicReaderContext[] children = topReaderContext.leaves();
-    DocValues docValues = children[0].reader().docValues("promote");
+    List<AtomicReaderContext> leaves = topReaderContext.leaves();
+    DocValues docValues = leaves.get(0).reader().docValues("promote");
     assertNotNull(docValues);
     assertValues(TestType.Byte, dir, values, sourceType);
     assertEquals(Type.BYTES_VAR_STRAIGHT, docValues.getType());

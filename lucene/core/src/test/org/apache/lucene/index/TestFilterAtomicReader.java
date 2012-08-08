@@ -26,7 +26,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.MockDirectoryWrapper;
+import org.apache.lucene.store.BaseDirectoryWrapper;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
@@ -89,8 +89,8 @@ public class TestFilterAtomicReader extends LuceneTestCase {
       }
 
       @Override
-      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, boolean needsOffsets) throws IOException {
-        return new TestPositions(super.docsAndPositions(liveDocs, reuse == null ? null : ((FilterDocsAndPositionsEnum) reuse).in, needsOffsets));
+      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) throws IOException {
+        return new TestPositions(super.docsAndPositions(liveDocs, reuse == null ? null : ((FilterDocsAndPositionsEnum) reuse).in, flags));
       }
     }
 
@@ -148,7 +148,7 @@ public class TestFilterAtomicReader extends LuceneTestCase {
     Directory target = newDirectory();
 
     // We mess with the postings so this can fail:
-    ((MockDirectoryWrapper) target).setCrossCheckTermVectorsOnClose(false);
+    ((BaseDirectoryWrapper) target).setCrossCheckTermVectorsOnClose(false);
 
     writer = new IndexWriter(target, newIndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
     IndexReader reader = new TestReader(DirectoryReader.open(directory));
@@ -164,8 +164,7 @@ public class TestFilterAtomicReader extends LuceneTestCase {
     
     assertEquals(TermsEnum.SeekStatus.FOUND, terms.seekCeil(new BytesRef("one")));
     
-    DocsAndPositionsEnum positions = terms.docsAndPositions(MultiFields.getLiveDocs(reader),
-                                                            null, false);
+    DocsAndPositionsEnum positions = terms.docsAndPositions(MultiFields.getLiveDocs(reader), null);
     while (positions.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
       assertTrue((positions.docID() % 2) == 1);
     }
@@ -175,7 +174,7 @@ public class TestFilterAtomicReader extends LuceneTestCase {
     target.close();
   }
   
-  private void checkOverrideMethods(Class<?> clazz) throws Exception {
+  private void checkOverrideMethods(Class<?> clazz) {
     boolean fail = false;
     for (Method m : clazz.getMethods()) {
       int mods = m.getModifiers();
