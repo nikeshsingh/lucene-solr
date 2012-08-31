@@ -20,8 +20,13 @@ package org.apache.lucene.util.fst;
 import java.io.*;
 import java.util.*;
 
+import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IntsRef;
+import org.apache.lucene.util.RamUsageEstimator;
+import org.apache.lucene.util.SeekStatus;
+import org.apache.lucene.util.fst.FST.BytesReader;
+import org.apache.pdfbox.pdmodel.graphics.predictor.Up;
 
 /** Static helper methods.
  *
@@ -53,6 +58,242 @@ public final class Util {
     } else {
       return null;
     }
+  }
+  
+  private static class SeekContext<T> {
+    FST.Arc<T>[] arcs = new FST.Arc[10];
+    T[] output = (T[]) new Object[10];
+    final T NO_OUTPUT;
+    int contextIndex = 0;
+    
+    final BytesRef ref;
+    final FST<T> fst;
+    
+    
+    public SeekContext(BytesRef ref, FST<T> fst) {
+      this.ref = ref;
+      this.fst = fst;
+      NO_OUTPUT = fst.outputs.getNoOutput();
+
+      output[0] = NO_OUTPUT;
+
+      fst.getFirstArc(getArc(0));
+    }
+
+    int getTargetLabel(int idx) {
+      if (idx-1 == ref.length) {
+        return FST.END_LABEL;
+      } else {
+        return ref.bytes[ref.offset + idx - 1] & 0xFF;
+      }
+    }
+    
+    protected final int reset(int idx, BytesReader fstReader) throws IOException {
+      if (idx == 0) {
+        //System.out.println("  init");
+        idx = 1;
+        fst.readFirstTargetArc(getArc(0), getArc(1), fstReader);
+      } else {
+      //System.out.println("  rewind upto=" + upto + " vs targetLength=" + targetLength);
+
+      final int currentLimit = idx;
+      idx = 1;
+      while (idx < currentLimit && idx <= ref.length+1) {
+        final int cmp = getCurrentLabel() - getTargetLabel(idx);
+        if (cmp < 0) {
+          // seek forward
+          //System.out.println("    seek fwd");
+          break;
+        } else if (cmp > 0) {
+          // seek backwards -- reset this arc to the first arc
+          final FST.Arc<T> arc = getArc(idx);
+          fst.readFirstTargetArc(getArc(idx-1), arc, fstReader);
+          //System.out.println("    seek first arc");
+          break;
+        }
+        idx++;
+      }
+      }
+      //System.out.println("  fall through upto=" + upto);
+      return idx;
+    }
+    
+
+    FST.Arc<T> getArc(int idx) {
+      if (arcs[idx] == null) {
+        arcs[idx] = new FST.Arc<T>();
+      }
+      return arcs[idx];
+    }
+    
+    int advance(int idx) {
+      idx++;
+      if (arcs.length <= idx) {
+        @SuppressWarnings({"rawtypes","unchecked"}) final FST.Arc<T>[] newArcs =
+          new FST.Arc[ArrayUtil.oversize(1+idx, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
+        System.arraycopy(arcs, 0, newArcs, 0, arcs.length);
+        arcs = newArcs;
+      }
+      if (output.length <= idx) {
+        @SuppressWarnings({"rawtypes","unchecked"}) final T[] newOutput =
+          (T[]) new Object[ArrayUtil.oversize(1+idx, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
+        System.arraycopy(output, 0, newOutput, 0, output.length);
+        output = newOutput;
+      }
+      return idx;
+    }
+
+    public int pushFirst(int upto, BytesReader fstReader) throws IOException {
+      
+      FST.Arc<T> arc = arcs[upto];
+      assert arc != null;
+
+      while (true) {
+        output[upto] = fst.outputs.add(output[upto-1], arc.output);
+        if (arc.label == FST.END_LABEL) {
+          // Final node
+          break;
+        }
+        //System.out.println("  pushFirst label=" + (char) arc.label + " upto=" + upto + " output=" + fst.outputs.outputToString(output[upto]));
+        //setCurrentLabel(arc.label);NEED THIS?
+        upto = advance(upto);
+        
+        final FST.Arc<T> nextArc = getArc(upto);
+        fst.readFirstTargetArc(arc, nextArc, fstReader);
+        arc = nextArc;
+      }
+      return upto;
+      
+    }
+  }
+  
+  public static <T> SeekStatus getCeil(FST<T> fst, BytesRef ref, T output) throws IOException {
+    BytesReader fstReader = fst.getBytesReader(0);
+    SeekContext<T> ctx = new SeekContext<T>(ref, fst);
+    int upto = ctx.reset(0, fstReader);
+    FST.Arc<T> arc = ctx.getArc(upto);
+    int targetLabel = ctx.getTargetLabel(upto);
+    //System.out.println("  init targetLabel=" + targetLabel);
+
+    // Now scan forward, matching the new suffix of the target
+    while(true) {
+
+      //System.out.println("  cycle upto=" + upto + " arc.label=" + arc.label + " (" + (char) arc.label + ") vs targetLabel=" + targetLabel);
+
+      if (arc.bytesPerArc != 0 && arc.label != -1) {
+
+        // Arcs are fixed array -- use binary search to find
+        // the target.
+
+        final FST.BytesReader in = fst.getBytesReader(0);
+        int low = arc.arcIdx;
+        int high = arc.numArcs-1;
+        int mid = 0;
+        //System.out.println("do arc array low=" + low + " high=" + high + " targetLabel=" + targetLabel);
+        boolean found = false;
+        while (low <= high) {
+          mid = (low + high) >>> 1;
+          in.pos = arc.posArcsStart;
+          in.skip(arc.bytesPerArc*mid+1);
+          final int midLabel = fst.readLabel(in);
+          final int cmp = midLabel - targetLabel;
+          //System.out.println("  cycle low=" + low + " high=" + high + " mid=" + mid + " midLabel=" + midLabel + " cmp=" + cmp);
+          if (cmp < 0)
+            low = mid + 1;
+          else if (cmp > 0)
+            high = mid - 1;
+          else {
+            found = true;
+            break;
+          }
+        }
+
+        // NOTE: this code is dup'd w/ the code below (in
+        // the outer else clause):
+        if (found) {
+          // Match
+          arc.arcIdx = mid-1;
+          fst.readNextRealArc(arc, in);
+          assert arc.arcIdx == mid;
+          assert arc.label == targetLabel: "arc.label=" + arc.label + " vs targetLabel=" + targetLabel + " mid=" + mid;
+          ctx.output[upto] = fst.outputs.add(ctx.output[upto-1], arc.output);
+          if (targetLabel == FST.END_LABEL) {
+            return SeekStatus.FOUND;
+          }
+          // setCurrentLabel(arc.label); NEED THIS?
+          upto = ctx.advance(upto);
+          arc = fst.readFirstTargetArc(arc, ctx.getArc(upto), fstReader);
+          targetLabel = ctx.getTargetLabel(upto);
+          continue;
+        } else if (low == arc.numArcs) {
+          // Dead end
+          arc.arcIdx = arc.numArcs-2;
+          fst.readNextRealArc(arc, in);
+          assert arc.isLast();
+          // Dead end (target is after the last arc);
+          // rollback to last fork then push
+          upto--;
+          while(true) {
+            if (upto == 0) {
+              return SeekStatus.END;
+            }
+            final FST.Arc<T> prevArc = ctx.getArc(upto);
+            //System.out.println("  rollback upto=" + upto + " arc.label=" + prevArc.label + " isLast?=" + prevArc.isLast());
+            if (!prevArc.isLast()) {
+              fst.readNextArc(prevArc, fstReader);
+              upto = ctx.pushFirst(upto,fstReader);
+              return SeekStatus.NOT_FOUND;
+            }
+            upto--;
+          }
+        } else {
+          arc.arcIdx = (low > high ? low : high)-1;
+          fst.readNextRealArc(arc, in);
+          assert arc.label > targetLabel;
+          upto = ctx.pushFirst(upto, fstReader);
+          return SeekStatus.NOT_FOUND;
+        }
+      } else {
+        // Arcs are not array'd -- must do linear scan:
+        if (arc.label == targetLabel) {
+          // recurse
+          ctx.output[upto] = fst.outputs.add(ctx.output[upto-1], arc.output);
+          if (targetLabel == FST.END_LABEL) {
+            return SeekStatus.FOUND;
+          }
+          // setCurrentLabel(arc.label); NEED THIS?
+          upto = ctx.advance(upto);
+          arc = fst.readFirstTargetArc(arc, ctx.getArc(upto), fstReader);
+          targetLabel = ctx.getTargetLabel(upto);
+        } else if (arc.label > targetLabel) {
+          upto = ctx.pushFirst(upto, fstReader);
+          return SeekStatus.NOT_FOUND;
+        } else if (arc.isLast()) {
+          // Dead end (target is after the last arc);
+          // rollback to last fork then push
+          upto--;
+          while(true) {
+            if (upto == 0) {
+              return SeekStatus.END;
+            }
+            final FST.Arc<T> prevArc = ctx.getArc(upto);
+            //System.out.println("  rollback upto=" + upto + " arc.label=" + prevArc.label + " isLast?=" + prevArc.isLast());
+            if (!prevArc.isLast()) {
+              fst.readNextArc(prevArc, fstReader);
+              upto = ctx.pushFirst(upto, fstReader);
+              return SeekStatus.NOT_FOUND;
+            }
+            upto--;
+          }
+        } else {
+          // keep scanning
+          //System.out.println("    next scan");
+          fst.readNextArc(arc, fstReader);
+        }
+      }
+    }
+
+      
   }
 
   // TODO: maybe a CharsRef version for BYTE2
