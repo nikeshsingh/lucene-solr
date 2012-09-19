@@ -175,13 +175,13 @@ public abstract class SearchEquivalenceTestBase extends LuceneTestCase {
     if (filter != null && random().nextBoolean()) {
       final boolean q1RandomAccess = random().nextBoolean();
       final boolean q2RandomAccess = random().nextBoolean();
-      q1 = new FilteredQuery(q1, filter) {
+      q1 = new FilteredQuery(q1, filter, _TestUtil.randomExecType(random())) {
         @Override
         protected boolean useRandomAccess(Bits bits, int firstFilterDoc) {
           return q1RandomAccess;
         }
       };
-      q2 = new FilteredQuery(q2, filter) {
+      q2 = new FilteredQuery(q2, filter, _TestUtil.randomExecType(random())) {
         @Override
         protected boolean useRandomAccess(Bits bits, int firstFilterDoc) {
           return q2RandomAccess;

@@ -173,7 +173,7 @@ public class TwoDoublesStrategy extends SpatialStrategy {
         ValueSourceFilter vsf = new ValueSourceFilter(
             new QueryWrapperFilter( spatial ), valueSource, 0, circle.getRadius() );
 
-        spatial = new FilteredQuery( new MatchAllDocsQuery(), vsf );
+        spatial = new FilteredQuery( new MatchAllDocsQuery(), vsf);
       }
     }
     else if( op == SpatialOperation.IsDisjointTo ) {

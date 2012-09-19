@@ -42,6 +42,7 @@ public class FilteredQuery extends Query {
 
   private final Query query;
   private final Filter filter;
+  private final FilterExecutionType execType;
 
   /**
    * Constructs a new query which applies a filter to the results of the original query.
@@ -50,8 +51,13 @@ public class FilteredQuery extends Query {
    * @param filter Filter to apply to query results, cannot be <code>null</code>.
    */
   public FilteredQuery (Query query, Filter filter) {
+    this(query, filter, null);
+  }
+  
+  public FilteredQuery (Query query, Filter filter, FilterExecutionType type) {
     if (query == null || filter == null)
       throw new IllegalArgumentException("Query and filter cannot be null.");
+    this.execType = type == null ? FilterExecutionType.HEURISTIC : type;
     this.query = query;
     this.filter = filter;
   }
@@ -130,108 +136,192 @@ public class FilteredQuery extends Query {
           return null;
         }
         
-        final DocIdSetIterator filterIter = filterDocIdSet.iterator();
-        if (filterIter == null) {
-          // this means the filter does not accept any documents.
-          return null;
-        }
-
-        final int firstFilterDoc = filterIter.nextDoc();
-        if (firstFilterDoc == DocIdSetIterator.NO_MORE_DOCS) {
-          return null;
-        }
-        
-        final Bits filterAcceptDocs = filterDocIdSet.bits();
-        final boolean useRandomAccess = (filterAcceptDocs != null && FilteredQuery.this.useRandomAccess(filterAcceptDocs, firstFilterDoc));
-
-        if (useRandomAccess) {
-          // if we are using random access, we return the inner scorer, just with other acceptDocs
-          return weight.scorer(context, scoreDocsInOrder, topScorer, filterAcceptDocs);
-        } else {
-          assert firstFilterDoc > -1;
-          // we are gonna advance() this scorer, so we set inorder=true/toplevel=false
-          // we pass null as acceptDocs, as our filter has already respected acceptDocs, no need to do twice
+        if (execType == FilterExecutionType.QUERY_FIRST) {
+          Bits filterAcceptDocs = filterDocIdSet.bits();
           final Scorer scorer = weight.scorer(context, true, false, null);
-          return (scorer == null) ? null : new Scorer(this) {
-            private int scorerDoc = -1, filterDoc = firstFilterDoc;
-            
-            // optimization: we are topScorer and collect directly using short-circuited algo
-            @Override
-            public void score(Collector collector) throws IOException {
-              int filterDoc = firstFilterDoc;
-              int scorerDoc = scorer.advance(filterDoc);
-              // the normalization trick already applies the boost of this query,
-              // so we can use the wrapped scorer directly:
-              collector.setScorer(scorer);
-              for (;;) {
-                if (scorerDoc == filterDoc) {
-                  // Check if scorer has exhausted, only before collecting.
-                  if (scorerDoc == DocIdSetIterator.NO_MORE_DOCS) {
-                    break;
-                  }
-                  collector.collect(scorerDoc);
-                  filterDoc = filterIter.nextDoc();
-                  scorerDoc = scorer.advance(filterDoc);
-                } else if (scorerDoc > filterDoc) {
-                  filterDoc = filterIter.advance(scorerDoc);
-                } else {
-                  scorerDoc = scorer.advance(filterDoc);
-                }
-              }
-            }
-            
-            private int advanceToNextCommonDoc() throws IOException {
-              for (;;) {
-                if (scorerDoc < filterDoc) {
-                  scorerDoc = scorer.advance(filterDoc);
-                } else if (scorerDoc == filterDoc) {
-                  return scorerDoc;
-                } else {
-                  filterDoc = filterIter.advance(scorerDoc);
-                }
-              }
-            }
+          return (scorer == null) ? null : new DocFirstScorer(this, filterAcceptDocs , scorer);
+          
+        } else {
+          
+          final DocIdSetIterator filterIter = filterDocIdSet.iterator();
+          if (filterIter == null) {
+            // this means the filter does not accept any documents.
+            return null;
+          }  
 
-            @Override
-            public int nextDoc() throws IOException {
-              // don't go to next doc on first call
-              // (because filterIter is already on first doc):
-              if (scorerDoc != -1) {
-                filterDoc = filterIter.nextDoc();
-              }
-              return advanceToNextCommonDoc();
-            }
-            
-            @Override
-            public int advance(int target) throws IOException {
-              if (target > filterDoc) {
-                filterDoc = filterIter.advance(target);
-              }
-              return advanceToNextCommonDoc();
-            }
-
-            @Override
-            public int docID() {
-              return scorerDoc;
-            }
-            
-            @Override
-            public float score() throws IOException {
-              return scorer.score();
-            }
-            
-            @Override
-            public float freq() throws IOException { return scorer.freq(); }
-            
-            @Override
-            public Collection<ChildScorer> getChildren() {
-              return Collections.singleton(new ChildScorer(scorer, "FILTERED"));
-            }
-          };
+          final int firstFilterDoc = filterIter.nextDoc();
+          if (firstFilterDoc == DocIdSetIterator.NO_MORE_DOCS) {
+            return null;
+          }
+          
+          final boolean useRandomAccess;
+          final Bits filterAcceptDocs;
+          if (execType == FilterExecutionType.LEAP_FROG) {
+            useRandomAccess = false;
+            filterAcceptDocs = null;
+          } else {
+            filterAcceptDocs = filterDocIdSet.bits();
+            // force if RA is requested
+            useRandomAccess =(filterAcceptDocs != null && (FilterExecutionType.RANDOM_ACCESS == execType || FilteredQuery.this.useRandomAccess(filterAcceptDocs, firstFilterDoc)));;
+          }
+          if (useRandomAccess) {
+            // if we are using random access, we return the inner scorer, just with other acceptDocs
+            return weight.scorer(context, scoreDocsInOrder, topScorer, filterAcceptDocs);
+          } else {
+            assert firstFilterDoc > -1;
+            // we are gonna advance() this scorer, so we set inorder=true/toplevel=false
+            // we pass null as acceptDocs, as our filter has already respected acceptDocs, no need to do twice
+            final Scorer scorer = weight.scorer(context, true, false, null);
+            return (scorer == null) ? null : new LeapFrogScorer(this, firstFilterDoc, filterIter, scorer);
+          }
         }
       }
     };
   }
+  
+  private static final class LeapFrogScorer extends Scorer {
+    private final Scorer scorer;
+    private final DocIdSetIterator filterIter;
+    private final int firstFilteredDoc;
+    private int scorerDoc = -1;
+    private int filterDoc;
+
+    protected LeapFrogScorer(Weight weight, int firstFilteredDoc, DocIdSetIterator filterIter, Scorer other) {
+      super(weight);
+      this.filterDoc = this.firstFilteredDoc = firstFilteredDoc;
+      this.scorer = other;
+      this.filterIter = filterIter;
+    }
+    
+    // optimization: we are topScorer and collect directly using short-circuited algo
+    @Override
+    public void score(Collector collector) throws IOException {
+      int filterDoc = firstFilteredDoc;
+      int scorerDoc = scorer.advance(filterDoc);
+      // the normalization trick already applies the boost of this query,
+      // so we can use the wrapped scorer directly:
+      collector.setScorer(scorer);
+      for (;;) {
+        if (scorerDoc == filterDoc) {
+          // Check if scorer has exhausted, only before collecting.
+          if (scorerDoc == DocIdSetIterator.NO_MORE_DOCS) {
+            break;
+          }
+          collector.collect(scorerDoc);
+          filterDoc = filterIter.nextDoc();
+          scorerDoc = scorer.advance(filterDoc);
+        } else if (scorerDoc > filterDoc) {
+          filterDoc = filterIter.advance(scorerDoc);
+        } else {
+          scorerDoc = scorer.advance(filterDoc);
+        }
+      }
+    }
+    
+    private int advanceToNextCommonDoc() throws IOException {
+      for (;;) {
+        if (scorerDoc < filterDoc) {
+          scorerDoc = scorer.advance(filterDoc);
+        } else if (scorerDoc == filterDoc) {
+          return scorerDoc;
+        } else {
+          filterDoc = filterIter.advance(scorerDoc);
+        }
+      }
+    }
+
+    @Override
+    public int nextDoc() throws IOException {
+      // don't go to next doc on first call
+      // (because filterIter is already on first doc):
+      if (scorerDoc != -1) {
+        filterDoc = filterIter.nextDoc();
+      }
+      return advanceToNextCommonDoc();
+    }
+    
+    @Override
+    public int advance(int target) throws IOException {
+      if (target > filterDoc) {
+        filterDoc = filterIter.advance(target);
+      }
+      return advanceToNextCommonDoc();
+    }
+
+    @Override
+    public int docID() {
+      return scorerDoc;
+    }
+    
+    @Override
+    public float score() throws IOException {
+      return scorer.score();
+    }
+    
+    @Override
+    public float freq() throws IOException { return scorer.freq(); }
+    
+    @Override
+    public Collection<ChildScorer> getChildren() {
+      return Collections.singleton(new ChildScorer(scorer, "FILTERED"));
+    }
+  }
+  
+  
+  private static final class DocFirstScorer extends Scorer {
+    private final Scorer scorer;
+    private int scorerDoc = -1;
+    private Bits filterbits;
+
+    protected DocFirstScorer(Weight weight, Bits filterBits, Scorer other) {
+      super(weight);
+      this.scorer = other;
+      this.filterbits = filterBits;
+    }
+    
+    @Override
+    public int nextDoc() throws IOException {
+      int doc;
+      for(;;) {
+        doc = scorer.nextDoc();
+        if (doc == Scorer.NO_MORE_DOCS || filterbits.get(doc)) {
+          return scorerDoc = doc;
+        }
+      } 
+    }
+    
+    @Override
+    public int advance(int target) throws IOException {
+      
+      int doc = scorer.advance(target);
+      if (doc != Scorer.NO_MORE_DOCS && !filterbits.get(doc)) {
+        return scorerDoc = nextDoc();
+      } else {
+        return scorerDoc = doc;
+      }
+      
+    }
+
+    @Override
+    public int docID() {
+      return scorerDoc;
+    }
+    
+    @Override
+    public float score() throws IOException {
+      return scorer.score();
+    }
+    
+    @Override
+    public float freq() throws IOException { return scorer.freq(); }
+    
+    @Override
+    public Collection<ChildScorer> getChildren() {
+      return Collections.singleton(new ChildScorer(scorer, "FILTERED"));
+    }
+  }
+  
+   
 
   /** Rewrites the query. If the wrapped is an instance of
    * {@link MatchAllDocsQuery} it returns a {@link ConstantScoreQuery}. Otherwise
@@ -305,5 +395,9 @@ public class FilteredQuery extends Query {
     hash = hash * 31 + query.hashCode();
     hash = hash * 31 + filter.hashCode();
     return hash;
+  }
+  
+  public static enum FilterExecutionType {
+    HEURISTIC, RANDOM_ACCESS, LEAP_FROG, QUERY_FIRST
   }
 }

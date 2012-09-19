@@ -25,6 +25,7 @@ import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util._TestUtil;
 
 /** 
  * Helper class that adds some extra checks to ensure correct
@@ -101,12 +102,12 @@ public class AssertingIndexSearcher extends IndexSearcher {
       }
     };
   }
-
+  
   @Override
   protected Query wrapFilter(Query query, Filter filter) {
     if (random.nextBoolean())
       return super.wrapFilter(query, filter);
-    return (filter == null) ? query : new FilteredQuery(query, filter) {
+    return (filter == null) ? query : new FilteredQuery(query, filter, _TestUtil.randomExecType(random)) {
       @Override
       protected boolean useRandomAccess(Bits bits, int firstFilterDoc) {
         return random.nextBoolean();

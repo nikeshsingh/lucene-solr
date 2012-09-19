@@ -74,6 +74,7 @@ import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.FilteredQuery.FilterExecutionType;
 import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
@@ -975,4 +976,15 @@ public class _TestUtil {
       }
     }
   }
+    
+  }
+  
+  public static final FilterExecutionType randomExecType(Random random) {
+    FilterExecutionType filterExecutionType = EXEC_TYPES[random.nextInt(EXEC_TYPES.length)];
+    System.out.println(filterExecutionType);
+    return filterExecutionType;
+    
+  }
+
+  private static final FilterExecutionType[] EXEC_TYPES = FilterExecutionType.values();
 }
