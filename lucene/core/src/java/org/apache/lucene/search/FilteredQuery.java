@@ -51,7 +51,7 @@ public class FilteredQuery extends Query {
    * @param filter Filter to apply to query results, cannot be <code>null</code>.
    */
   public FilteredQuery (Query query, Filter filter) {
-    this(query, filter, null);
+    this(query, filter, RANDOM_ACCESS_FILTER_STRATEGY);
   }
   
   /**
@@ -66,7 +66,9 @@ public class FilteredQuery extends Query {
   public FilteredQuery (Query query, Filter filter, FilterStrategy strategy) {
     if (query == null || filter == null)
       throw new IllegalArgumentException("Query and filter cannot be null.");
-    this.strategy = strategy == null ? RANDOM_ACCESS_FILTER_STRATEGY : strategy;
+    if (strategy == null)
+      throw new IllegalArgumentException("FilterStrategy can not be null");
+    this.strategy = strategy;
     this.query = query;
     this.filter = filter;
   }
@@ -140,91 +142,22 @@ public class FilteredQuery extends Query {
    * jumping past the target document. When both land on the same document, it's
    * collected.
    */
-  private static final class LeapFrogScorer extends Scorer {
-    private final Scorer scorer;
-    private final DocIdSetIterator filterIter;
+  
+  private static final class PrimaryAdvancedLeapFrogScorer extends LeapFrogScorer {
     private final int firstFilteredDoc;
-    private int scorerDoc = -1;
-    private int filterDoc;
 
-    protected LeapFrogScorer(Weight weight, int firstFilteredDoc, DocIdSetIterator filterIter, Scorer other) {
-      super(weight);
-      this.filterDoc = this.firstFilteredDoc = firstFilteredDoc;
-      this.scorer = other;
-      this.filterIter = filterIter;
-    }
-    
-    // optimization: we are topScorer and collect directly using short-circuited algo
-    @Override
-    public void score(Collector collector) throws IOException {
-      int filterDoc = firstFilteredDoc;
-      int scorerDoc = scorer.advance(filterDoc);
-      // the normalization trick already applies the boost of this query,
-      // so we can use the wrapped scorer directly:
-      collector.setScorer(scorer);
-      for (;;) {
-        if (scorerDoc == filterDoc) {
-          // Check if scorer has exhausted, only before collecting.
-          if (scorerDoc == DocIdSetIterator.NO_MORE_DOCS) {
-            break;
-          }
-          collector.collect(scorerDoc);
-          filterDoc = filterIter.nextDoc();
-          scorerDoc = scorer.advance(filterDoc);
-        } else if (scorerDoc > filterDoc) {
-          filterDoc = filterIter.advance(scorerDoc);
-        } else {
-          scorerDoc = scorer.advance(filterDoc);
-        }
-      }
-    }
-    
-    private int advanceToNextCommonDoc() throws IOException {
-      for (;;) {
-        if (scorerDoc < filterDoc) {
-          scorerDoc = scorer.advance(filterDoc);
-        } else if (scorerDoc == filterDoc) {
-          return scorerDoc;
-        } else {
-          filterDoc = filterIter.advance(scorerDoc);
-        }
-      }
+    protected PrimaryAdvancedLeapFrogScorer(Weight weight, int firstFilteredDoc, DocIdSetIterator filterIter, Scorer other) {
+      super(weight, filterIter, other, other);
+      this.firstFilteredDoc = firstFilteredDoc;
     }
 
     @Override
-    public int nextDoc() throws IOException {
-      // don't go to next doc on first call
-      // (because filterIter is already on first doc):
-      if (scorerDoc != -1) {
-        filterDoc = filterIter.nextDoc();
+    protected int primaryNext() throws IOException {
+      if (secondaryDoc != -1) {
+        return super.primaryNext();
+      } else {
+        return firstFilteredDoc;
       }
-      return advanceToNextCommonDoc();
-    }
-    
-    @Override
-    public int advance(int target) throws IOException {
-      if (target > filterDoc) {
-        filterDoc = filterIter.advance(target);
-      }
-      return advanceToNextCommonDoc();
-    }
-
-    @Override
-    public int docID() {
-      return scorerDoc;
-    }
-    
-    @Override
-    public float score() throws IOException {
-      return scorer.score();
-    }
-    
-    @Override
-    public float freq() throws IOException { return scorer.freq(); }
-    
-    @Override
-    public Collection<ChildScorer> getChildren() {
-      return Collections.singleton(new ChildScorer(scorer, "FILTERED"));
     }
   }
   
@@ -234,17 +167,16 @@ public class FilteredQuery extends Query {
    * than document scoring or if the filter has a linear running time to compute
    * the next matching doc like exact geo distances.
    */
-  private static final class DocFirstScorer extends Scorer {
+  private static final class QueryFirstScorer extends Scorer {
     private final Scorer scorer;
     private int scorerDoc = -1;
     private Bits filterbits;
 
-    protected DocFirstScorer(Weight weight, Bits filterBits, Scorer other) {
+    protected QueryFirstScorer(Weight weight, Bits filterBits, Scorer other) {
       super(weight);
       this.scorer = other;
       this.filterbits = filterBits;
     }
-    
     
     // optimization: we are topScorer and collect directly
     @Override
@@ -305,8 +237,104 @@ public class FilteredQuery extends Query {
     }
   }
   
-   
+  /**
+   * A Scorer that uses a "leap-frog" approach (also called "zig-zag join"). The scorer and the filter
+   * take turns trying to advance to each other's next matching document, often
+   * jumping past the target document. When both land on the same document, it's
+   * collected.
+   */
+  private static class LeapFrogScorer extends Scorer {
+    private final DocIdSetIterator secondary;
+    private final DocIdSetIterator primary;
+    private final Scorer scorer;
+    private int primaryDoc = -1;
+    protected int secondaryDoc = -1;
 
+    protected LeapFrogScorer(Weight weight, DocIdSetIterator primary, DocIdSetIterator secondary, Scorer scorer) {
+      super(weight);
+      this.primary = primary;
+      this.secondary = secondary;
+      this.scorer = scorer;
+    }
+    
+    // optimization: we are topScorer and collect directly using short-circuited algo
+    @Override
+    public void score(Collector collector) throws IOException {
+      int primDoc = primaryNext();
+      int secDoc = secondary.advance(primDoc);
+      // the normalization trick already applies the boost of this query,
+      // so we can use the wrapped scorer directly:
+      collector.setScorer(scorer);
+      for (;;) {
+        if (primDoc == secDoc) {
+          // Check if scorer has exhausted, only before collecting.
+          if (primDoc == DocIdSetIterator.NO_MORE_DOCS) {
+            break;
+          }
+          collector.collect(primDoc);
+          primDoc = primary.nextDoc();
+          secDoc = secondary.advance(primDoc);
+        } else if (secDoc > primDoc) {
+          primDoc = primary.advance(secDoc);
+        } else {
+          secDoc = secondary.advance(primDoc);
+        }
+      }
+    }
+    
+    private int advanceToNextCommonDoc() throws IOException {
+      for (;;) {
+        if (secondaryDoc < primaryDoc) {
+          secondaryDoc = secondary.advance(primaryDoc);
+        } else if (secondaryDoc == primaryDoc) {
+          return primaryDoc;
+        } else {
+          primaryDoc = primary.advance(secondaryDoc);
+        }
+      }
+    }
+
+    @Override
+    public int nextDoc() throws IOException {
+      primaryDoc = primaryNext();
+      return advanceToNextCommonDoc();
+    }
+    
+    protected int primaryNext() throws IOException {
+      return primary.nextDoc();
+    }
+    
+    @Override
+    public int advance(int target) throws IOException {
+      if (target > primaryDoc) {
+        primaryDoc = primary.advance(target);
+      }
+      return advanceToNextCommonDoc();
+    }
+
+    @Override
+    public int docID() {
+      assert scorer.docID() == primaryDoc;
+      return primaryDoc;
+    }
+    
+    @Override
+    public float score() throws IOException {
+      return scorer.score();
+    }
+    
+    @Override
+    public float freq() throws IOException { return scorer.freq(); }
+    
+    @Override
+    public Collection<ChildScorer> getChildren() {
+      return Collections.singleton(new ChildScorer(scorer, "FILTERED"));
+    }
+  }
+  
+  
+
+  
   /** Rewrites the query. If the wrapped is an instance of
    * {@link MatchAllDocsQuery} it returns a {@link ConstantScoreQuery}. Otherwise
    * it returns a new {@code FilteredQuery} wrapping the rewritten query. */
@@ -388,7 +416,7 @@ public class FilteredQuery extends Query {
    * from {@link DocIdSet#bits()}) and
    * {@link RandomAccessFilterStrategy#useRandomAccess(Bits, int)} returns
    * <code>true</code>. Otherwise this strategy falls back to a "zig-zag join" (
-   * {@link FilteredQuery#LEAP_FROG_FILTER_STRATEGY}) strategy.
+   * {@link FilteredQuery#LEAP_FROG_FILTER_FIRST_STRATEGY}) strategy.
    * 
    * <p>
    * Note: this strategy is the default strategy in {@link FilteredQuery}
@@ -402,8 +430,23 @@ public class FilteredQuery extends Query {
    * take turns trying to advance to each other's next matching document, often
    * jumping past the target document. When both land on the same document, it's
    * collected.
+   * <p>
+   * Note: This strategy uses the filter to lead the iteration.
+   * </p> 
    */
-  public static final FilterStrategy LEAP_FROG_FILTER_STRATEGY = new LeapFrogFilterStragey();
+  public static final FilterStrategy LEAP_FROG_FILTER_FIRST_STRATEGY = new LeapFrogFilterStragey(false);
+  
+  /**
+   * A filter strategy that uses a "leap-frog" approach (also called "zig-zag join"). 
+   * The scorer and the filter
+   * take turns trying to advance to each other's next matching document, often
+   * jumping past the target document. When both land on the same document, it's
+   * collected.
+   * <p>
+   * Note: This strategy uses the query to lead the iteration.
+   * </p> 
+   */
+  public static final FilterStrategy LEAP_FROG_QUERY_FIRST_STRATEGY = new LeapFrogFilterStragey(true);
   
   /**
    * A filter strategy that advances the {@link Scorer} first and consults the
@@ -414,7 +457,7 @@ public class FilteredQuery extends Query {
    * matching doc like exact geo distances.
    * </p>
    */
-  public static final FilterStrategy DOC_FIRST_FILTER_STRATEGY = new DocFirstFilterStrategy();
+  public static final FilterStrategy QUERY_FIRST_FILTER_STRATEGY = new QueryFirstFilterStrategy();
   
   /** Abstract class that defines how the filter ({@link DocIdSet}) applied during document collection. */
   public static abstract class FilterStrategy {
@@ -453,7 +496,7 @@ public class FilteredQuery extends Query {
    * from {@link DocIdSet#bits()}) and
    * {@link RandomAccessFilterStrategy#useRandomAccess(Bits, int)} returns
    * <code>true</code>. Otherwise this strategy falls back to a "zig-zag join" (
-   * {@link FilteredQuery#LEAP_FROG_FILTER_STRATEGY}) strategy .
+   * {@link FilteredQuery#LEAP_FROG_FILTER_FIRST_STRATEGY}) strategy .
    */
   public static class RandomAccessFilterStrategy extends FilterStrategy {
 
@@ -481,14 +524,14 @@ public class FilteredQuery extends Query {
         // we are gonna advance() this scorer, so we set inorder=true/toplevel=false
         // we pass null as acceptDocs, as our filter has already respected acceptDocs, no need to do twice
         final Scorer scorer = weight.scorer(context, true, false, null);
-        return (scorer == null) ? null : new LeapFrogScorer(weight, firstFilterDoc, filterIter, scorer);
+        return (scorer == null) ? null : new PrimaryAdvancedLeapFrogScorer(weight, firstFilterDoc, filterIter, scorer);
       }
     }
     
     /**
      * Expert: decides if a filter should be executed as "random-access" or not.
      * random-access means the filter "filters" in a similar way as deleted docs are filtered
-     * in lucene. This is faster when the filter accepts many documents.
+     * in Lucene. This is faster when the filter accepts many documents.
      * However, when the filter is very sparse, it can be faster to execute the query+filter
      * as a conjunction in some cases.
      * 
@@ -498,12 +541,16 @@ public class FilteredQuery extends Query {
      * @lucene.internal
      */
     protected boolean useRandomAccess(Bits bits, int firstFilterDoc) {
+      //TODO once we have a cost API on filters and scorers we should rethink this heuristic
       return firstFilterDoc < 100;
     }
   }
   
   private static final class LeapFrogFilterStragey extends FilterStrategy {
-
+    private final boolean scorerFirst;
+    private LeapFrogFilterStragey(boolean scorerFirst) {
+      this.scorerFirst = scorerFirst;
+    }
     @Override
     public Scorer filteredScorer(AtomicReaderContext context,
         boolean scoreDocsInOrder, boolean topScorer, Weight weight,
@@ -513,16 +560,14 @@ public class FilteredQuery extends Query {
         // this means the filter does not accept any documents.
         return null;
       }
-      
-      final int firstFilterDoc = filterIter.nextDoc();
-      if (firstFilterDoc == DocIdSetIterator.NO_MORE_DOCS) {
-        return null;
-      }
-      assert firstFilterDoc > -1;
       // we are gonna advance() this scorer, so we set inorder=true/toplevel=false
       // we pass null as acceptDocs, as our filter has already respected acceptDocs, no need to do twice
       final Scorer scorer = weight.scorer(context, true, false, null);
-      return (scorer == null) ? null : new LeapFrogScorer(weight, firstFilterDoc, filterIter, scorer);
+      if (scorerFirst) {
+        return (scorer == null) ? null : new LeapFrogScorer(weight, filterIter, scorer, scorer);  
+      } else {
+        return (scorer == null) ? null : new LeapFrogScorer(weight, scorer, filterIter, scorer);  
+      }
     }
     
   }
@@ -531,48 +576,28 @@ public class FilteredQuery extends Query {
    * A filter strategy that advances the {@link Scorer} first and consults the
    * {@link DocIdSet} for each matched document.
    * <p>
+   * Note: this strategy requires a {@link DocIdSet#bits()} to return a non-null value. Otherwise
+   * this strategy falls back to {@link FilteredQuery#LEAP_FROG_FILTER_FIRST_STRATEGY}
+   * </p>
+   * <p>
    * Use this strategy if the filter computation is more expensive than document
    * scoring or if the filter has a linear running time to compute the next
    * matching doc like exact geo distances.
    * </p>
    */
-  private static final class DocFirstFilterStrategy extends FilterStrategy {
-
+  private static final class QueryFirstFilterStrategy extends FilterStrategy {
     @Override
     public Scorer filteredScorer(final AtomicReaderContext context,
         boolean scoreDocsInOrder, boolean topScorer, Weight weight,
         DocIdSet docIdSet) throws IOException {
       Bits filterAcceptDocs = docIdSet.bits();
       if (filterAcceptDocs == null) {
-        final DocIdSetIterator filterIter = docIdSet.iterator();
-        if (filterIter == null) {
-          // this means the filter does not accept any documents.
-          return null;
-        }
-        // TODO maybe we should fall back to leap frog 
-        filterAcceptDocs = new Bits() {
-          @Override
-          public boolean get(int index) {
-            try {
-              return filterIter.docID() == index
-                  || (filterIter.docID() < index && filterIter.advance(index) == index);
-            } catch (Exception e) {
-              throw new RuntimeException(e);
-            }
-          }
-          
-          @Override
-          public int length() {
-            return context.reader().maxDoc();
-          }
-          
-        };
+        return LEAP_FROG_QUERY_FIRST_STRATEGY.filteredScorer(context, scoreDocsInOrder, topScorer, weight, docIdSet);
       }
       final Scorer scorer = weight.scorer(context, true, false, null);
-      return (scorer == null) ? null : new DocFirstScorer(weight,
+      return scorer == null ? null : new QueryFirstScorer(weight,
           filterAcceptDocs, scorer);
     }
-    
   }
   
 }

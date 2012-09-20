@@ -985,21 +985,23 @@ public class _TestUtil {
     
   
   public static final FilterStrategy randomFilterStrategy(final Random random) {
-    switch(random.nextInt(5)) {
+    switch(random.nextInt(6)) {
+      case 5:
       case 4:
-      case 3:
-        new FilteredQuery.RandomAccessFilterStrategy() {
+        return new FilteredQuery.RandomAccessFilterStrategy() {
           @Override
           protected boolean useRandomAccess(Bits bits, int firstFilterDoc) {
             return random.nextBoolean();
           }
         };
-      case 2:
+      case 3:
         return FilteredQuery.RANDOM_ACCESS_FILTER_STRATEGY;
+      case 2:
+        return FilteredQuery.LEAP_FROG_FILTER_FIRST_STRATEGY;
       case 1:
-        return FilteredQuery.LEAP_FROG_FILTER_STRATEGY;
+        return FilteredQuery.LEAP_FROG_QUERY_FIRST_STRATEGY;
       case 0: 
-        return FilteredQuery.DOC_FIRST_FILTER_STRATEGY;
+        return FilteredQuery.QUERY_FIRST_FILTER_STRATEGY;
       default:
         return FilteredQuery.RANDOM_ACCESS_FILTER_STRATEGY;
     }
