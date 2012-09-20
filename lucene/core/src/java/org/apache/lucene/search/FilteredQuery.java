@@ -234,7 +234,7 @@ public class FilteredQuery extends Query {
     
     // optimization: we are topScorer and collect directly using short-circuited algo
     @Override
-    public void score(Collector collector) throws IOException {
+    public final void score(Collector collector) throws IOException {
       int primDoc = primaryNext();
       int secDoc = secondary.advance(primDoc);
       // the normalization trick already applies the boost of this query,
@@ -257,7 +257,7 @@ public class FilteredQuery extends Query {
       }
     }
     
-    private int advanceToNextCommonDoc() throws IOException {
+    private final int advanceToNextCommonDoc() throws IOException {
       for (;;) {
         if (secondaryDoc < primaryDoc) {
           secondaryDoc = secondary.advance(primaryDoc);
@@ -270,7 +270,7 @@ public class FilteredQuery extends Query {
     }
 
     @Override
-    public int nextDoc() throws IOException {
+    public final int nextDoc() throws IOException {
       primaryDoc = primaryNext();
       return advanceToNextCommonDoc();
     }
@@ -280,7 +280,7 @@ public class FilteredQuery extends Query {
     }
     
     @Override
-    public int advance(int target) throws IOException {
+    public final int advance(int target) throws IOException {
       if (target > primaryDoc) {
         primaryDoc = primary.advance(target);
       }
@@ -288,21 +288,21 @@ public class FilteredQuery extends Query {
     }
 
     @Override
-    public int docID() {
+    public final int docID() {
       assert scorer.docID() == primaryDoc;
       return primaryDoc;
     }
     
     @Override
-    public float score() throws IOException {
+    public final float score() throws IOException {
       return scorer.score();
     }
     
     @Override
-    public float freq() throws IOException { return scorer.freq(); }
+    public final float freq() throws IOException { return scorer.freq(); }
     
     @Override
-    public Collection<ChildScorer> getChildren() {
+    public final Collection<ChildScorer> getChildren() {
       return Collections.singleton(new ChildScorer(scorer, "FILTERED"));
     }
   }
@@ -440,8 +440,12 @@ public class FilteredQuery extends Query {
   public static final FilterStrategy LEAP_FROG_QUERY_FIRST_STRATEGY = new LeapFrogFilterStragey(true);
   
   /**
-   * A filter strategy that advances the {@link Scorer} first and consults the
-   * {@link DocIdSet} for each matched document.
+   * A filter strategy that advances the Query or rather its {@link Scorer} first and consults the
+   * filter {@link DocIdSet} for each matched document.
+   * <p>
+   * Note: this strategy requires a {@link DocIdSet#bits()} to return a non-null value. Otherwise
+   * this strategy falls back to {@link FilteredQuery#LEAP_FROG_QUERY_FIRST_STRATEGY}
+   * </p>
    * <p>
    * Use this strategy if the filter computation is more expensive than document
    * scoring or if the filter has a linear running time to compute the next
@@ -571,7 +575,7 @@ public class FilteredQuery extends Query {
    * {@link DocIdSet} for each matched document.
    * <p>
    * Note: this strategy requires a {@link DocIdSet#bits()} to return a non-null value. Otherwise
-   * this strategy falls back to {@link FilteredQuery#LEAP_FROG_FILTER_FIRST_STRATEGY}
+   * this strategy falls back to {@link FilteredQuery#LEAP_FROG_QUERY_FIRST_STRATEGY}
    * </p>
    * <p>
    * Use this strategy if the filter computation is more expensive than document
