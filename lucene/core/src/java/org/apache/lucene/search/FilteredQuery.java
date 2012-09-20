@@ -137,31 +137,6 @@ public class FilteredQuery extends Query {
   }
   
   /**
-   * A Scorer that uses a "leap-frog" approach (also called "zig-zag join"). The scorer and the filter
-   * take turns trying to advance to each other's next matching document, often
-   * jumping past the target document. When both land on the same document, it's
-   * collected.
-   */
-  
-  private static final class PrimaryAdvancedLeapFrogScorer extends LeapFrogScorer {
-    private final int firstFilteredDoc;
-
-    protected PrimaryAdvancedLeapFrogScorer(Weight weight, int firstFilteredDoc, DocIdSetIterator filterIter, Scorer other) {
-      super(weight, filterIter, other, other);
-      this.firstFilteredDoc = firstFilteredDoc;
-    }
-
-    @Override
-    protected int primaryNext() throws IOException {
-      if (secondaryDoc != -1) {
-        return super.primaryNext();
-      } else {
-        return firstFilteredDoc;
-      }
-    }
-  }
-  
-  /**
    * A scorer that consults the filter iff a document was matched by the
    * delegate scorer. This is useful if the filter computation is more expensive
    * than document scoring or if the filter has a linear running time to compute
@@ -332,8 +307,24 @@ public class FilteredQuery extends Query {
     }
   }
   
-  
+  // TODO once we have way to figure out if we use RA or LeapFrog we can remove this scorer
+  private static final class PrimaryAdvancedLeapFrogScorer extends LeapFrogScorer {
+    private final int firstFilteredDoc;
 
+    protected PrimaryAdvancedLeapFrogScorer(Weight weight, int firstFilteredDoc, DocIdSetIterator filterIter, Scorer other) {
+      super(weight, filterIter, other, other);
+      this.firstFilteredDoc = firstFilteredDoc;
+    }
+
+    @Override
+    protected int primaryNext() throws IOException {
+      if (secondaryDoc != -1) {
+        return super.primaryNext();
+      } else {
+        return firstFilteredDoc;
+      }
+    }
+  }
   
   /** Rewrites the query. If the wrapped is an instance of
    * {@link MatchAllDocsQuery} it returns a {@link ConstantScoreQuery}. Otherwise
@@ -524,6 +515,7 @@ public class FilteredQuery extends Query {
         // we are gonna advance() this scorer, so we set inorder=true/toplevel=false
         // we pass null as acceptDocs, as our filter has already respected acceptDocs, no need to do twice
         final Scorer scorer = weight.scorer(context, true, false, null);
+        // TODO once we have way to figure out if we use RA or LeapFrog we can remove this scorer
         return (scorer == null) ? null : new PrimaryAdvancedLeapFrogScorer(weight, firstFilterDoc, filterIter, scorer);
       }
     }
@@ -547,7 +539,9 @@ public class FilteredQuery extends Query {
   }
   
   private static final class LeapFrogFilterStragey extends FilterStrategy {
+    
     private final boolean scorerFirst;
+    
     private LeapFrogFilterStragey(boolean scorerFirst) {
       this.scorerFirst = scorerFirst;
     }
