@@ -365,17 +365,16 @@ public class TestFilteredQuery extends LuceneTestCase {
   }
 
   public static final class FilteredQueryRA extends FilteredQuery {
-    private final boolean useRandomAccess;
   
-    public FilteredQueryRA(Query q, Filter f, boolean useRandomAccess) {
-      super(q,f);
-      this.useRandomAccess = useRandomAccess;
+    public FilteredQueryRA(Query q, Filter f, final boolean useRandomAccess) {
+      super(q, f, new FilteredQuery.RandomAccessFilterStrategy() {
+        @Override
+        protected boolean useRandomAccess(Bits bits, int firstFilterDoc) {
+          return useRandomAccess;
+        }
+      });
     }
     
-    @Override
-    protected boolean useRandomAccess(Bits bits, int firstFilterDoc) {
-      return useRandomAccess;
-    }
   }
 }
 

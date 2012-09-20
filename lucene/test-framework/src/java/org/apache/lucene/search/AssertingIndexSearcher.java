@@ -107,11 +107,6 @@ public class AssertingIndexSearcher extends IndexSearcher {
   protected Query wrapFilter(Query query, Filter filter) {
     if (random.nextBoolean())
       return super.wrapFilter(query, filter);
-    return (filter == null) ? query : new FilteredQuery(query, filter, _TestUtil.randomExecType(random)) {
-      @Override
-      protected boolean useRandomAccess(Bits bits, int firstFilterDoc) {
-        return random.nextBoolean();
-      }
-    };
+    return (filter == null) ? query : new FilteredQuery(query, filter, _TestUtil.randomFilterStrategy(random));
   }
 }
