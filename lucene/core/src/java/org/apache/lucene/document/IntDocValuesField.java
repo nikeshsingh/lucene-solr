@@ -21,9 +21,8 @@ import org.apache.lucene.index.DocValues;
 
 /**
  * <p>
- * This class provides a {@link Field} that enables storing
- * of a per-document int value for scoring, sorting or value retrieval. Here's an
- * example usage:
+ * Field that stores a per-document <code>int</code> value for scoring, 
+ * sorting or value retrieval. Here's an example usage:
  * 
  * <pre class="prettyprint">
  *   document.add(new IntDocValuesField(name, 22));
@@ -32,7 +31,7 @@ import org.apache.lucene.index.DocValues;
  * <p>
  * If you also need to store the value, you should add a
  * separate {@link StoredField} instance.
- * @see DocValues for further information
+ * @see DocValues
  * */
 
 public class IntDocValuesField extends StoredField {

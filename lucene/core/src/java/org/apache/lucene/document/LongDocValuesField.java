@@ -21,9 +21,8 @@ import org.apache.lucene.index.DocValues;
 
 /**
  * <p>
- * This class provides a {@link Field} that enables storing
- * of a per-document long value for scoring, sorting or value retrieval. Here's an
- * example usage:
+ * Field that stores a per-document <code>long</code> value for scoring, 
+ * sorting or value retrieval. Here's an example usage:
  * 
  * <pre class="prettyprint">
  *   document.add(new LongDocValuesField(name, 22L));
@@ -32,7 +31,7 @@ import org.apache.lucene.index.DocValues;
  * <p>
  * If you also need to store the value, you should add a
  * separate {@link StoredField} instance.
- * @see DocValues for further information
+ * @see DocValues
  * */
 
 public class LongDocValuesField extends StoredField {

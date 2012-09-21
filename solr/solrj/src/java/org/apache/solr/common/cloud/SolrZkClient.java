@@ -39,7 +39,6 @@ import org.apache.solr.common.cloud.ZkClientConnectionStrategy.ZkUpdate;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.NoNodeException;
-import org.apache.zookeeper.SolrZooKeeper;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
@@ -79,9 +78,6 @@ public class SolrZkClient {
   /**
    * @param zkServerAddress
    * @param zkClientTimeout
-   * @throws InterruptedException
-   * @throws TimeoutException
-   * @throws IOException
    */
   public SolrZkClient(String zkServerAddress, int zkClientTimeout) {
     this(zkServerAddress, zkClientTimeout, new DefaultConnectionStrategy(), null);
@@ -96,9 +92,6 @@ public class SolrZkClient {
    * @param zkClientTimeout
    * @param strat
    * @param onReconnect
-   * @throws InterruptedException
-   * @throws TimeoutException
-   * @throws IOException
    */
   public SolrZkClient(String zkServerAddress, int zkClientTimeout,
       ZkClientConnectionStrategy strat, final OnReconnect onReconnect) {
@@ -111,9 +104,6 @@ public class SolrZkClient {
    * @param strat
    * @param onReconnect
    * @param clientConnectTimeout
-   * @throws InterruptedException
-   * @throws TimeoutException
-   * @throws IOException
    */
   public SolrZkClient(String zkServerAddress, int zkClientTimeout,
       ZkClientConnectionStrategy strat, final OnReconnect onReconnect, int clientConnectTimeout) {
@@ -660,9 +650,6 @@ public class SolrZkClient {
     return prettyPrint(input, 2);
   }
 
-  /**
-   * @throws InterruptedException
-   */
   public void close() {
     if (isClosed) return; // it's okay if we over close - same as solrcore
     isClosed = true;

@@ -22,10 +22,10 @@ import org.apache.lucene.index.AtomicReader;      // javadocs
 
 /**
  * <p>
- * This class provides a {@link Field} that enables storing
- * of a per-document long value for scoring, sorting or
- * value retrieval.  The values are encoded in the index an
- * in RAM (when loaded via {@link AtomicReader#docValues})
+ * Field that stores a per-document <code>long</code> value 
+ * for scoring, sorting or value retrieval.  The values are 
+ * encoded in the index an in RAM (when loaded via 
+ * {@link AtomicReader#docValues})
  * using packed ints. Here's an example usage:
  * 
  * <pre class="prettyprint">
@@ -36,7 +36,7 @@ import org.apache.lucene.index.AtomicReader;      // javadocs
  * If you also need to store the value, you should add a
  * separate {@link StoredField} instance.
  * 
- * @see DocValues for further information
+ * @see DocValues
  * */
 
 public class PackedLongDocValuesField extends StoredField {

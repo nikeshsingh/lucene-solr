@@ -22,8 +22,8 @@ import org.apache.lucene.util.BytesRef;
 
 /**
  * <p>
- * This class provides a {@link Field} that enables storing
- * of a per-document {@link BytesRef} value.  The values are
+ * Field that stores
+ * a per-document {@link BytesRef} value.  The values are
  * stored indirectly, such that many documents sharing the
  * same value all point to a single copy of the value, which
  * is a good fit when the fields share values.  If values
@@ -38,7 +38,7 @@ import org.apache.lucene.util.BytesRef;
  * If you also need to store the value, you should add a
  * separate {@link StoredField} instance.
  * 
- * @see DocValues for further information
+ * @see DocValues
  * */
 
 public class DerefBytesDocValuesField extends StoredField {
