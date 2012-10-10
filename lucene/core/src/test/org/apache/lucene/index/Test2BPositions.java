@@ -20,31 +20,33 @@ package org.apache.lucene.index;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.store.BaseDirectoryWrapper;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TimeUnits;
 import org.apache.lucene.util._TestUtil;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
+import org.junit.Ignore;
 
 import com.carrotsearch.randomizedtesting.annotations.TimeoutSuite;
 
 /**
- * Test indexes ~82M docs with 26 terms each, so you get > Integer.MAX_VALUE terms/docs pairs
+ * Test indexes ~82M docs with 52 positions each, so you get > Integer.MAX_VALUE positions
  * @lucene.experimental
  */
 @SuppressCodecs({ "SimpleText", "Memory", "Direct" })
 @TimeoutSuite(millis = 4 * TimeUnits.HOUR)
-public class Test2BPostings extends LuceneTestCase {
+public class Test2BPositions extends LuceneTestCase {
 
-  @Nightly
+  // uses lots of space and takes a few minutes
+  @Ignore("Very slow. Enable manually by removing @Ignore.")
   public void test() throws Exception {
-    BaseDirectoryWrapper dir = newFSDirectory(_TestUtil.getTempDir("2BPostings"));
+    BaseDirectoryWrapper dir = newFSDirectory(_TestUtil.getTempDir("2BPositions"));
     if (dir instanceof MockDirectoryWrapper) {
       ((MockDirectoryWrapper)dir).setThrottling(MockDirectoryWrapper.Throttling.NEVER);
     }
@@ -66,7 +68,6 @@ public class Test2BPostings extends LuceneTestCase {
     Document doc = new Document();
     FieldType ft = new FieldType(TextField.TYPE_NOT_STORED);
     ft.setOmitNorms(true);
-    ft.setIndexOptions(IndexOptions.DOCS_ONLY);
     Field field = new Field("field", new MyTokenStream(), ft);
     doc.add(field);
     
@@ -84,18 +85,19 @@ public class Test2BPostings extends LuceneTestCase {
   
   public static final class MyTokenStream extends TokenStream {
     private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
-    private final char buffer[];
+    private final PositionIncrementAttribute posIncAtt = addAttribute(PositionIncrementAttribute.class);
     int index;
 
     public MyTokenStream() {
       termAtt.setLength(1);
-      buffer = termAtt.buffer();
+      termAtt.buffer()[0] = 'a';
     }
     
     @Override
     public boolean incrementToken() {
-      if (index <= 'z') {
-        buffer[0] = (char) index++;
+      if (index < 52) {
+        posIncAtt.setPositionIncrement(1+index);
+        index++;
         return true;
       }
       return false;
@@ -103,7 +105,7 @@ public class Test2BPostings extends LuceneTestCase {
     
     @Override
     public void reset() {
-      index = 'a';
+      index = 0;
     }
   }
 }

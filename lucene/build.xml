@@ -544,16 +544,6 @@
     <property name="lucene-core.uptodate" value="true"/>
   </target>
 
-  <!-- TODO: in the future, we don't need to actually put
-       jars in the lib/ folders, but can just put in classpath.
-       only packaging tasks really need that (and could do it
-       under build/ directories) -->
-  <target name="clean-jars" description="Clean local jars">
-     <delete>
-       <fileset dir="." includes="**/*.jar"/>
-     </delete>
-  </target>
-
   <target name="get-jenkins-line-docs" unless="enwiki.exists">
     <sequential>
       <!-- TODO: can get .lzma instead (it's ~17% smaller) but there's no builtin ant support...? -->
@@ -563,7 +553,7 @@
     </sequential>
   </target>
 
-  <target name="jar-checksums" depends="clean-jars,resolve">
+  <target name="jar-checksums" depends="resolve">
     <jar-checksum-macro srcdir="${common.dir}" dstdir="${common.dir}/licenses"/>
   </target>
 
