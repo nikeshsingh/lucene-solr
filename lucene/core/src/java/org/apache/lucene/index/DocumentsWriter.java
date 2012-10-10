@@ -435,7 +435,16 @@ final class DocumentsWriter {
          * Now we are done and try to flush the ticket queue if the head of the
          * queue has already finished the flush.
          */
-         ticketQueue.tryPurge(this);
+        if (ticketQueue.getTicketCount() >= perThreadPool.getActiveThreadState()) {
+          // This means there is a backlog: the one
+          // thread in innerPurge can't keep up with all
+          // other threads flushing segments.  In this case
+          // we forcefully stall the producers.
+          ticketQueue.forcePurge(this);
+        } else {
+          ticketQueue.tryPurge(this);
+        }
+
       } finally {
         flushControl.doAfterFlush(flushingDWPT);
         flushingDWPT.checkAndResetHasAborted();
