@@ -572,9 +572,9 @@ public class AnalyzingSuggester extends Lookup {
         }
       };
       final List<FSTUtil.Path<Pair<Long,BytesRef>>> prefixPaths = intersector.intersectAll();
-      System.out.println(key);
+//      System.out.println(key);
       for (FSTUtil.Path<Pair<Long,BytesRef>> path : prefixPaths) {
-        System.out.println(UnicodeUtil.newString(path.input.ints, path.input.offset, path.input.length));
+//        System.out.println(UnicodeUtil.newString(path.input.ints, path.input.offset, path.input.length));
         searcher.addStartPaths(path.fstNode, path.output, true, path.input);
       }
 
