@@ -273,7 +273,7 @@ public class AnalyzingSuggester extends Lookup {
     }
   }
 
-  /** Just escapes the bytes we steal (0xff, 0x0). */
+  /** Just escapes the 0xff byte (which we still for SEP). */
   private static final class  EscapingTokenStreamToAutomaton extends TokenStreamToAutomaton {
 
     final BytesRef spare = new BytesRef();
@@ -301,6 +301,16 @@ public class AnalyzingSuggester extends Lookup {
       return spare;
     }
   }
+
+  final TokenStreamToAutomaton getTokenStreamToAutomaton() {
+    if (preserveSep) {
+      return new EscapingTokenStreamToAutomaton();
+    } else {
+      // When we're not preserving sep, we don't steal 0xff
+      // byte, so we don't need to do any escaping:
+      return new TokenStreamToAutomaton();
+    }
+  }
   
   @Override
   public void build(TermFreqIterator iterator) throws IOException {
@@ -314,7 +324,6 @@ public class AnalyzingSuggester extends Lookup {
     BytesRef scratch = new BytesRef();
 
     TokenStreamToAutomaton ts2a = getTokenStreamToAutomaton();
-
     // analyzed sequence + 0(byte) + weight(int) + surface + analyzedLength(short) 
     boolean success = false;
     byte buffer[] = new byte[8];
@@ -467,7 +476,6 @@ public class AnalyzingSuggester extends Lookup {
 
       Automaton lookupAutomaton = toLookupAutomaton(key);
       
-
       final CharsRef spare = new CharsRef();
 
       //System.out.println("  now intersect exactFirst=" + exactFirst);
@@ -672,10 +680,6 @@ public class AnalyzingSuggester extends Lookup {
   
   protected PathIntersector getPathIntersector(Automaton automaton, FST<Pair<Long,BytesRef>> fst) {
     return new PathIntersector(automaton, fst);
-  }
-  
-  final TokenStreamToAutomaton getTokenStreamToAutomaton() {
-    return new EscapingTokenStreamToAutomaton();
   }
   
   protected static class PathIntersector {
