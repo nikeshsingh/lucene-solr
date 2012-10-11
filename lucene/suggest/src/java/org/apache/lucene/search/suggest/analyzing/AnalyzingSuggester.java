@@ -313,7 +313,7 @@ public class AnalyzingSuggester extends Lookup {
     Sort.ByteSequencesReader reader = null;
     BytesRef scratch = new BytesRef();
 
-    TokenStreamToAutomaton ts2a = new EscapingTokenStreamToAutomaton();
+    TokenStreamToAutomaton ts2a = getTokenStreamToAutomaton();
 
     // analyzed sequence + 0(byte) + weight(int) + surface + analyzedLength(short) 
     boolean success = false;
@@ -322,29 +322,8 @@ public class AnalyzingSuggester extends Lookup {
       ByteArrayDataOutput output = new ByteArrayDataOutput(buffer);
       BytesRef surfaceForm;
       while ((surfaceForm = iterator.next()) != null) {
-
-        // Analyze surface form:
-        TokenStream ts = indexAnalyzer.tokenStream("", new StringReader(surfaceForm.utf8ToString()));
-
-        // Create corresponding automaton: labels are bytes
-        // from each analyzed token, with byte 0 used as
-        // separator between tokens:
-        Automaton automaton = ts2a.toAutomaton(ts);
-        ts.end();
-        ts.close();
-
-        replaceSep(automaton);
-
-        assert SpecialOperations.isFinite(automaton);
-
-        // Get all paths from the automaton (there can be
-        // more than one path, eg if the analyzer created a
-        // graph using SynFilter or WDF):
-
-        // TODO: we could walk & add simultaneously, so we
-        // don't have to alloc [possibly biggish]
-        // intermediate HashSet in RAM:
-        Set<IntsRef> paths = SpecialOperations.getFiniteStrings(automaton, maxGraphExpansions);
+        Set<IntsRef> paths = toFiniteStrings(surfaceForm, ts2a);
+        
         for (IntsRef path : paths) {
 
           Util.toBytesRef(path, scratch);
@@ -486,24 +465,8 @@ public class AnalyzingSuggester extends Lookup {
 
     try {
 
-      // TODO: is there a Reader from a CharSequence?
-      // Turn tokenstream into automaton:
-      TokenStream ts = queryAnalyzer.tokenStream("", new StringReader(key.toString()));
-      Automaton automaton = (new EscapingTokenStreamToAutomaton()).toAutomaton(ts);
-      ts.end();
-      ts.close();
-
-      // TODO: we could use the end offset to "guess"
-      // whether the final token was a partial token; this
-      // would only be a heuristic ... but maybe an OK one.
-      // This way we could eg differentiate "net" from "net ",
-      // which we can't today...
-
-      replaceSep(automaton);
-
-      // TODO: we can optimize this somewhat by determinizing
-      // while we convert
-      BasicOperations.determinize(automaton);
+      Automaton lookupAutomaton = toLookupAutomaton(key);
+      
 
       final CharsRef spare = new CharsRef();
 
@@ -511,8 +474,7 @@ public class AnalyzingSuggester extends Lookup {
     
       // Intersect automaton w/ suggest wFST and get all
       // prefix starting nodes & their outputs:
-      final List<FSTUtil.Path<Pair<Long,BytesRef>>> prefixPaths;
-      prefixPaths = FSTUtil.intersectPrefixPaths(automaton, fst);
+      final PathIntersector intersector = getPathIntersector(lookupAutomaton, fst);
 
       //System.out.println("  prefixPaths: " + prefixPaths.size());
 
@@ -523,6 +485,7 @@ public class AnalyzingSuggester extends Lookup {
       List<LookupResult> results = new ArrayList<LookupResult>();
 
       if (exactFirst) {
+        final List<FSTUtil.Path<Pair<Long,BytesRef>>> prefixPaths = intersector.intersectExact();   
 
         Util.TopNSearcher<Pair<Long,BytesRef>> searcher;
         searcher = new Util.TopNSearcher<Pair<Long,BytesRef>>(fst, num, weightComparator);
@@ -608,8 +571,10 @@ public class AnalyzingSuggester extends Lookup {
           }
         }
       };
-
+      final List<FSTUtil.Path<Pair<Long,BytesRef>>> prefixPaths = intersector.intersectAll();
+      System.out.println(key);
       for (FSTUtil.Path<Pair<Long,BytesRef>> path : prefixPaths) {
+        System.out.println(UnicodeUtil.newString(path.input.ints, path.input.offset, path.input.length));
         searcher.addStartPaths(path.fstNode, path.output, true, path.input);
       }
 
@@ -628,6 +593,55 @@ public class AnalyzingSuggester extends Lookup {
       throw new RuntimeException(bogus);
     }
   }
+  
+  final Set<IntsRef> toFiniteStrings(final BytesRef surfaceForm, final TokenStreamToAutomaton ts2a) throws IOException {
+ // Analyze surface form:
+    TokenStream ts = indexAnalyzer.tokenStream("", new StringReader(surfaceForm.utf8ToString()));
+
+    // Create corresponding automaton: labels are bytes
+    // from each analyzed token, with byte 0 used as
+    // separator between tokens:
+    Automaton automaton = ts2a.toAutomaton(ts);
+    ts.end();
+    ts.close();
+
+    replaceSep(automaton);
+
+    assert SpecialOperations.isFinite(automaton);
+
+    // Get all paths from the automaton (there can be
+    // more than one path, eg if the analyzer created a
+    // graph using SynFilter or WDF):
+
+    // TODO: we could walk & add simultaneously, so we
+    // don't have to alloc [possibly biggish]
+    // intermediate HashSet in RAM:
+    return SpecialOperations.getFiniteStrings(automaton, maxGraphExpansions);
+  }
+
+  final Automaton toLookupAutomaton(final CharSequence key) throws IOException {
+    // TODO: is there a Reader from a CharSequence?
+    // Turn tokenstream into automaton:
+    TokenStream ts = queryAnalyzer.tokenStream("", new StringReader(key.toString()));
+    Automaton automaton = (getTokenStreamToAutomaton()).toAutomaton(ts);
+    ts.end();
+    ts.close();
+
+    // TODO: we could use the end offset to "guess"
+    // whether the final token was a partial token; this
+    // would only be a heuristic ... but maybe an OK one.
+    // This way we could eg differentiate "net" from "net ",
+    // which we can't today...
+
+    replaceSep(automaton);
+
+    // TODO: we can optimize this somewhat by determinizing
+    // while we convert
+    BasicOperations.determinize(automaton);
+    return automaton;
+  }
+  
+  
 
   /**
    * Returns the weight associated with an input string,
@@ -655,4 +669,29 @@ public class AnalyzingSuggester extends Lookup {
       return left.output1.compareTo(right.output1);
     }
   };
+  
+  protected PathIntersector getPathIntersector(Automaton automaton, FST<Pair<Long,BytesRef>> fst) {
+    return new PathIntersector(automaton, fst);
+  }
+  
+  final TokenStreamToAutomaton getTokenStreamToAutomaton() {
+    return new EscapingTokenStreamToAutomaton();
+  }
+  
+  protected static class PathIntersector {
+    protected List<FSTUtil.Path<Pair<Long,BytesRef>>> intersect; 
+    protected final Automaton automaton;
+    protected final FST<Pair<Long,BytesRef>> fst;
+    public PathIntersector(Automaton automaton, FST<Pair<Long,BytesRef>> fst) {
+      this.automaton = automaton;
+      this.fst = fst;
+    }
+    public List<FSTUtil.Path<Pair<Long,BytesRef>>> intersectExact() throws IOException {
+      return intersect = FSTUtil.intersectPrefixPathsExact(automaton, fst);
+    }
+    
+    public List<FSTUtil.Path<Pair<Long,BytesRef>>> intersectAll() throws IOException {
+      return intersect == null ?  intersect = FSTUtil.intersectPrefixPathsExact(automaton, fst) : intersect;
+    }
+  }
 }
