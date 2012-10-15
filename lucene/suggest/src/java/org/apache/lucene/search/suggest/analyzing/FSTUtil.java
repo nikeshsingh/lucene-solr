@@ -188,12 +188,6 @@ public class FSTUtil {
         }
       }
     }
-    System.out.println();
-    
-    for (Path<T> path2 : endNodes) {
-      if ("poales".equals(UnicodeUtil.newString(path2.input.ints, path2.input.offset, path2.input.length)))
-        System.out.println(UnicodeUtil.newString(path2.input.ints, path2.input.offset, path2.input.length));
-    }
       return endNodes;
     }
   

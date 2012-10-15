@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.search.suggest.analyzing.AnalyzingSuggester.PathIntersector;
 import org.apache.lucene.search.suggest.analyzing.FSTUtil.Path;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IntsRef;
@@ -45,7 +44,7 @@ public class FuzzySuggester extends AnalyzingSuggester {
   }
   
   public FuzzySuggester(Analyzer indexAnalyzer, Analyzer queryAnalyzer) {
-    this(indexAnalyzer, queryAnalyzer, EXACT_FIRST | PRESERVE_SEP, 256, -1, 1, true, 1);
+    this(indexAnalyzer, queryAnalyzer, EXACT_FIRST | PRESERVE_SEP, 256, -1, 1, true, 3);
   }
 
   // nocommit: probably want an option to like, require the first character or something :)
