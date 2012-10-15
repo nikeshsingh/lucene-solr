@@ -154,7 +154,8 @@ abstract class DocSetBase implements DocSet {
         return BitsFilteredDocIdSet.wrap(new DocIdSet() {
           @Override
           public DocIdSetIterator iterator() {
-            return new DocIdSetIterator() {
+            return new DocIdSetIterator() {            
+              private long cost = -1;
               int pos=base-1;
               int adjustedDoc=-1;
 
@@ -174,6 +175,12 @@ abstract class DocSetBase implements DocSet {
                 if (target==NO_MORE_DOCS) return adjustedDoc=NO_MORE_DOCS;
                 pos = bs.nextSetBit(target+base);
                 return adjustedDoc = (pos>=0 && pos<max) ? pos-base : NO_MORE_DOCS;
+              }
+
+              @Override
+              public long estimateCost() {
+                // no commit how
+                return cost = cost == -1 ? bs.cardinality() : cost;
               }
             };
           }

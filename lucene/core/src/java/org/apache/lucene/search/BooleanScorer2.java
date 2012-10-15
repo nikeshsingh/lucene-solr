@@ -147,6 +147,11 @@ class BooleanScorer2 extends Scorer {
     public int advance(int target) throws IOException {
       return scorer.advance(target);
     }
+
+    @Override
+    public long estimateCost() {
+      return 1;
+    }
   }
 
   private Scorer countingDisjunctionSumScorer(final List<Scorer> scorers,
@@ -171,7 +176,7 @@ class BooleanScorer2 extends Scorer {
     };
   }
 
-  private Scorer countingConjunctionSumScorer(boolean disableCoord,
+  private Scorer countingConjunctionSumScorer(boolean foo,
                                               List<Scorer> requiredScorers) throws IOException {
     // each scorer from the list counted as a single matcher
     final int requiredNrMatchers = requiredScorers.size();
@@ -335,5 +340,10 @@ class BooleanScorer2 extends Scorer {
       children.add(new ChildScorer(s, "MUST"));
     }
     return children;
+  }
+
+  @Override
+  public long estimateCost() {
+    return countingSumScorer.estimateCost();
   }
 }

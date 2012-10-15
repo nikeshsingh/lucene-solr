@@ -432,6 +432,11 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
     public int docID() {
       return current.docID;
     }
+
+    @Override
+    public long estimateCost() {
+      return ramTerm.docs.size();
+    }
   }
 
   private static class RAMDocsAndPositionsEnum extends DocsAndPositionsEnum {
@@ -503,6 +508,11 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
       } else {
         return null;
       }
+    }
+
+    @Override
+    public long estimateCost() {
+      return ramTerm.docs.size();
     }
   }
 

@@ -93,7 +93,7 @@ public class CachingWrapperFilter extends Filter {
       } else {
         final FixedBitSet bits = new FixedBitSet(reader.maxDoc());
         bits.or(it);
-        return bits;
+        return new CostCachingDocIDSet(bits, it.estimateCost());
       }
     }
   }
@@ -127,7 +127,8 @@ public class CachingWrapperFilter extends Filter {
       hitCount++;
     } else {
       missCount++;
-      docIdSet = docIdSetToCache(filter.getDocIdSet(context, cacheAcceptDocs), reader);
+      DocIdSet toCache = filter.getDocIdSet(context, cacheAcceptDocs);
+      docIdSet = docIdSetToCache(toCache, reader);
       cache.put(key, docIdSet);
     }
 
@@ -153,5 +154,60 @@ public class CachingWrapperFilter extends Filter {
   @Override
   public int hashCode() {
     return (filter.hashCode() ^ 0x1117BF25) + (recacheDeletes ? 0 : 1);
+  }
+  
+  private static final class CostCachingDocIDSet extends DocIdSet {
+
+    private final DocIdSet innerSet;
+    private final long estimatedCost;
+    public CostCachingDocIDSet(DocIdSet innerSet, long estimatedCost) {
+      this.estimatedCost = estimatedCost;
+      this.innerSet = innerSet;
+    }
+
+    @Override
+    public Bits bits() throws IOException {
+      return innerSet.bits();
+    }
+
+    @Override
+    public boolean isCacheable() {
+      return innerSet.isCacheable();
+    }
+
+    /**
+     * Implementation of the contract to build a DocIdSetIterator.
+     * @see DocIdSetIterator
+     * @see FilteredDocIdSetIterator
+     */
+    @Override
+    public DocIdSetIterator iterator() throws IOException {
+      final DocIdSetIterator iterator = innerSet.iterator();
+      if (iterator == null) {
+        return null;
+      }
+      return new DocIdSetIterator() {
+
+        @Override
+        public long estimateCost() {
+          return estimatedCost;
+        }
+
+        @Override
+        public int docID() {
+          return iterator.docID();
+        }
+
+        @Override
+        public int nextDoc() throws IOException {
+          return iterator.nextDoc();
+        }
+
+        @Override
+        public int advance(int target) throws IOException {
+          return iterator.advance(target);
+        }
+      };
+    }
   }
 }

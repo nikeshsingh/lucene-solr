@@ -243,6 +243,7 @@ public class BitDocSet extends DocSetBase {
     final OpenBitSet bs = bits;
     // TODO: if cardinality isn't cached, do a quick measure of sparseness
     // and return null from bits() if too sparse.
+    final long cost = size();
 
     return new Filter() {
       @Override
@@ -258,7 +259,7 @@ public class BitDocSet extends DocSetBase {
         final int base = context.docBase;
         final int maxDoc = reader.maxDoc();
         final int max = base + maxDoc;   // one past the max doc in this segment.
-
+        
         return BitsFilteredDocIdSet.wrap(new DocIdSet() {
           @Override
           public DocIdSetIterator iterator() {
@@ -282,6 +283,11 @@ public class BitDocSet extends DocSetBase {
                 if (target==NO_MORE_DOCS) return adjustedDoc=NO_MORE_DOCS;
                 pos = bs.nextSetBit(target+base);
                 return adjustedDoc = (pos>=0 && pos<max) ? pos-base : NO_MORE_DOCS;
+              }
+
+              @Override
+              public long estimateCost() {
+                return cost;
               }
             };
           }

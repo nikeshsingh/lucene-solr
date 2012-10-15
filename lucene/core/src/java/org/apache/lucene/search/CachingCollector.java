@@ -89,6 +89,10 @@ public abstract class CachingCollector extends Collector {
     
     @Override
     public final int nextDoc() { throw new UnsupportedOperationException(); }
+
+    @Override
+    public long estimateCost() {  return 0;  }
+    
     }
 
   // A CachingCollector which caches scores

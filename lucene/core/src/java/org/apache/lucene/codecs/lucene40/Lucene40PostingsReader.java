@@ -513,6 +513,11 @@ public class Lucene40PostingsReader extends PostingsReaderBase {
       }
       return scanTo(target);
     }
+    
+    @Override
+    public long estimateCost() {
+      return limit;
+    }
   }
   
   private final class AllDocsSegmentDocsEnum extends SegmentDocsEnumBase {
@@ -589,7 +594,7 @@ public class Lucene40PostingsReader extends PostingsReaderBase {
         return NO_MORE_DOCS;
       }
     }
-    
+
   }
   
   private final class LiveDocsSegmentDocsEnum extends SegmentDocsEnumBase {
@@ -886,6 +891,11 @@ public class Lucene40PostingsReader extends PostingsReaderBase {
     public BytesRef getPayload() throws IOException {
       return null;
     }
+    
+    @Override
+    public long estimateCost() {
+      return limit;
+    }
   }
   
   // Decodes docs & positions & (payloads and/or offsets)
@@ -1178,6 +1188,11 @@ public class Lucene40PostingsReader extends PostingsReaderBase {
       } else {
         return null;
       }
+    }
+    
+    @Override
+    public long estimateCost() {
+      return limit;
     }
   }
 }

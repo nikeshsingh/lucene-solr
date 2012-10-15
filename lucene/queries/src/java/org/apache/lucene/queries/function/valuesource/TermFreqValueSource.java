@@ -90,6 +90,11 @@ public class TermFreqValueSource extends DocFreqValueSource {
             public int advance(int target) {
               return DocIdSetIterator.NO_MORE_DOCS;
             }
+
+            @Override
+            public long estimateCost() {
+              return 0;
+            }
           };
         }
         atDoc = -1;

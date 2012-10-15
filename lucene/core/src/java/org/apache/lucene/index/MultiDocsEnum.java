@@ -37,6 +37,7 @@ public final class MultiDocsEnum extends DocsEnum {
   DocsEnum current;
   int currentBase;
   int doc = -1;
+  long cost = 0;
 
   /** Sole constructor
    * @param parent The {@link MultiTermsEnum} that created us.
@@ -50,9 +51,13 @@ public final class MultiDocsEnum extends DocsEnum {
     this.numSubs = numSubs;
 
     this.subs = new EnumWithSlice[subs.length];
+    cost = 0;
     for(int i=0;i<subs.length;i++) {
       this.subs[i] = new EnumWithSlice();
       this.subs[i].docsEnum = subs[i].docsEnum;
+      if (subs[i].docsEnum != null) {
+        cost += subs[i].docsEnum.estimateCost();
+      }
       this.subs[i].slice = subs[i].slice;
     }
     upto = -1;
@@ -153,6 +158,11 @@ public final class MultiDocsEnum extends DocsEnum {
   @Override
   public String toString() {
     return "MultiDocsEnum(" + Arrays.toString(getSubs()) + ")";
+  }
+
+  @Override
+  public long estimateCost() {
+    return cost;
   }
 }
 

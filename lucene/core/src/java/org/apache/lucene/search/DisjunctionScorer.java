@@ -105,4 +105,13 @@ abstract class DisjunctionScorer extends Scorer {
     }
     return children;
   }
+  
+  @Override
+  public long estimateCost() {
+    long cost = 0;
+    for (int i = 0; i < numScorers; i++) {
+      cost += subScorers[i].estimateCost();
+    }
+    return cost;
+  }
 }

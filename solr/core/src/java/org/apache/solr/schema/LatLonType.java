@@ -504,6 +504,11 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
       result.addDetail(new Explanation(weight.queryNorm,"queryNorm"));
       return result;
     }
+
+    @Override
+    public long estimateCost() {
+      return maxDoc;
+    }
   }
 
   @Override

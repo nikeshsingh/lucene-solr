@@ -619,6 +619,11 @@ public class Lucene40TermVectorsReader extends TermVectorsReader implements Clos
       this.doc = -1;
       didNext = false;
     }
+    
+    @Override
+    public long estimateCost() {
+      return freq;
+    }
   }
 
   private static class TVDocsAndPositionsEnum extends DocsAndPositionsEnum {
@@ -634,7 +639,7 @@ public class Lucene40TermVectorsReader extends TermVectorsReader implements Clos
     private byte[] payloadBytes;
 
     @Override
-    public int freq() throws IOException {
+    public int freq() {
       if (positions != null) {
         return positions.length;
       } else {
@@ -725,6 +730,11 @@ public class Lucene40TermVectorsReader extends TermVectorsReader implements Clos
       } else {
         return endOffsets[nextPos-1];
       }
+    }
+
+    @Override
+    public long estimateCost() {
+      return freq();
     }
   }
 

@@ -107,6 +107,11 @@ public abstract class FieldCacheDocIdSet extends DocIdSet {
           }
           return doc = NO_MORE_DOCS;
         }
+        
+        @Override
+        public long estimateCost() {
+          return maxDoc;
+        }
       };
     } else if (acceptDocs instanceof FixedBitSet || acceptDocs instanceof OpenBitSet) {
       // special case for FixedBitSet / OpenBitSet: use the iterator and filter it
@@ -115,6 +120,11 @@ public abstract class FieldCacheDocIdSet extends DocIdSet {
         @Override
         protected boolean match(int doc) {
           return FieldCacheDocIdSet.this.matchDoc(doc);
+        }
+
+        @Override
+        public long estimateCost() {
+          return maxDoc;
         }
       };
     } else {
@@ -146,6 +156,11 @@ public abstract class FieldCacheDocIdSet extends DocIdSet {
             }
           }
           return doc = NO_MORE_DOCS;
+        }
+
+        @Override
+        public long estimateCost() {
+          return maxDoc;
         }
       };
     }

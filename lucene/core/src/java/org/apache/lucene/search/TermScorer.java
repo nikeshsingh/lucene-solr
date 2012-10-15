@@ -106,4 +106,9 @@ final class TermScorer extends Scorer {
   int getDocFreq() {
     return docFreq;
   }
+
+  @Override
+  public long estimateCost() {
+    return docFreq;
+  }
 }

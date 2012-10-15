@@ -961,6 +961,11 @@ public class MemoryIndex {
       public int freq() throws IOException {
         return positions.size();
       }
+
+      @Override
+      public long estimateCost() {
+        return 1;
+      }
     }
     
     private class MemoryDocsAndPositionsEnum extends DocsAndPositionsEnum {
@@ -1022,6 +1027,11 @@ public class MemoryIndex {
       @Override
       public BytesRef getPayload() {
         return null;
+      }
+
+      @Override
+      public long estimateCost() {
+        return 1;
       }
     }
     

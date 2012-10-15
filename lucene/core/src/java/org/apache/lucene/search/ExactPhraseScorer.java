@@ -25,7 +25,7 @@ import org.apache.lucene.search.similarities.Similarity;
 
 final class ExactPhraseScorer extends Scorer {
   private final int endMinus1;
-
+  
   private final static int CHUNK = 4096;
 
   private int gen;
@@ -56,6 +56,7 @@ final class ExactPhraseScorer extends Scorer {
   private int freq;
 
   private final Similarity.ExactSimScorer docScorer;
+  private final long cost;
   
   ExactPhraseScorer(Weight weight, PhraseQuery.PostingsAndFreq[] postings,
                     Similarity.ExactSimScorer docScorer) throws IOException {
@@ -65,7 +66,11 @@ final class ExactPhraseScorer extends Scorer {
     chunkStates = new ChunkState[postings.length];
 
     endMinus1 = postings.length-1;
-
+    
+    // minimum docfreq * # of terms
+    // TODO: should we use totalTermFreq instead?
+    // and what about the optimization below?
+    cost = postings[0].docFreq * (long)postings.length;
     for(int i=0;i<postings.length;i++) {
 
       // Coarse optimization: advance(target) is fairly
@@ -314,5 +319,10 @@ final class ExactPhraseScorer extends Scorer {
     }
 
     return freq;
+  }
+
+  @Override
+  public long estimateCost() {
+    return cost;
   }
 }

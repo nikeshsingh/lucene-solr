@@ -347,6 +347,11 @@ public class ToParentBlockJoinCollector extends Collector {
     public int nextDoc() {
       throw new UnsupportedOperationException();
     }
+
+    @Override
+    public long estimateCost() {
+      return 1;
+    }
   }
 
   private OneGroup[] sortedGroups;

@@ -153,6 +153,7 @@ public class SolrConstantScoreQuery extends ConstantScoreQuery implements Extend
     final DocIdSetIterator docIdSetIterator;
     final float theScore;
     final Bits acceptDocs;
+    final long cost;
     int doc = -1;
 
     public ConstantScorer(AtomicReaderContext context, ConstantWeight w, float theScore, Bits acceptDocs) throws IOException {
@@ -162,12 +163,15 @@ public class SolrConstantScoreQuery extends ConstantScoreQuery implements Extend
       DocIdSet docIdSet = filter instanceof SolrFilter ? ((SolrFilter)filter).getDocIdSet(w.context, context, acceptDocs) : filter.getDocIdSet(context, acceptDocs);
       if (docIdSet == null) {
         docIdSetIterator = DocIdSet.EMPTY_DOCIDSET.iterator();
+        cost = 0;
       } else {
         DocIdSetIterator iter = docIdSet.iterator();
         if (iter == null) {
           docIdSetIterator = DocIdSet.EMPTY_DOCIDSET.iterator();
+          cost = 0;
         } else {
           docIdSetIterator = iter;
+          cost = context.reader().maxDoc();
         }
       }
     }
@@ -195,6 +199,11 @@ public class SolrConstantScoreQuery extends ConstantScoreQuery implements Extend
     @Override
     public int advance(int target) throws IOException {
       return docIdSetIterator.advance(target);
+    }
+
+    @Override
+    public long estimateCost() {
+      return cost;
     }
   }
 

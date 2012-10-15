@@ -36,6 +36,8 @@ public abstract class DocIdSet {
       public int docID() { return NO_MORE_DOCS; }
       @Override
       public int nextDoc() { return NO_MORE_DOCS; }
+      @Override
+      public long estimateCost() { return 0; }
     };
     
     @Override

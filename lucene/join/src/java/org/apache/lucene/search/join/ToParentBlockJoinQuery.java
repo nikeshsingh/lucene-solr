@@ -414,6 +414,11 @@ public class ToParentBlockJoinQuery extends Query {
       );
     }
 
+    @Override
+    public long estimateCost() {
+      return 1;
+    }
+
   }
 
   @Override

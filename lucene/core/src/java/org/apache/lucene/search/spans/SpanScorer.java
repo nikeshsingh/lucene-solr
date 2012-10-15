@@ -97,4 +97,9 @@ public class SpanScorer extends Scorer {
   public float freq() throws IOException {
     return freq;
   }
+
+  @Override
+  public long estimateCost() {
+    return Integer.MAX_VALUE; // ;)
+  }
 }

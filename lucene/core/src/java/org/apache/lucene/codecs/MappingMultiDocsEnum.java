@@ -114,5 +114,14 @@ public final class MappingMultiDocsEnum extends DocsEnum {
       }
     }
   }
+
+  @Override
+  public long estimateCost() {
+    long cost = 0;
+    for (EnumWithSlice enumWithSlice : subs) {
+      cost += enumWithSlice.docsEnum.estimateCost();
+    }
+    return cost;
+  }
 }
 

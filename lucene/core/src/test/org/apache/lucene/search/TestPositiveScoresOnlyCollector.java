@@ -50,6 +50,8 @@ public class TestPositiveScoresOnlyCollector extends LuceneTestCase {
       idx = target;
       return idx < scores.length ? idx : NO_MORE_DOCS;
     }
+    
+    @Override public long estimateCost() { return 1; }
   }
 
   // The scores must have positive as well as negative values

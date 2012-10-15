@@ -37,6 +37,7 @@ public final class MultiDocsAndPositionsEnum extends DocsAndPositionsEnum {
   DocsAndPositionsEnum current;
   int currentBase;
   int doc = -1;
+  int cost;
 
   /** Sole constructor. */
   public MultiDocsAndPositionsEnum(MultiTermsEnum parent, int subReaderCount) {
@@ -54,10 +55,14 @@ public final class MultiDocsAndPositionsEnum extends DocsAndPositionsEnum {
   public MultiDocsAndPositionsEnum reset(final EnumWithSlice[] subs, final int numSubs) {
     this.numSubs = numSubs;
     this.subs = new EnumWithSlice[subs.length];
+    this.cost = 0;
     for(int i=0;i<subs.length;i++) {
       this.subs[i] = new EnumWithSlice();
       this.subs[i].docsAndPositionsEnum = subs[i].docsAndPositionsEnum;
       this.subs[i].slice = subs[i].slice;
+      if (this.subs[i].docsAndPositionsEnum != null) {
+        cost += this.subs[i].docsAndPositionsEnum.estimateCost();
+      }
     }
     upto = -1;
     doc = -1;
@@ -172,6 +177,11 @@ public final class MultiDocsAndPositionsEnum extends DocsAndPositionsEnum {
   @Override
   public String toString() {
     return "MultiDocsAndPositionsEnum(" + Arrays.toString(getSubs()) + ")";
+  }
+
+  @Override
+  public long estimateCost() {
+    return cost;
   }
 }
 

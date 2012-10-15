@@ -92,5 +92,12 @@ public abstract class DocIdSetIterator {
    * @since 2.9
    */
   public abstract int advance(int target) throws IOException;
+  
+  /** 
+   * Returns an estimate of how expensive this {@link DocIdSetIterator} is.
+   * The estimation is a function of the number of documents the iterator
+   * returns.
+   */
+  public abstract long estimateCost();
 
 }

@@ -373,10 +373,13 @@ public class TestFilteredQuery extends LuceneTestCase {
   private static FilteredQuery.FilterStrategy randomFilterStrategy(Random random, final boolean useRandomAccess) {
     if (useRandomAccess) {
       return  new FilteredQuery.RandomAccessFilterStrategy() {
+
         @Override
-        protected boolean useRandomAccess(Bits bits, int firstFilterDoc) {
+        protected boolean useRandomAccess(Bits bits, long estimatedCost,
+            int maxDoc) {
           return useRandomAccess;
         }
+        
       };
     }
     return _TestUtil.randomFilterStrategy(random);
@@ -521,6 +524,11 @@ public class TestFilteredQuery extends LuceneTestCase {
                 assertTrue("queryFirst: "+ queryFirst + " advanced: " + advanceCalled + " next: "+ nextCalled, advanceCalled || nextCalled ^ queryFirst);  
                 advanceCalled = true;
                 return termDocsEnum.advance(target);
+              }
+
+              @Override
+              public long estimateCost() {
+                return termDocsEnum.estimateCost();
               }
             };
           }

@@ -174,6 +174,11 @@ public class FunctionQuery extends Query {
       result.addDetail(new Explanation(weight.queryNorm,"queryNorm"));
       return result;
     }
+
+    @Override
+    public long estimateCost() {
+      return maxDoc;
+    }
   }
 
 

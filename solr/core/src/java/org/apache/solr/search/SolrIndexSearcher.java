@@ -2255,6 +2255,11 @@ class FilterImpl extends Filter {
     public int advance(int target) throws IOException {
       return doNext(first.advance(target));
     }
+
+    @Override
+    public long estimateCost() {
+      return first.estimateCost();
+    }
   }
 
   private static class DualFilterIterator extends DocIdSetIterator {
@@ -2291,6 +2296,12 @@ class FilterImpl extends Filter {
         doc = a.advance(other);
         if (other == doc) return doc;
       }
+    }
+
+    @Override
+    public long estimateCost() {
+      // nocommit - can we optimize this alg based on the cost?
+      return Math.min(a.estimateCost(), b.estimateCost());
     }
   }
 

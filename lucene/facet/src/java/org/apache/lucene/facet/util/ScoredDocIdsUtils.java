@@ -150,6 +150,11 @@ public class ScoredDocIdsUtils {
                 return docids[next];
               }
 
+              @Override
+              public long estimateCost() {
+                return size;
+              }
+
             };
           }
         };
@@ -274,6 +279,11 @@ public class ScoredDocIdsUtils {
               return ++next < maxDoc ? next : NO_MORE_DOCS;
             }
 
+            @Override
+            public long estimateCost() {
+              return maxDoc;
+            }
+
           };
         }
       };
@@ -362,6 +372,11 @@ public class ScoredDocIdsUtils {
               } while (next < maxDoc && liveDocs != null && !liveDocs.get(next));
 
               return next < maxDoc ? next : NO_MORE_DOCS;
+            }
+
+            @Override
+            public long estimateCost() {
+              return maxDoc;
             }
 
           };

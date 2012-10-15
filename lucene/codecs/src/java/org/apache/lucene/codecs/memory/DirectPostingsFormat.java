@@ -1486,6 +1486,11 @@ public final class DirectPostingsFormat extends PostingsFormat {
       }
       return docID();
     }
+
+    @Override
+    public long estimateCost() {
+      return postings.length;
+    }
   }
 
   // Docs + freqs:
@@ -1550,6 +1555,11 @@ public final class DirectPostingsFormat extends PostingsFormat {
       while(nextDoc() < target) {
       }
       return docID();
+    }
+
+    @Override
+    public long estimateCost() {
+      return postings.length;
     }
   }
 
@@ -1631,6 +1641,11 @@ public final class DirectPostingsFormat extends PostingsFormat {
       while(nextDoc() < target) {
       }
       return docID();
+    }
+
+    @Override
+    public long estimateCost() {
+      return postings.length;
     }
   }
 
@@ -1783,6 +1798,11 @@ public final class DirectPostingsFormat extends PostingsFormat {
       } else {
         return null;
       }
+    }
+
+    @Override
+    public long estimateCost() {
+      return postings.length;
     }
   }
 
@@ -1956,6 +1976,11 @@ public final class DirectPostingsFormat extends PostingsFormat {
         //System.out.println("    return docID=" + docIDs[upto] + " upto=" + upto);
         return docID = docIDs[upto];
       }
+    }
+    
+    @Override
+    public long estimateCost() {
+      return docIDs.length;
     }
   }
 
@@ -2189,6 +2214,11 @@ public final class DirectPostingsFormat extends PostingsFormat {
         payload.offset = 0;
         return payload;
       }
+    }
+    
+    @Override
+    public long estimateCost() {
+      return docIDs.length;
     }
   }
 }

@@ -189,5 +189,11 @@ public class OpenBitSetIterator extends DocIdSetIterator {
   public int docID() {
     return curDocId;
   }
+
+  @Override
+  public long estimateCost() {
+    // this is expensive?
+    return (int) BitUtil.pop_array(arr, 0, words);
+  }
   
 }

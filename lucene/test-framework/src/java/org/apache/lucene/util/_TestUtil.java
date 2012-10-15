@@ -994,7 +994,8 @@ public class _TestUtil {
       case 4:
         return new FilteredQuery.RandomAccessFilterStrategy() {
           @Override
-          protected boolean useRandomAccess(Bits bits, int firstFilterDoc) {
+          protected boolean useRandomAccess(Bits bits, long estimatedCost,
+              int maxDoc) {
             return LuceneTestCase.random().nextBoolean();
           }
         };

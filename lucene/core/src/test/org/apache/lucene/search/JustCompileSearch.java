@@ -85,6 +85,11 @@ final class JustCompileSearch {
     public int advance(int target) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
+
+    @Override
+    public long estimateCost() {
+      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
+    }
   }
   
   static final class JustCompileExtendedFieldCacheLongParser implements FieldCache.LongParser {
@@ -184,6 +189,11 @@ final class JustCompileSearch {
     protected boolean match(int doc) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
+
+    @Override
+    public long estimateCost() {
+      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
+    }
     
   }
 
@@ -196,6 +206,11 @@ final class JustCompileSearch {
 
     @Override
     protected float phraseFreq() {
+      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
+    }
+
+    @Override
+    public long estimateCost() {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
     
@@ -243,6 +258,11 @@ final class JustCompileSearch {
     
     @Override
     public int advance(int target) {
+      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
+    }
+
+    @Override
+    public long estimateCost() {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
   }

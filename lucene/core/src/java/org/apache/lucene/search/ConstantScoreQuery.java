@@ -124,6 +124,7 @@ public class ConstantScoreQuery extends Query {
     public Scorer scorer(AtomicReaderContext context, boolean scoreDocsInOrder,
         boolean topScorer, final Bits acceptDocs) throws IOException {
       final DocIdSetIterator disi;
+      final long cost;
       if (filter != null) {
         assert query == null;
         final DocIdSet dis = filter.getDocIdSet(context, acceptDocs);
@@ -131,15 +132,17 @@ public class ConstantScoreQuery extends Query {
           return null;
         }
         disi = dis.iterator();
+        cost = context.reader().maxDoc();
       } else {
         assert query != null && innerWeight != null;
         disi = innerWeight.scorer(context, scoreDocsInOrder, topScorer, acceptDocs);
+        cost = disi == null ? 0 : ((Scorer)disi).estimateCost();
       }
 
       if (disi == null) {
         return null;
       }
-      return new ConstantScorer(disi, this, queryWeight);
+      return new ConstantScorer(disi, this, queryWeight, cost);
     }
     
     @Override
@@ -171,11 +174,13 @@ public class ConstantScoreQuery extends Query {
   protected class ConstantScorer extends Scorer {
     final DocIdSetIterator docIdSetIterator;
     final float theScore;
+    final long cost;
 
-    public ConstantScorer(DocIdSetIterator docIdSetIterator, Weight w, float theScore) {
+    public ConstantScorer(DocIdSetIterator docIdSetIterator, Weight w, float theScore, long cost) {
       super(w);
       this.theScore = theScore;
       this.docIdSetIterator = docIdSetIterator;
+      this.cost = cost;
     }
 
     @Override
@@ -209,7 +214,7 @@ public class ConstantScoreQuery extends Query {
         @Override
         public void setScorer(Scorer scorer) throws IOException {
           // we must wrap again here, but using the scorer passed in as parameter:
-          collector.setScorer(new ConstantScorer(scorer, ConstantScorer.this.weight, ConstantScorer.this.theScore));
+          collector.setScorer(new ConstantScorer(scorer, ConstantScorer.this.weight, ConstantScorer.this.theScore, ConstantScorer.this.cost));
         }
         
         @Override
@@ -247,6 +252,11 @@ public class ConstantScoreQuery extends Query {
       } else {
         return super.score(collector, max, firstDocID);
       }
+    }
+
+    @Override
+    public long estimateCost() {
+      return cost;
     }
   }
 

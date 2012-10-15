@@ -93,6 +93,11 @@ public abstract class FilteredDocIdSet extends DocIdSet {
       protected boolean match(int docid) {
         return FilteredDocIdSet.this.match(docid);
       }
+
+      @Override
+      public long estimateCost() {
+        return _innerIter.estimateCost();
+      }
     };
   }
 }

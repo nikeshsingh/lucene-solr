@@ -111,7 +111,7 @@ class ReqExclScorer extends Scorer {
 
   @Override
   public Collection<ChildScorer> getChildren() {
-    return Collections.singleton(new ChildScorer(reqScorer, "FILTERED"));
+    return Collections.singleton(new ChildScorer(reqScorer, "MUST"));
   }
 
   @Override
@@ -127,5 +127,10 @@ class ReqExclScorer extends Scorer {
       return doc = NO_MORE_DOCS;
     }
     return doc = toNonExcluded();
+  }
+
+  @Override
+  public long estimateCost() {
+    return reqScorer.estimateCost();
   }
 }

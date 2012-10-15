@@ -569,4 +569,9 @@ class UnionDocsAndPositionsEnum extends DocsAndPositionsEnum {
   public final int docID() {
     return _doc;
   }
+
+  @Override
+  public long estimateCost() {
+    return Integer.MAX_VALUE; // nocommit - doesn't really matter does it?
+  }
 }

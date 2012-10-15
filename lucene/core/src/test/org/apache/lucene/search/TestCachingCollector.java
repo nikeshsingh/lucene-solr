@@ -47,6 +47,9 @@ public class TestCachingCollector extends LuceneTestCase {
     @Override
     public int advance(int target) throws IOException { return 0; }
     
+    @Override 
+    public long estimateCost() { return 1; }
+    
   }
   
   private static class NoOpCollector extends Collector {

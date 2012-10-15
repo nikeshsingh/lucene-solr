@@ -43,12 +43,17 @@ final class SloppyPhraseScorer extends PhraseScorer {
   private PhrasePositions[][] rptGroups; // in each group are PPs that repeats each other (i.e. same term), sorted by (query) offset 
   private PhrasePositions[] rptStack; // temporary stack for switching colliding repeating pps 
   
+  private final long cost;
+  
   SloppyPhraseScorer(Weight weight, PhraseQuery.PostingsAndFreq[] postings,
       int slop, Similarity.SloppySimScorer docScorer) {
     super(weight, postings, docScorer);
     this.slop = slop;
     this.numPostings = postings==null ? 0 : postings.length;
     pq = new PhraseQueue(postings.length);
+    // minimum docfreq * # of terms
+    // TODO: should we use totalTermFreq instead?
+    cost = postings[0].docFreq * (long)postings.length;
   }
 
   /**
@@ -481,6 +486,11 @@ final class SloppyPhraseScorer extends PhraseScorer {
       }
     }
     return tg;
+  }
+
+  @Override
+  public long estimateCost() {
+    return cost;
   }
   
 //  private void printQueue(PrintStream ps, PhrasePositions ext, String title) {
