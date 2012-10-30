@@ -19,11 +19,13 @@ package org.apache.lucene.index.memory;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
@@ -58,9 +60,13 @@ import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.RAMDirectory; // for javadocs
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefHash;
 import org.apache.lucene.util.Constants; // for javadocs
+import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.RamUsageEstimator;
+import org.apache.lucene.util.RecyclingByteBlockAllocator;
 
 /**
  * High-performance single-document main memory Apache Lucene fulltext search index. 
@@ -194,11 +200,11 @@ public class MemoryIndex {
   /** pos: positions[3*i], startOffset: positions[3*i +1], endOffset: positions[3*i +2] */
   private final int stride;
   
-  /** Could be made configurable; */
-  private static final float docBoost = 1.0f;
-
   private static final boolean DEBUG = false;
 
+  private final RecyclingByteBlockAllocator allocator = newAllocator();
+  private final ByteBlockPool byteBlockPool = new ByteBlockPool(allocator);
+  
   private HashMap<String,FieldInfo> fieldInfos = new HashMap<String,FieldInfo>();
   
   /**
@@ -265,7 +271,7 @@ public class MemoryIndex {
       throw new RuntimeException(ex);
     }
 
-    addField(fieldName, stream);
+    addField(fieldName, stream, 1.0f, analyzer.getPositionIncrementGap(fieldName));
   }
   
   /**
@@ -319,7 +325,7 @@ public class MemoryIndex {
   public void addField(String fieldName, TokenStream stream) {
     addField(fieldName, stream, 1.0f);
   }
-
+  
   /**
    * Iterates over the given token stream and adds the resulting terms to the index;
    * Equivalent to adding a tokenized, indexed, termVectorStored, unstored,
@@ -333,9 +339,14 @@ public class MemoryIndex {
    *            the token stream to retrieve tokens from.
    * @param boost
    *            the boost factor for hits for this field
+   *  
    * @see org.apache.lucene.document.Field#setBoost(float)
    */
+  
   public void addField(String fieldName, TokenStream stream, float boost) {
+    addField(fieldName, stream, boost, 0);
+  }
+  public void addField(String fieldName, TokenStream stream, float boost, int positionIncrementGap) {
     try {
       if (fieldName == null)
         throw new IllegalArgumentException("fieldName must not be null");
@@ -343,19 +354,28 @@ public class MemoryIndex {
           throw new IllegalArgumentException("token stream must not be null");
       if (boost <= 0.0f)
           throw new IllegalArgumentException("boost factor must be greater than 0.0");
-      if (fields.get(fieldName) != null)
-        throw new IllegalArgumentException("field must not be added more than once");
-      
-      HashMap<BytesRef,ArrayIntList> terms = new HashMap<BytesRef,ArrayIntList>();
       int numTokens = 0;
       int numOverlapTokens = 0;
       int pos = -1;
+      final BytesRefHash terms;
+      final List<ArrayIntList> postings;
+      Info info = null;
+      if ((info = fields.get(fieldName)) != null) {
+        numTokens = info.numTokens;
+        numOverlapTokens = info.numOverlapTokens;
+        pos = info.lastPosition + positionIncrementGap;
+        terms = info.terms;
+        postings = info.positions;
+        boost *= info.boost;
+      } else {
+        terms = new BytesRefHash(byteBlockPool);
+        postings = new ArrayList<ArrayIntList>();
+      }
 
       if (!fieldInfos.containsKey(fieldName)) {
         fieldInfos.put(fieldName, 
             new FieldInfo(fieldName, true, fieldInfos.size(), false, false, false, IndexOptions.DOCS_AND_FREQS_AND_POSITIONS, null, null, null));
       }
-      
       TermToBytesRefAttribute termAtt = stream.getAttribute(TermToBytesRefAttribute.class);
       PositionIncrementAttribute posIncrAttribute = stream.addAttribute(PositionIncrementAttribute.class);
       OffsetAttribute offsetAtt = stream.addAttribute(OffsetAttribute.class);
@@ -370,11 +390,15 @@ public class MemoryIndex {
         if (posIncr == 0)
           numOverlapTokens++;
         pos += posIncr;
-        
-        ArrayIntList positions = terms.get(ref);
-        if (positions == null) { // term not seen before
+        ArrayIntList positions;
+        int ord = terms.add(ref);
+        if (ord < 0) {
+          ord = (-ord) - 1;
+          positions = postings.get(ord);
+        } else {
+          assert postings.size() == ord;
           positions = new ArrayIntList(stride);
-          terms.put(BytesRef.deepCopyOf(ref), positions);
+          postings.add(positions);
         }
         if (stride == 1) {
           positions.add(pos);
@@ -386,11 +410,11 @@ public class MemoryIndex {
 
       // ensure infos.numTokens > 0 invariant; needed for correct operation of terms()
       if (numTokens > 0) {
-        boost = boost * docBoost; // see DocumentWriter.addDocument(...)
-        fields.put(fieldName, new Info(terms, numTokens, numOverlapTokens, boost));
+        fields.put(fieldName, new Info(terms, postings, numTokens, numOverlapTokens, boost, pos));
         sortedFields = null;    // invalidate sorted view, if any
       }
-    } catch (IOException e) { // can never happen
+    } catch (Throwable e) { // can never happen
+      e.printStackTrace();
       throw new RuntimeException(e);
     } finally {
       try {
@@ -519,7 +543,7 @@ public class MemoryIndex {
     sortFields();   
     int sumPositions = 0;
     int sumTerms = 0;
-    
+    final BytesRef spare = new BytesRef();
     for (int i=0; i < sortedFields.length; i++) {
       Map.Entry<String,Info> entry = sortedFields[i];
       String fieldName = entry.getKey();
@@ -528,22 +552,22 @@ public class MemoryIndex {
       result.append(fieldName + ":\n");
       
       int numPositions = 0;
-      for (int j=0; j < info.sortedTerms.length; j++) {
-        Map.Entry<BytesRef,ArrayIntList> e = info.sortedTerms[j];
-        BytesRef term = e.getKey();
-        ArrayIntList positions = e.getValue();
-        result.append("\t'" + term + "':" + numPositions(positions) + ":");
+      for (int j=0; j < info.terms.size(); j++) {
+        int ord = info.sortedTerms[j];
+        info.terms.get(ord, spare);
+        ArrayIntList positions = info.positions.get(ord); 
+        result.append("\t'" + spare + "':" + numPositions(positions) + ":");
         result.append(positions.toString(stride)); // ignore offsets
         result.append("\n");
         numPositions += numPositions(positions);
       }
       
-      result.append("\tterms=" + info.sortedTerms.length);
+      result.append("\tterms=" + info.terms.size());
       result.append(", positions=" + numPositions);
       result.append(", memory=" + RamUsageEstimator.humanReadableUnits(RamUsageEstimator.sizeOf(info)));
       result.append("\n");
       sumPositions += numPositions;
-      sumTerms += info.sortedTerms.length;
+      sumTerms += info.terms.size();
     }
     
     result.append("\nfields=" + sortedFields.length);
@@ -563,10 +587,10 @@ public class MemoryIndex {
      * Term strings and their positions for this field: Map <String
      * termText, ArrayIntList positions>
      */
-    private final HashMap<BytesRef,ArrayIntList> terms; 
+    private final BytesRefHash terms; 
     
     /** Terms sorted ascending by term text; computed on demand */
-    private transient Map.Entry<BytesRef,ArrayIntList>[] sortedTerms;
+    private transient int[] sortedTerms;
     
     /** Number of added tokens for this field */
     private final int numTokens;
@@ -579,16 +603,23 @@ public class MemoryIndex {
 
     private final long sumTotalTermFreq;
 
-    public Info(HashMap<BytesRef,ArrayIntList> terms, int numTokens, int numOverlapTokens, float boost) {
+    private final List<ArrayIntList> positions;
+
+    /** the last position encountered in this field for multi field support*/
+    private int lastPosition;
+
+    public Info(BytesRefHash terms, List<ArrayIntList> positions, int numTokens, int numOverlapTokens, float boost, int lastPosition) {
       this.terms = terms;
+      this.positions = positions;
       this.numTokens = numTokens;
       this.numOverlapTokens = numOverlapTokens;
       this.boost = boost;
       long sum = 0;
-      for(Map.Entry<BytesRef,ArrayIntList> ent : terms.entrySet()) {
-        sum += ent.getValue().size();
+      for(ArrayIntList ent : positions) {
+        sum += ent.size();
       }
       sumTotalTermFreq = sum;
+      this.lastPosition = lastPosition;
     }
 
     public long getSumTotalTermFreq() {
@@ -604,13 +635,13 @@ public class MemoryIndex {
      * apart from more sophisticated Tries / prefix trees).
      */
     public void sortTerms() {
-      if (sortedTerms == null) sortedTerms = sort(terms);
+      if (sortedTerms == null) 
+        sortedTerms = terms.sort(BytesRef.getUTF8SortedAsUnicodeComparator());
     }
         
     public float getBoost() {
       return boost;
     }
-    
   }
   
   
@@ -764,7 +795,7 @@ public class MemoryIndex {
 
             @Override
             public long size() {
-              return info.sortedTerms.length;
+              return info.terms.size();
             }
 
             @Override
@@ -775,12 +806,12 @@ public class MemoryIndex {
             @Override
             public long getSumDocFreq() {
               // each term has df=1
-              return info.sortedTerms.length;
+              return info.terms.size();
             }
 
             @Override
             public int getDocCount() {
-              return info.sortedTerms.length > 0 ? 1 : 0;
+              return info.terms.size() > 0 ? 1 : 0;
             }
 
             @Override
@@ -822,48 +853,62 @@ public class MemoryIndex {
         this.info = info;
         info.sortTerms();
       }
+      
+      private final int binarySearch(BytesRef b, BytesRef bytesRef, int low,
+          int high, BytesRefHash hash, int[] ords, Comparator<BytesRef> comparator) {
+        int mid = 0;
+        while (low <= high) {
+          mid = (low + high) >>> 1;
+          hash.get(ords[mid], bytesRef);
+          final int cmp = comparator.compare(bytesRef, b);
+          if (cmp < 0) {
+            low = mid + 1;
+          } else if (cmp > 0) {
+            high = mid - 1;
+          } else {
+            return mid;
+          }
+        }
+        assert comparator.compare(bytesRef, b) != 0;
+        return -(low + 1);
+      }
+    
 
       @Override
       public boolean seekExact(BytesRef text, boolean useCache) {
-        termUpto = Arrays.binarySearch(info.sortedTerms, text, termComparator);
-        if (termUpto >= 0) {
-          br.copyBytes(info.sortedTerms[termUpto].getKey());
-          return true;
-        } else {
-          return false;
-        }
+        termUpto = binarySearch(text, br, 0, info.terms.size()-1, info.terms, info.sortedTerms, BytesRef.getUTF8SortedAsUnicodeComparator());
+        return termUpto >= 0;
       }
 
       @Override
       public SeekStatus seekCeil(BytesRef text, boolean useCache) {
-        termUpto = Arrays.binarySearch(info.sortedTerms, text, termComparator);
+        termUpto = binarySearch(text, br, 0, info.terms.size()-1, info.terms, info.sortedTerms, BytesRef.getUTF8SortedAsUnicodeComparator());
         if (termUpto < 0) { // not found; choose successor
-          termUpto = -termUpto -1;
-          if (termUpto >= info.sortedTerms.length) {
+          termUpto = -termUpto-1;
+          if (termUpto >= info.terms.size()) {
             return SeekStatus.END;
           } else {
-            br.copyBytes(info.sortedTerms[termUpto].getKey());
+            info.terms.get(info.sortedTerms[termUpto], br);
             return SeekStatus.NOT_FOUND;
           }
         } else {
-          br.copyBytes(info.sortedTerms[termUpto].getKey());
           return SeekStatus.FOUND;
         }
       }
 
       @Override
       public void seekExact(long ord) {
-        assert ord < info.sortedTerms.length;
+        assert ord < info.terms.size();
         termUpto = (int) ord;
       }
       
       @Override
       public BytesRef next() {
         termUpto++;
-        if (termUpto >= info.sortedTerms.length) {
+        if (termUpto >= info.terms.size()) {
           return null;
         } else {
-          br.copyBytes(info.sortedTerms[termUpto].getKey());
+          info.terms.get(info.sortedTerms[termUpto], br);
           return br;
         }
       }
@@ -885,7 +930,7 @@ public class MemoryIndex {
 
       @Override
       public long totalTermFreq() {
-        return info.sortedTerms[termUpto].getValue().size();
+        return info.positions.get(info.sortedTerms[termUpto]).size();
       }
 
       @Override
@@ -893,7 +938,7 @@ public class MemoryIndex {
         if (reuse == null || !(reuse instanceof MemoryDocsEnum)) {
           reuse = new MemoryDocsEnum();
         }
-        return ((MemoryDocsEnum) reuse).reset(liveDocs, info.sortedTerms[termUpto].getValue());
+        return ((MemoryDocsEnum) reuse).reset(liveDocs, info.positions.get(info.sortedTerms[termUpto]));
       }
 
       @Override
@@ -901,7 +946,7 @@ public class MemoryIndex {
         if (reuse == null || !(reuse instanceof MemoryDocsAndPositionsEnum)) {
           reuse = new MemoryDocsAndPositionsEnum();
         }
-        return ((MemoryDocsAndPositionsEnum) reuse).reset(liveDocs, info.sortedTerms[termUpto].getValue());
+        return ((MemoryDocsAndPositionsEnum) reuse).reset(liveDocs, info.positions.get(info.sortedTerms[termUpto]));
       }
 
       @Override
@@ -1105,4 +1150,78 @@ public class MemoryIndex {
       return norms;
     }
   }
+  
+  /**
+   * Resets the {@link MemoryIndex} to its initial state and recycles all internal buffers.
+   */
+  public void reset() {
+    reset(-1);
+  }
+  
+  public void reset(int maxBlocks) {
+    this.fieldInfos.clear();
+    this.fields.clear();
+    this.sortedFields = null;
+    byteBlockPool.dropBuffersAndReset();
+    if (maxBlocks >= 0) {
+      final int numBufferedBlocks = allocator.numBufferedBlocks();
+      if (numBufferedBlocks > maxBlocks) {
+        allocator.freeBlocks(numBufferedBlocks - maxBlocks);
+      }
+    }
+  }
+   
+  
+//  final class IntBlockPool {
+//    final static int INT_BLOCK_SHIFT = 13;
+//    final static int INT_BLOCK_SIZE = 1 << INT_BLOCK_SHIFT;
+//    final static int INT_BLOCK_MASK = INT_BLOCK_SIZE - 1;
+//
+//    public int[][] buffers = new int[10][];
+//
+//    int bufferUpto = 0;                        // Which buffer we are upto
+//    public int intUpto = INT_BLOCK_SIZE;             // Where we are in head buffer
+//
+//    public int[] buffer;                              // Current head buffer
+//    public int intOffset = -INT_BLOCK_SIZE;          // Current head offset
+//
+//    public IntBlockPool() {
+//      buffer = buffers[bufferUpto] = new int[INT_BLOCK_SIZE];
+//    }
+//    
+//    public void reset() {
+//        bufferUpto = 0;
+//        intUpto = 0;
+//        intOffset = 0;
+//        buffer = buffers[0];
+//    }
+//
+//    public void nextBuffer() {
+//      if (1+bufferUpto == buffers.length) {
+//        int[][] newBuffers = new int[(int) (buffers.length*1.5)][];
+//        System.arraycopy(buffers, 0, newBuffers, 0, buffers.length);
+//        buffers = newBuffers;
+//      }
+//      if (buffers[1+bufferUpto] == null) {
+//        buffers[1+bufferUpto] = new int[INT_BLOCK_SIZE];
+//      }
+//      buffer = buffers[1+bufferUpto];
+//      bufferUpto++;
+//
+//      intUpto = 0;
+//      intOffset += INT_BLOCK_SIZE;
+//    }
+//    
+//    public int add(IntsRef ref) {
+//      if (intUpto + ref.length >= INT_BLOCK_SIZE) {
+//        nextBuffer();
+//      }
+//      
+//    }
+//  }
+  
+  private RecyclingByteBlockAllocator newAllocator() {
+    return new RecyclingByteBlockAllocator();
+  }
+
 }

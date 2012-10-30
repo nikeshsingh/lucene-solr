@@ -67,6 +67,30 @@ public final class ByteBlockPool {
     public byte[] getByteBlock() {
       return new byte[blockSize];
     }
+    
+    /**
+     * Returns a synchronized allocator delegating all calls to the given delegate.
+     */
+    public static Allocator synchronizedAllocator(final Allocator delegate) {
+      return new Allocator(delegate.blockSize) {
+        
+        @Override
+        public synchronized void recycleByteBlocks(List<byte[]> blocks) {
+          delegate.recycleByteBlocks(blocks);
+        }
+
+        @Override
+        public synchronized byte[] getByteBlock() {
+          return delegate.getByteBlock();
+        }
+
+        @Override
+        public synchronized void recycleByteBlocks(byte[][] blocks, int start, int end) {
+          delegate.recycleByteBlocks(blocks, start, end);
+        }
+      };
+    }
+    
   }
   
   /** A simple {@link Allocator} that never recycles. */

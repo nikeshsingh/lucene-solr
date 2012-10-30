@@ -45,6 +45,7 @@ import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.RegexpQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.spans.SpanMultiTermQueryWrapper;
@@ -94,15 +95,25 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
    * runs random tests, up to ITERATIONS times.
    */
   public void testRandomQueries() throws Exception {
+    MemoryIndex index = new MemoryIndex(random().nextBoolean());
     for (int i = 0; i < ITERATIONS; i++)
-      assertAgainstRAMDirectory();
+      assertAgainstRAMDirectory(index);
   }
-
+  
+  private void resetMemIndex(MemoryIndex index) {
+    if (rarely()) {
+      index.reset(random().nextInt(5));
+    } else {
+      index.reset();  
+    }
+  }
+  
   /**
    * Build a randomish document for both RAMDirectory and MemoryIndex,
    * and run all the queries against it.
    */
-  public void assertAgainstRAMDirectory() throws Exception {
+  public void assertAgainstRAMDirectory(MemoryIndex memory) throws Exception {
+    resetMemIndex(memory);
     StringBuilder fooField = new StringBuilder();
     StringBuilder termField = new StringBuilder();
  
@@ -132,7 +143,6 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
     writer.addDocument(doc);
     writer.close();
     
-    MemoryIndex memory = new MemoryIndex();
     memory.addField("foo", fooField.toString(), analyzer);
     memory.addField("term", termField.toString(), analyzer);
     
@@ -160,7 +170,7 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
     for (String query : queries) {
       TopDocs ramDocs = ram.search(qp.parse(query), 1);
       TopDocs memDocs = mem.search(qp.parse(query), 1);
-      assertEquals(ramDocs.totalHits, memDocs.totalHits);
+      assertEquals(query, ramDocs.totalHits, memDocs.totalHits);
     }
     reader.close();
   }
@@ -222,25 +232,29 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
   
   public void testDocsAndPositionsEnumStart() throws Exception {
     Analyzer analyzer = new MockAnalyzer(random());
+    int numIters = atLeast(3);
     MemoryIndex memory = new MemoryIndex(true);
-    memory.addField("foo", "bar", analyzer);
-    AtomicReader reader = (AtomicReader) memory.createSearcher().getIndexReader();
-    DocsAndPositionsEnum disi = reader.termPositionsEnum(new Term("foo", "bar"));
-    int docid = disi.docID();
-    assertTrue(docid == -1 || docid == DocIdSetIterator.NO_MORE_DOCS);
-    assertTrue(disi.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
-    assertEquals(0, disi.nextPosition());
-    assertEquals(0, disi.startOffset());
-    assertEquals(3, disi.endOffset());
-    
-    // now reuse and check again
-    TermsEnum te = reader.terms("foo").iterator(null);
-    assertTrue(te.seekExact(new BytesRef("bar"), true));
-    disi = te.docsAndPositions(null, disi);
-    docid = disi.docID();
-    assertTrue(docid == -1 || docid == DocIdSetIterator.NO_MORE_DOCS);
-    assertTrue(disi.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
-    reader.close();
+    for (int i = 0; i < numIters; i++) { // check reuse
+      memory.addField("foo", "bar", analyzer);
+      AtomicReader reader = (AtomicReader) memory.createSearcher().getIndexReader();
+      DocsAndPositionsEnum disi = reader.termPositionsEnum(new Term("foo", "bar"));
+      int docid = disi.docID();
+      assertTrue(docid == -1 || docid == DocIdSetIterator.NO_MORE_DOCS);
+      assertTrue(disi.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
+      assertEquals(0, disi.nextPosition());
+      assertEquals(0, disi.startOffset());
+      assertEquals(3, disi.endOffset());
+      
+      // now reuse and check again
+      TermsEnum te = reader.terms("foo").iterator(null);
+      assertTrue(te.seekExact(new BytesRef("bar"), true));
+      disi = te.docsAndPositions(null, disi);
+      docid = disi.docID();
+      assertTrue(docid == -1 || docid == DocIdSetIterator.NO_MORE_DOCS);
+      assertTrue(disi.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
+      reader.close();
+      resetMemIndex(memory);
+    }
   }
 
   // LUCENE-3831
@@ -265,5 +279,23 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
 
     // This passes though
     assertEquals(0, mindex.search(wrappedquery), 0.00001f);
+  }
+  
+  public void testSameFieldAddedMultipleTimes() throws IOException {
+    MemoryIndex mindex = new MemoryIndex();
+    MockAnalyzer mockAnalyzer = new MockAnalyzer(random());
+    mindex.addField("field", "the quick brown fox", mockAnalyzer);
+    mindex.addField("field", "jumps over the", mockAnalyzer);
+    PhraseQuery query = new PhraseQuery();
+    query.add(new Term("field", "fox"));
+    query.add(new Term("field", "jumps"));
+    assertTrue(mindex.search(query) > 0.1);
+    resetMemIndex(mindex);
+    mockAnalyzer.setPositionIncrementGap(1 + random().nextInt(10));
+    mindex.addField("field", "the quick brown fox", mockAnalyzer);
+    mindex.addField("field", "jumps over the", mockAnalyzer);
+    assertEquals(0, mindex.search(query), 0.00001f);
+    query.setSlop(10);
+    assertTrue("posGap" + mockAnalyzer.getPositionIncrementGap("field") , mindex.search(query) > 0.0001);
   }
 }
