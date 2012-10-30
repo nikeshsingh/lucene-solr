@@ -186,6 +186,7 @@ class DocumentsWriterPerThread {
   DeleteSlice deleteSlice;
   private final NumberFormat nf = NumberFormat.getInstance(Locale.ROOT);
   final Allocator byteBlockAllocator;
+  final IntBlockPool.Allocator intBlockAllocator;
 
   
   public DocumentsWriterPerThread(Directory directory, DocumentsWriter parent,
@@ -203,6 +204,7 @@ class DocumentsWriterPerThread {
     byteBlockAllocator = new DirectTrackingAllocator(bytesUsed);
     consumer = indexingChain.getChain(this);
     pendingDeletes = new BufferedDeletes();
+    intBlockAllocator = new IntBlockAllocator(bytesUsed);
     initialize();
   }
   
@@ -619,23 +621,28 @@ class DocumentsWriterPerThread {
    * getTerms/getTermsIndex requires <= 32768 */
   final static int MAX_TERM_LENGTH_UTF8 = BYTE_BLOCK_SIZE-2;
 
-  /* Initial chunks size of the shared int[] blocks used to
-     store postings data */
-  final static int INT_BLOCK_SHIFT = 13;
-  final static int INT_BLOCK_SIZE = 1 << INT_BLOCK_SHIFT;
-  final static int INT_BLOCK_MASK = INT_BLOCK_SIZE - 1;
 
-  /* Allocate another int[] from the shared pool */
-  int[] getIntBlock() {
-    int[] b = new int[INT_BLOCK_SIZE];
-    bytesUsed.addAndGet(INT_BLOCK_SIZE*RamUsageEstimator.NUM_BYTES_INT);
-    return b;
+  private static class IntBlockAllocator extends IntBlockPool.Allocator {
+    private final Counter bytesUsed;
+    
+    public IntBlockAllocator(Counter bytesUsed) {
+      super(IntBlockPool.INT_BLOCK_SIZE);
+      this.bytesUsed = bytesUsed;
+    }
+    
+    /* Allocate another int[] from the shared pool */
+    public int[] getIntBlock() {
+      int[] b = new int[IntBlockPool.INT_BLOCK_SIZE];
+      bytesUsed.addAndGet(IntBlockPool.INT_BLOCK_SIZE
+          * RamUsageEstimator.NUM_BYTES_INT);
+      return b;
+    }
+    
+    public void recycleIntBlocks(int[][] blocks, int offset, int length) {
+      bytesUsed.addAndGet(-(length * (IntBlockPool.INT_BLOCK_SIZE * RamUsageEstimator.NUM_BYTES_INT)));
+    }
+    
   }
-  
-  void recycleIntBlocks(int[][] blocks, int offset, int length) {
-    bytesUsed.addAndGet(-(length *(INT_BLOCK_SIZE*RamUsageEstimator.NUM_BYTES_INT)));
-  }
-
   PerDocWriteState newPerDocWriteState(String segmentSuffix) {
     assert segmentInfo != null;
     return new PerDocWriteState(infoStream, directory, segmentInfo, bytesUsed, segmentSuffix, IOContext.DEFAULT);

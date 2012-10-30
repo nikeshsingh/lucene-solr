@@ -1,7 +1,5 @@
 package org.apache.lucene.util;
 
-import java.util.List;
-
 import org.apache.lucene.util.ByteBlockPool.Allocator;
 
 /*
