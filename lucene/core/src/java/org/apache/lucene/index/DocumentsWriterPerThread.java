@@ -202,10 +202,12 @@ class DocumentsWriterPerThread {
     this.docState.similarity = parent.indexWriter.getConfig().getSimilarity();
     bytesUsed = Counter.newCounter();
     byteBlockAllocator = new DirectTrackingAllocator(bytesUsed);
-    consumer = indexingChain.getChain(this);
     pendingDeletes = new BufferedDeletes();
     intBlockAllocator = new IntBlockAllocator(bytesUsed);
     initialize();
+    // this should be the last call in the ctor 
+    // it really sucks that we need to pull this within the ctor and pass this ref to the chain!
+    consumer = indexingChain.getChain(this);
   }
   
   public DocumentsWriterPerThread(DocumentsWriterPerThread other, FieldInfos.Builder fieldInfos) {

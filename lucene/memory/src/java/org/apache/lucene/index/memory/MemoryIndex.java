@@ -38,6 +38,7 @@ import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.IntBlockPool.Allocator;
 import org.apache.lucene.index.Norm;
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.DocsAndPositionsEnum;
@@ -202,8 +203,8 @@ public class MemoryIndex {
   
   private static final boolean DEBUG = false;
 
-  private final RecyclingByteBlockAllocator allocator = newAllocator();
-  private final ByteBlockPool byteBlockPool = new ByteBlockPool(allocator);
+  private final ByteBlockPool.Allocator allocator;
+  private final ByteBlockPool byteBlockPool;
   
   private HashMap<String,FieldInfo> fieldInfos = new HashMap<String,FieldInfo>();
   
@@ -239,8 +240,16 @@ public class MemoryIndex {
    *            whether or not to store the start and end character offset of
    *            each token term in the text
    */
-  protected MemoryIndex(boolean storeOffsets) {
+  public MemoryIndex(boolean storeOffsets) {
+    this(storeOffsets, new ByteBlockPool.DirectAllocator());
+    //nocommit why was this protected
+    
+  }
+  
+  public MemoryIndex(boolean storeOffsets, ByteBlockPool.Allocator allocator) {
     this.stride = storeOffsets ? 3 : 1;
+    this.allocator = allocator;
+    byteBlockPool = new ByteBlockPool(allocator);
   }
   
   /**
@@ -1155,73 +1164,9 @@ public class MemoryIndex {
    * Resets the {@link MemoryIndex} to its initial state and recycles all internal buffers.
    */
   public void reset() {
-    reset(-1);
-  }
-  
-  public void reset(int maxBlocks) {
     this.fieldInfos.clear();
     this.fields.clear();
     this.sortedFields = null;
     byteBlockPool.dropBuffersAndReset();
-    if (maxBlocks >= 0) {
-      final int numBufferedBlocks = allocator.numBufferedBlocks();
-      if (numBufferedBlocks > maxBlocks) {
-        allocator.freeBlocks(numBufferedBlocks - maxBlocks);
-      }
-    }
   }
-   
-  
-//  final class IntBlockPool {
-//    final static int INT_BLOCK_SHIFT = 13;
-//    final static int INT_BLOCK_SIZE = 1 << INT_BLOCK_SHIFT;
-//    final static int INT_BLOCK_MASK = INT_BLOCK_SIZE - 1;
-//
-//    public int[][] buffers = new int[10][];
-//
-//    int bufferUpto = 0;                        // Which buffer we are upto
-//    public int intUpto = INT_BLOCK_SIZE;             // Where we are in head buffer
-//
-//    public int[] buffer;                              // Current head buffer
-//    public int intOffset = -INT_BLOCK_SIZE;          // Current head offset
-//
-//    public IntBlockPool() {
-//      buffer = buffers[bufferUpto] = new int[INT_BLOCK_SIZE];
-//    }
-//    
-//    public void reset() {
-//        bufferUpto = 0;
-//        intUpto = 0;
-//        intOffset = 0;
-//        buffer = buffers[0];
-//    }
-//
-//    public void nextBuffer() {
-//      if (1+bufferUpto == buffers.length) {
-//        int[][] newBuffers = new int[(int) (buffers.length*1.5)][];
-//        System.arraycopy(buffers, 0, newBuffers, 0, buffers.length);
-//        buffers = newBuffers;
-//      }
-//      if (buffers[1+bufferUpto] == null) {
-//        buffers[1+bufferUpto] = new int[INT_BLOCK_SIZE];
-//      }
-//      buffer = buffers[1+bufferUpto];
-//      bufferUpto++;
-//
-//      intUpto = 0;
-//      intOffset += INT_BLOCK_SIZE;
-//    }
-//    
-//    public int add(IntsRef ref) {
-//      if (intUpto + ref.length >= INT_BLOCK_SIZE) {
-//        nextBuffer();
-//      }
-//      
-//    }
-//  }
-  
-  private RecyclingByteBlockAllocator newAllocator() {
-    return new RecyclingByteBlockAllocator();
-  }
-
 }
