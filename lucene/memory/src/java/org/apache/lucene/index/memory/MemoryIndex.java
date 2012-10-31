@@ -425,8 +425,7 @@ public class MemoryIndex {
         fields.put(fieldName, new Info(terms, sliceArray, numTokens, numOverlapTokens, boost, pos));
         sortedFields = null;    // invalidate sorted view, if any
       }
-    } catch (Throwable e) { // can never happen
-      e.printStackTrace();
+    } catch (IOException e) { // can never happen
       throw new RuntimeException(e);
     } finally {
       try {
