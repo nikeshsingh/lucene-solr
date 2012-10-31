@@ -99,8 +99,9 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
    */
   public void testRandomQueries() throws Exception {
     MemoryIndex index =  new MemoryIndex(random().nextBoolean(), randomByteBlockAllocator());
-    for (int i = 0; i < ITERATIONS; i++)
+    for (int i = 0; i < ITERATIONS; i++) {
       assertAgainstRAMDirectory(index);
+    }
   }
   
   /**

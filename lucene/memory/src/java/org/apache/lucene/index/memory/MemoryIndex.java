@@ -19,13 +19,11 @@ package org.apache.lucene.index.memory;
 
 import java.io.IOException;
 import java.io.StringReader;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
@@ -38,7 +36,7 @@ import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.IntBlockPool.Allocator;
+import org.apache.lucene.index.IntBlockPool;
 import org.apache.lucene.index.IntBlockPool.SliceReader;
 import org.apache.lucene.index.IntBlockPool.SliceWriter;
 import org.apache.lucene.index.Norm;
@@ -50,7 +48,6 @@ import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.OrdTermState;
 import org.apache.lucene.index.StoredFieldVisitor;
-import org.apache.lucene.index.TermContext;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
@@ -67,13 +64,9 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefHash;
-import org.apache.lucene.util.BytesRefHash.BytesStartArray;
 import org.apache.lucene.util.BytesRefHash.DirectBytesStartArray;
 import org.apache.lucene.util.Constants; // for javadocs
-import org.apache.lucene.util.Counter;
-import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.RamUsageEstimator;
-import org.apache.lucene.util.RecyclingByteBlockAllocator;
 
 /**
  * High-performance single-document main memory Apache Lucene fulltext search index. 
@@ -204,12 +197,14 @@ public class MemoryIndex {
   /** fields sorted ascending by fieldName; lazily computed on demand */
   private transient Map.Entry<String,Info>[] sortedFields; 
   
-  /** pos: positions[3*i], startOffset: positions[3*i +1], endOffset: positions[3*i +2] */
-  private final int stride;
+  private final boolean storeOffsets;
   
   private static final boolean DEBUG = false;
 
   private final ByteBlockPool byteBlockPool;
+  private final IntBlockPool intBlockPool;
+//  private final IntBlockPool.SliceReader postingsReader;
+  private final IntBlockPool.SliceWriter postingsWriter;
   
   private HashMap<String,FieldInfo> fieldInfos = new HashMap<String,FieldInfo>();
   
@@ -252,8 +247,10 @@ public class MemoryIndex {
   }
   
   public MemoryIndex(boolean storeOffsets, ByteBlockPool.Allocator allocator) {
-    this.stride = storeOffsets ? 3 : 1;
+    this.storeOffsets = storeOffsets;
     byteBlockPool = new ByteBlockPool(allocator);
+    intBlockPool = new IntBlockPool(); // nocommit expose allocator and impl a recycling one
+    postingsWriter = new SliceWriter(intBlockPool);
   }
   
   /**
@@ -372,7 +369,6 @@ public class MemoryIndex {
       int pos = -1;
       final BytesRefHash terms;
       final SliceByteStartArray sliceArray;
-      final List<ArrayIntList> postings;
       Info info = null;
       if ((info = fields.get(fieldName)) != null) {
         numTokens = info.numTokens;
@@ -384,7 +380,6 @@ public class MemoryIndex {
       } else {
         sliceArray = new SliceByteStartArray(BytesRefHash.DEFAULT_CAPACITY);
         terms = new BytesRefHash(byteBlockPool, BytesRefHash.DEFAULT_CAPACITY, sliceArray);
-        postings = new ArrayList<ArrayIntList>();
       }
 
       if (!fieldInfos.containsKey(fieldName)) {
@@ -396,7 +391,6 @@ public class MemoryIndex {
       OffsetAttribute offsetAtt = stream.addAttribute(OffsetAttribute.class);
       BytesRef ref = termAtt.getBytesRef();
       stream.reset();
-      SliceWriter writer = new SliceWriter(null);
       
       while (stream.incrementToken()) {
         termAtt.fillBytesRef();
@@ -410,17 +404,19 @@ public class MemoryIndex {
         int ord = terms.add(ref);
         if (ord < 0) {
           ord = (-ord) - 1;
-          writer.reset(sliceArray.end[ord]);
+          postingsWriter.reset(sliceArray.end[ord]);
         } else {
-          sliceArray.start[ord] = writer.startNewSlice();
+          sliceArray.start[ord] = postingsWriter.startNewSlice();
         }
-        if (stride == 1) {
-          writer.writeInt(pos);
+        sliceArray.freq[ord]++;
+        if (!storeOffsets) {
+          postingsWriter.writeInt(pos);
         } else {
-          writer.writeInt(pos);
-          writer.writeInt(offsetAtt.startOffset());
-          writer.writeInt(offsetAtt.endOffset());
+          postingsWriter.writeInt(pos);
+          postingsWriter.writeInt(offsetAtt.startOffset());
+          postingsWriter.writeInt(offsetAtt.endOffset());
         }
+        sliceArray.end[ord] = postingsWriter.getCurrentOffset();
       }
       stream.end();
 
@@ -524,10 +520,6 @@ public class MemoryIndex {
     return RamUsageEstimator.sizeOf(this);
   }
 
-  private int numPositions(ArrayIntList positions) {
-    return positions.size() / stride;
-  }
-  
   /** sorts into ascending order (on demand), reusing memory along the way */
   private void sortFields() {
     if (sortedFields == null) sortedFields = sort(fields);
@@ -566,16 +558,35 @@ public class MemoryIndex {
       Info info = entry.getValue();
       info.sortTerms();
       result.append(fieldName + ":\n");
-      
+      SliceByteStartArray sliceArray = info.sliceArray;
       int numPositions = 0;
+      SliceReader postingsReader = new SliceReader(intBlockPool);
       for (int j=0; j < info.terms.size(); j++) {
         int ord = info.sortedTerms[j];
         info.terms.get(ord, spare);
-        ArrayIntList positions = info.positions.get(ord); 
-        result.append("\t'" + spare + "':" + numPositions(positions) + ":");
-        result.append(positions.toString(stride)); // ignore offsets
+        int freq = sliceArray.freq[ord];
+        result.append("\t'" + spare + "':" + freq + ":");
+        postingsReader.reset(sliceArray.start[ord], sliceArray.end[ord]);
+        result.append(" [");
+        final int iters = storeOffsets ? 3 : 1; 
+        while(!postingsReader.endOfSlice()) {
+          result.append("(");
+          
+          for (int k = 0; k < iters; k++) {
+            result.append(postingsReader.readInt());
+            if (k < iters-1) {
+              result.append(", ");
+            }
+          }
+          result.append(")");
+          if (!postingsReader.endOfSlice()) {
+            result.append(",");
+          }
+          
+        }
+        result.append("]");
         result.append("\n");
-        numPositions += numPositions(positions);
+        numPositions += freq;
       }
       
       result.append("\tterms=" + info.terms.size());
@@ -631,8 +642,8 @@ public class MemoryIndex {
       this.numOverlapTokens = numOverlapTokens;
       this.boost = boost;
       long sum = 0;
-      for(ArrayIntList ent : positions) {
-        sum += ent.size();
+      for (int i = 0; i < terms.size(); i++) {
+        sum+=sliceArray.freq[i];
       }
       sumTotalTermFreq = sum;
       this.lastPosition = lastPosition;
@@ -659,74 +670,6 @@ public class MemoryIndex {
       return boost;
     }
   }
-  
-  
-  ///////////////////////////////////////////////////////////////////////////////
-  // Nested classes:
-  ///////////////////////////////////////////////////////////////////////////////
-  /**
-   * Efficient resizable auto-expanding list holding <code>int</code> elements;
-   * implemented with arrays.
-   */
-  private static final class ArrayIntList {
-
-    private int[] elements;
-    private int size = 0;
-      
-    public ArrayIntList(int initialCapacity) {
-      elements = new int[initialCapacity];
-    }
-
-    public void add(int elem) {
-      if (size == elements.length) ensureCapacity(size + 1);
-      elements[size++] = elem;
-    }
-
-    public void add(int pos, int start, int end) {
-      if (size + 3 > elements.length) ensureCapacity(size + 3);
-      elements[size] = pos;
-      elements[size+1] = start;
-      elements[size+2] = end;
-      size += 3;
-    }
-
-    public int get(int index) {
-      if (index >= size) throwIndex(index);
-      return elements[index];
-    }
-    
-    public int size() {
-      return size;
-    }
-    
-    private void ensureCapacity(int minCapacity) {
-      int newCapacity = Math.max(minCapacity, (elements.length * 3) / 2 + 1);
-      int[] newElements = new int[newCapacity];
-      System.arraycopy(elements, 0, newElements, 0, size);
-      elements = newElements;
-    }
-
-    private void throwIndex(int index) {
-      throw new IndexOutOfBoundsException("index: " + index
-            + ", size: " + size);
-    }
-    
-    /** returns the first few positions (without offsets); debug only */
-    public String toString(int stride) {
-      int s = size() / stride;
-      int len = Math.min(10, s); // avoid printing huge lists
-      StringBuilder buf = new StringBuilder(4*len);
-      buf.append("[");
-      for (int i = 0; i < len; i++) {
-        buf.append(get(i*stride));
-        if (i < len-1) buf.append(", ");
-      }
-      if (len != s) buf.append(", ..."); // and some more...
-      buf.append("]");
-      return buf.toString();
-    }   
-  }
-  
   
   ///////////////////////////////////////////////////////////////////////////////
   // Nested classes:
@@ -832,7 +775,7 @@ public class MemoryIndex {
 
             @Override
             public boolean hasOffsets() {
-              return stride == 3;
+              return storeOffsets;
             }
 
             @Override
@@ -946,7 +889,7 @@ public class MemoryIndex {
 
       @Override
       public long totalTermFreq() {
-        return info.positions.get(info.sortedTerms[termUpto]).size();
+        return info.sliceArray.freq[info.sortedTerms[termUpto]];
       }
 
       @Override
@@ -954,7 +897,7 @@ public class MemoryIndex {
         if (reuse == null || !(reuse instanceof MemoryDocsEnum)) {
           reuse = new MemoryDocsEnum();
         }
-        return ((MemoryDocsEnum) reuse).reset(liveDocs, info.positions.get(info.sortedTerms[termUpto]));
+        return ((MemoryDocsEnum) reuse).reset(liveDocs, info.sliceArray.freq[info.sortedTerms[termUpto]]);
       }
 
       @Override
@@ -962,7 +905,8 @@ public class MemoryIndex {
         if (reuse == null || !(reuse instanceof MemoryDocsAndPositionsEnum)) {
           reuse = new MemoryDocsAndPositionsEnum();
         }
-        return ((MemoryDocsAndPositionsEnum) reuse).reset(liveDocs, info.positions.get(info.sortedTerms[termUpto]));
+        final int ord = info.sortedTerms[termUpto];
+        return ((MemoryDocsAndPositionsEnum) reuse).reset(liveDocs, info.sliceArray.start[ord], info.sliceArray.end[ord], info.sliceArray.freq[ord]);
       }
 
       @Override
@@ -985,15 +929,16 @@ public class MemoryIndex {
     }
     
     private class MemoryDocsEnum extends DocsEnum {
-      private ArrayIntList positions;
       private boolean hasNext;
       private Bits liveDocs;
       private int doc = -1;
+      private int freq;
 
-      public DocsEnum reset(Bits liveDocs, SliceReader reader) {
+      public DocsEnum reset(Bits liveDocs, int freq) {
         this.liveDocs = liveDocs;
         hasNext = true;
         doc = -1;
+        this.freq = freq;
         return this;
       }
 
@@ -1019,25 +964,34 @@ public class MemoryIndex {
 
       @Override
       public int freq() throws IOException {
-        return positions.size();
+        return freq;
       }
     }
     
     private class MemoryDocsAndPositionsEnum extends DocsAndPositionsEnum {
-      private ArrayIntList positions;
       private int posUpto;
       private boolean hasNext;
       private Bits liveDocs;
       private int doc = -1;
+      private SliceReader sliceReader;
+      private int freq;
+      private int startOffset;
+      private int endOffset;
+      
+      public MemoryDocsAndPositionsEnum() {
+        this.sliceReader = new SliceReader(intBlockPool);
+      }
 
-      public DocsAndPositionsEnum reset(Bits liveDocs, ArrayIntList positions) {
+      public DocsAndPositionsEnum reset(Bits liveDocs, int start, int end, int freq) {
         this.liveDocs = liveDocs;
-        this.positions = positions;
+        this.sliceReader.reset(start, end);
         posUpto = 0;
         hasNext = true;
         doc = -1;
+        this.freq = freq;
         return this;
       }
+
 
       @Override
       public int docID() {
@@ -1061,22 +1015,30 @@ public class MemoryIndex {
 
       @Override
       public int freq() throws IOException {
-        return positions.size() / stride;
+        return freq;
       }
 
       @Override
       public int nextPosition() {
-        return positions.get(posUpto++ * stride);
+        assert !sliceReader.endOfSlice() : " stores offsets : " + startOffset;
+        if (storeOffsets) {
+          int pos = sliceReader.readInt();
+          startOffset = sliceReader.readInt();
+          endOffset = sliceReader.readInt();
+          return pos;
+        } else {
+          return sliceReader.readInt();
+        }
       }
 
       @Override
       public int startOffset() {
-        return stride == 1 ? -1 : positions.get((posUpto - 1) * stride + 1);
+        return startOffset;
       }
 
       @Override
       public int endOffset() {
-        return stride == 1 ? -1 : positions.get((posUpto - 1) * stride + 2);
+        return endOffset;
       }
 
       @Override
@@ -1174,10 +1136,11 @@ public class MemoryIndex {
     this.fields.clear();
     this.sortedFields = null;
     byteBlockPool.dropBuffersAndReset();
+    intBlockPool.reset(true);
   }
   
   private static final class SliceByteStartArray extends DirectBytesStartArray {
-    int[] start;
+    int[] start; // nocommit maybe we can safe the end array and just check freq - need to change the SliceReader for this
     int[] end;
     int[] freq;
     

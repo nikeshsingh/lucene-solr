@@ -90,6 +90,10 @@ public final class IntBlockPool {
    * {@link IntBlockPool#nextBuffer()} is not needed after reset.
    */
   public void reset() {
+    this.reset(false);
+  }
+  
+  public void reset(boolean clearBuffers) {
     if (bufferUpto != -1) {
       // Reuse first buffer
       if (bufferUpto > 0) {
@@ -100,6 +104,9 @@ public final class IntBlockPool {
       intUpto = 0;
       intOffset = 0;
       buffer = buffers[0];
+      if (clearBuffers) { // for slices we need to fill them all with 0
+        Arrays.fill(buffer, 0);
+      }
     }
   }
   
