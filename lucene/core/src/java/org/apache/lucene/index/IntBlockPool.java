@@ -93,10 +93,19 @@ public final class IntBlockPool {
     this.reset(false);
   }
   
+  /**
+   * Resets the pool to its initial state reusing the first buffer. Calling
+   * {@link IntBlockPool#nextBuffer()} is not needed after reset. 
+   * @param clearBuffers if <code>true</code> the buffers are filled with <tt>0</tt>. 
+   *        This should be set to <code>true</code> if this pool is used with 
+   *        {@link SliceWriter}.
+   */
   public void reset(boolean clearBuffers) {
     if (bufferUpto != -1) {
       // Reuse first buffer
       if (bufferUpto > 0) {
+        // TODO we need to make sure that if we hold on to the buffers in the allocator that we clear them as well - maybe 
+        // add this to the allocator interface?
         allocator.recycleIntBlocks(buffers, 1, bufferUpto-1);
         Arrays.fill(buffers, 1, bufferUpto, null);
       }
@@ -134,12 +143,23 @@ public final class IntBlockPool {
    * @see SliceReader
    */
   private int newSlice(final int size) {
-    if (intUpto > INT_BLOCK_SIZE-size)
+    if (intUpto > INT_BLOCK_SIZE-size) {
       nextBuffer();
+      assert assertSliceBuffer(buffer);
+    }
+      
     final int upto = intUpto;
     intUpto += size;
     buffer[intUpto-1] = 1;
     return upto;
+  }
+  
+  private static final boolean assertSliceBuffer(int[] buffer) {
+    int count = 0;
+    for (int i = 0; i < buffer.length; i++) {
+      count += buffer[i]; // for slices the buffer must only have 0 values
+    }
+    return count == 0;
   }
   
   
@@ -168,8 +188,10 @@ public final class IntBlockPool {
     final int newLevel = NEXT_LEVEL_ARRAY[level-1];
     final int newSize = LEVEL_SIZE_ARRAY[newLevel];
     // Maybe allocate another block
-    if (intUpto > INT_BLOCK_SIZE-newSize)
+    if (intUpto > INT_BLOCK_SIZE-newSize) {
       nextBuffer();
+      assert assertSliceBuffer(buffer);
+    }
 
     final int newUpto = intUpto;
     final int offset = newUpto + intOffset;

@@ -20,56 +20,66 @@ import java.util.List;
 
 import org.apache.lucene.util.LuceneTestCase;
 
+/**
+ * tests basic {@link IntBlockPool} functionality
+ */
 public class TestIntBlockPool extends LuceneTestCase {
   
   public void testSingleWriterReader() {
     IntBlockPool pool = new IntBlockPool();
-    IntBlockPool.SliceWriter writer = new IntBlockPool.SliceWriter(pool);
-    int start = writer.startNewSlice();
-    int num = atLeast(100);
-    for (int i = 0; i < num; i++) {
-      writer.writeInt(i);  
+    for (int j = 0; j < 2; j++) {
+      IntBlockPool.SliceWriter writer = new IntBlockPool.SliceWriter(pool);
+      int start = writer.startNewSlice();
+      int num = atLeast(100);
+      for (int i = 0; i < num; i++) {
+        writer.writeInt(i);
+      }
+      
+      int upto = writer.getCurrentOffset();
+      IntBlockPool.SliceReader reader = new IntBlockPool.SliceReader(pool);
+      reader.reset(start, upto);
+      for (int i = 0; i < num; i++) {
+        assertEquals(i, reader.readInt());
+      }
+      assertTrue(reader.endOfSlice());
+      pool.reset(true);
     }
-    
-    int upto = writer.getCurrentOffset();
-    IntBlockPool.SliceReader reader = new IntBlockPool.SliceReader(pool);
-    reader.reset(start, upto);
-    for (int i = 0; i < num; i++) {
-      assertEquals(i, reader.readInt());
-    }
-    assertTrue(reader.endOfSlice());
   }
   
   public void testMultipleWriterReader() {
-    List<StartEndAndValues> holders = new ArrayList<TestIntBlockPool.StartEndAndValues>();
-    int num = atLeast(4);
-    for (int i = 0; i < num; i++) {
-      holders.add(new StartEndAndValues(random().nextInt(1000)));
-    }
     IntBlockPool pool = new IntBlockPool();
-    IntBlockPool.SliceWriter writer = new IntBlockPool.SliceWriter(pool);
-    IntBlockPool.SliceReader reader = new IntBlockPool.SliceReader(pool);
-
-    int numValuesToWrite = atLeast(10000);
-    for (int i = 0; i < numValuesToWrite; i++) {
-      StartEndAndValues values = holders.get(random().nextInt(holders.size()));
-      if (values.valueCount == 0) {
-        values.start = writer.startNewSlice();
-      } else {
-        writer.reset(values.end);
+    for (int j = 0; j < 2; j++) {
+      List<StartEndAndValues> holders = new ArrayList<TestIntBlockPool.StartEndAndValues>();
+      int num = atLeast(4);
+      for (int i = 0; i < num; i++) {
+        holders.add(new StartEndAndValues(random().nextInt(1000)));
       }
-      writer.writeInt(values.nextValue());
-      values.end = writer.getCurrentOffset();
-      if (random().nextInt(5) == 0) {
-        // pick one and reader the ints
-        assertReader(reader, holders.get(random().nextInt(holders.size())));
+      IntBlockPool.SliceWriter writer = new IntBlockPool.SliceWriter(pool);
+      IntBlockPool.SliceReader reader = new IntBlockPool.SliceReader(pool);
+      
+      int numValuesToWrite = atLeast(10000);
+      for (int i = 0; i < numValuesToWrite; i++) {
+        StartEndAndValues values = holders
+            .get(random().nextInt(holders.size()));
+        if (values.valueCount == 0) {
+          values.start = writer.startNewSlice();
+        } else {
+          writer.reset(values.end);
+        }
+        writer.writeInt(values.nextValue());
+        values.end = writer.getCurrentOffset();
+        if (random().nextInt(5) == 0) {
+          // pick one and reader the ints
+          assertReader(reader, holders.get(random().nextInt(holders.size())));
+        }
       }
+      
+      while (!holders.isEmpty()) {
+        StartEndAndValues values = holders.remove(random().nextInt(
+            holders.size()));
+        assertReader(reader, values);
     }
-    
-    
-    while(!holders.isEmpty()) {
-      StartEndAndValues values = holders.remove(random().nextInt(holders.size()));
-      assertReader(reader, values);
+     pool.reset(true);
     }
   }
 
