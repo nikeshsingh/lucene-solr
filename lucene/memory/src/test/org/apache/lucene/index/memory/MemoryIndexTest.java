@@ -22,10 +22,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.StringReader;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
 import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -45,9 +42,7 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.index.IntBlockPool;
 import org.apache.lucene.index.MultiFields;
-import org.apache.lucene.index.MultiTerms;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
@@ -109,7 +104,7 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
    * runs random tests, up to ITERATIONS times.
    */
   public void testRandomQueries() throws Exception {
-    MemoryIndex index =  new MemoryIndex(random().nextBoolean(), randomByteBlockAllocator(), new IntBlockPool.DirectAllocator());
+    MemoryIndex index =  new MemoryIndex(random().nextBoolean(), random().nextInt(50) * 1024 * 1024);
     for (int i = 0; i < ITERATIONS; i++) {
       assertAgainstRAMDirectory(index);
     }
@@ -275,7 +270,7 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
   
   public void testDocsEnumStart() throws Exception {
     Analyzer analyzer = new MockAnalyzer(random());
-    MemoryIndex memory = new MemoryIndex(random().nextBoolean(), randomByteBlockAllocator(), new IntBlockPool.DirectAllocator());
+    MemoryIndex memory = new MemoryIndex(random().nextBoolean(),  random().nextInt(50) * 1024 * 1024);
     memory.addField("foo", "bar", analyzer);
     AtomicReader reader = (AtomicReader) memory.createSearcher().getIndexReader();
     DocsEnum disi = _TestUtil.docs(random(), reader, "foo", new BytesRef("bar"), null, null, 0);
@@ -304,7 +299,7 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
   public void testDocsAndPositionsEnumStart() throws Exception {
     Analyzer analyzer = new MockAnalyzer(random());
     int numIters = atLeast(3);
-    MemoryIndex memory = new MemoryIndex(true, randomByteBlockAllocator(), new IntBlockPool.DirectAllocator());
+    MemoryIndex memory = new MemoryIndex(true,  random().nextInt(50) * 1024 * 1024);
     for (int i = 0; i < numIters; i++) { // check reuse
       memory.addField("foo", "bar", analyzer);
       AtomicReader reader = (AtomicReader) memory.createSearcher().getIndexReader();
@@ -334,7 +329,7 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
     RegexpQuery regex = new RegexpQuery(new Term("field", "worl."));
     SpanQuery wrappedquery = new SpanMultiTermQueryWrapper<RegexpQuery>(regex);
         
-    MemoryIndex mindex = new MemoryIndex(random().nextBoolean(), randomByteBlockAllocator(), new IntBlockPool.DirectAllocator());
+    MemoryIndex mindex = new MemoryIndex(random().nextBoolean(),  random().nextInt(50) * 1024 * 1024);
     mindex.addField("field", new MockAnalyzer(random()).tokenStream("field", new StringReader("hello there")));
 
     // This throws an NPE
@@ -346,7 +341,7 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
     RegexpQuery regex = new RegexpQuery(new Term("field", "worl."));
     SpanQuery wrappedquery = new SpanOrQuery(new SpanMultiTermQueryWrapper<RegexpQuery>(regex));
 
-    MemoryIndex mindex = new MemoryIndex(random().nextBoolean(), randomByteBlockAllocator(), new IntBlockPool.DirectAllocator());
+    MemoryIndex mindex = new MemoryIndex(random().nextBoolean(),  random().nextInt(50) * 1024 * 1024);
     mindex.addField("field", new MockAnalyzer(random()).tokenStream("field", new StringReader("hello there")));
 
     // This passes though
@@ -354,7 +349,7 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
   }
   
   public void testSameFieldAddedMultipleTimes() throws IOException {
-    MemoryIndex mindex = new MemoryIndex(random().nextBoolean(), randomByteBlockAllocator(), new IntBlockPool.DirectAllocator());
+    MemoryIndex mindex = new MemoryIndex(random().nextBoolean(),  random().nextInt(50) * 1024 * 1024);
     MockAnalyzer mockAnalyzer = new MockAnalyzer(random());
     mindex.addField("field", "the quick brown fox", mockAnalyzer);
     mindex.addField("field", "jumps over the", mockAnalyzer);
@@ -377,7 +372,7 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
   public void testDuellMemIndex() throws IOException {
     LineFileDocs lineFileDocs = new LineFileDocs(random());
     int numDocs = atLeast(10);
-    MemoryIndex memory = new MemoryIndex(random().nextBoolean(), randomByteBlockAllocator(), new IntBlockPool.DirectAllocator());
+    MemoryIndex memory = new MemoryIndex(random().nextBoolean(),  random().nextInt(50) * 1024 * 1024);
     for (int i = 0; i < numDocs; i++) {
       Directory dir = newDirectory();
       MockAnalyzer mockAnalyzer = new MockAnalyzer(random());
