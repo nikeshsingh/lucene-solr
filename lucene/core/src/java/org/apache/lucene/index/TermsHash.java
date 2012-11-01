@@ -88,12 +88,8 @@ final class TermsHash extends InvertedDocConsumer {
 
   // Clear all state
   void reset() {
-    intPool.reset();
-    bytePool.reset();
-
-    if (primary) {
-      bytePool.reset();
-    }
+    intPool.reset(false, false);
+    bytePool.reset(false, false);
   }
 
   @Override

@@ -23,7 +23,9 @@ import org.apache.lucene.util.ByteBlockPool.Allocator;
  * A {@link ByteBlockPool.Allocator} implementation that recycles unused byte
  * blocks in a buffer and reuses them in subsequent calls to
  * {@link #getByteBlock()}.
- * 
+ * <p>
+ * Note: This class is not thread-safe
+ * </p>
  * @lucene.internal
  */
 public final class RecyclingByteBlockAllocator extends ByteBlockPool.Allocator {

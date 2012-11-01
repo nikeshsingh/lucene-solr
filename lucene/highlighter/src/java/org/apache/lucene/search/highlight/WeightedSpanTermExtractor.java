@@ -56,8 +56,6 @@ public class WeightedSpanTermExtractor {
   private String fieldName;
   private TokenStream tokenStream;
   private Map<String,AtomicReaderContext> readers = new HashMap<String,AtomicReaderContext>(10);
-  private List<MemoryIndex> createdMemIndices = new ArrayList<MemoryIndex>();
-  private ByteBlockPool.Allocator allocator = new RecyclingByteBlockAllocator(); //TODO make this configurable
   private String defaultField;
   private boolean expandMultiTermQuery;
   private boolean cachedTokenStream;
@@ -82,10 +80,6 @@ public class WeightedSpanTermExtractor {
       } catch (IOException e) {
         // alert?
       }
-    }
-    
-    for (MemoryIndex memIdx : createdMemIndices) {
-      memIdx.reset(); // releases the memory to the pool
     }
   }
 
@@ -353,13 +347,12 @@ public class WeightedSpanTermExtractor {
     }
     AtomicReaderContext context = readers.get(field);
     if (context == null) {
-      MemoryIndex indexer = new MemoryIndex(false, this.allocator);
+      MemoryIndex indexer = new MemoryIndex();
       indexer.addField(field, new OffsetLimitTokenFilter(tokenStream, maxDocCharsToAnalyze));
       tokenStream.reset();
       IndexSearcher searcher = indexer.createSearcher();
       // MEM index has only atomic ctx
       context = (AtomicReaderContext) searcher.getTopReaderContext();
-      createdMemIndices.add(indexer);
       readers.put(field, context);
     }
 

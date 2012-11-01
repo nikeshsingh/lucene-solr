@@ -241,15 +241,21 @@ public class MemoryIndex {
    *            each token term in the text
    */
   public MemoryIndex(boolean storeOffsets) {
-    this(storeOffsets, new ByteBlockPool.DirectAllocator());
-    //nocommit why was this protected
+    this(storeOffsets, new ByteBlockPool.DirectAllocator(), new IntBlockPool.DirectAllocator());
     
   }
   
-  public MemoryIndex(boolean storeOffsets, ByteBlockPool.Allocator allocator) {
+  /**
+   * Expert: This constructor accepts a byte and int block allocator that is used internally to allocate 
+   * int & byte blocks for term and posting storage.  
+   * @param storeOffsets <code>true</code> if offsets should be stored
+   * @param byteBlockAllocator a {@link ByteBlockPool.Allocator} that allocates blocks for internal term storage
+   * @param intBlockAllocator a {@link IntBlockPool.Allocator} that allocates blocks for internal posting list storage
+   */
+  MemoryIndex(boolean storeOffsets, ByteBlockPool.Allocator byteBlockAllocator, IntBlockPool.Allocator intBlockAllocator) {
     this.storeOffsets = storeOffsets;
-    byteBlockPool = new ByteBlockPool(allocator);
-    intBlockPool = new IntBlockPool(); // nocommit expose allocator and impl a recycling one
+    byteBlockPool = new ByteBlockPool(byteBlockAllocator);
+    intBlockPool = new IntBlockPool(intBlockAllocator);
     postingsWriter = new SliceWriter(intBlockPool);
   }
   
@@ -425,7 +431,8 @@ public class MemoryIndex {
         fields.put(fieldName, new Info(terms, sliceArray, numTokens, numOverlapTokens, boost, pos));
         sortedFields = null;    // invalidate sorted view, if any
       }
-    } catch (IOException e) { // can never happen
+    } catch (Exception e) { // can never happen
+      e.printStackTrace();
       throw new RuntimeException(e);
     } finally {
       try {
@@ -1130,12 +1137,12 @@ public class MemoryIndex {
   /**
    * Resets the {@link MemoryIndex} to its initial state and recycles all internal buffers.
    */
-  public void reset() {
+  void reset() {
     this.fieldInfos.clear();
     this.fields.clear();
     this.sortedFields = null;
-    byteBlockPool.dropBuffersAndReset();
-    intBlockPool.reset(true);
+    byteBlockPool.reset(false, true); // no need to 0-fill the buffers
+    intBlockPool.reset(true, true); // here must must 0-fill since we use slices
   }
   
   private static final class SliceByteStartArray extends DirectBytesStartArray {

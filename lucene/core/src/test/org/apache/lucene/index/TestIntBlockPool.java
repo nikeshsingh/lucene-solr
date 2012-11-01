@@ -1,4 +1,5 @@
 package org.apache.lucene.index;
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -18,7 +19,9 @@ package org.apache.lucene.index;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.lucene.util.Counter;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.RamUsageEstimator;
 
 /**
  * tests basic {@link IntBlockPool} functionality
@@ -26,7 +29,9 @@ import org.apache.lucene.util.LuceneTestCase;
 public class TestIntBlockPool extends LuceneTestCase {
   
   public void testSingleWriterReader() {
-    IntBlockPool pool = new IntBlockPool();
+    Counter bytesUsed = Counter.newCounter();
+    IntBlockPool pool = new IntBlockPool(new ByteTrackingAllocator(bytesUsed));
+    
     for (int j = 0; j < 2; j++) {
       IntBlockPool.SliceWriter writer = new IntBlockPool.SliceWriter(pool);
       int start = writer.startNewSlice();
@@ -42,12 +47,20 @@ public class TestIntBlockPool extends LuceneTestCase {
         assertEquals(i, reader.readInt());
       }
       assertTrue(reader.endOfSlice());
-      pool.reset(true);
+      if (random().nextBoolean()) {
+        pool.reset(true, false);
+        assertEquals(0, bytesUsed.get());
+      } else {
+        pool.reset(true, true);
+        assertEquals(IntBlockPool.INT_BLOCK_SIZE
+            * RamUsageEstimator.NUM_BYTES_INT, bytesUsed.get());
+      }
     }
   }
   
   public void testMultipleWriterReader() {
-    IntBlockPool pool = new IntBlockPool();
+    Counter bytesUsed = Counter.newCounter();
+    IntBlockPool pool = new IntBlockPool(new ByteTrackingAllocator(bytesUsed));
     for (int j = 0; j < 2; j++) {
       List<StartEndAndValues> holders = new ArrayList<TestIntBlockPool.StartEndAndValues>();
       int num = atLeast(4);
@@ -78,16 +91,48 @@ public class TestIntBlockPool extends LuceneTestCase {
         StartEndAndValues values = holders.remove(random().nextInt(
             holders.size()));
         assertReader(reader, values);
-    }
-     pool.reset(true);
+      }
+      if (random().nextBoolean()) {
+        pool.reset(true, false);
+        assertEquals(0, bytesUsed.get());
+      } else {
+        pool.reset(true, true);
+        assertEquals(IntBlockPool.INT_BLOCK_SIZE
+            * RamUsageEstimator.NUM_BYTES_INT, bytesUsed.get());
+      }
     }
   }
-
+  
+  private static class ByteTrackingAllocator extends IntBlockPool.Allocator {
+    private final Counter bytesUsed;
+    
+    public ByteTrackingAllocator(Counter bytesUsed) {
+      this(IntBlockPool.INT_BLOCK_SIZE, bytesUsed);
+    }
+    
+    public ByteTrackingAllocator(int blockSize, Counter bytesUsed) {
+      super(blockSize);
+      this.bytesUsed = bytesUsed;
+    }
+    
+    public int[] getIntBlock() {
+      bytesUsed.addAndGet(blockSize * RamUsageEstimator.NUM_BYTES_INT);
+      return new int[blockSize];
+    }
+    
+    @Override
+    public void recycleIntBlocks(int[][] blocks, int start, int end) {
+      bytesUsed
+          .addAndGet(-((end - start) * blockSize * RamUsageEstimator.NUM_BYTES_INT));
+    }
+    
+  }
+  
   private void assertReader(IntBlockPool.SliceReader reader,
       StartEndAndValues values) {
     reader.reset(values.start, values.end);
     for (int i = 0; i < values.valueCount; i++) {
-      assertEquals(values.valueOffset + i, reader.readInt());        
+      assertEquals(values.valueOffset + i, reader.readInt());
     }
     assertTrue(reader.endOfSlice());
   }

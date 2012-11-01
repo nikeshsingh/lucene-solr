@@ -64,7 +64,7 @@ public final class BytesRefList {
     lastElement = 0;
     currentOffset = 0;
     Arrays.fill(offsets, 0);
-    pool.reset();
+    pool.reset(false, true); // no need to 0 fill the buffers we control the allocator
   }
   
   /**

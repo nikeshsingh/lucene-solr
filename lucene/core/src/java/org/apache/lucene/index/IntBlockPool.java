@@ -90,32 +90,49 @@ public final class IntBlockPool {
    * {@link IntBlockPool#nextBuffer()} is not needed after reset.
    */
   public void reset() {
-    this.reset(false);
+    this.reset(true, true);
   }
   
   /**
-   * Resets the pool to its initial state reusing the first buffer. Calling
-   * {@link IntBlockPool#nextBuffer()} is not needed after reset. 
-   * @param clearBuffers if <code>true</code> the buffers are filled with <tt>0</tt>. 
+   * Expert: Resets the pool to its initial state reusing the first buffer. 
+   * @param zeroFillBuffers if <code>true</code> the buffers are filled with <tt>0</tt>. 
    *        This should be set to <code>true</code> if this pool is used with 
    *        {@link SliceWriter}.
+   * @param reuseFirst if <code>true</code> the first buffer will be reused and calling
+   *        {@link IntBlockPool#nextBuffer()} is not needed after reset iff the 
+   *        block pool was used before ie. {@link IntBlockPool#nextBuffer()} was called before.
    */
-  public void reset(boolean clearBuffers) {
+  public void reset(boolean zeroFillBuffers, boolean reuseFirst) {
     if (bufferUpto != -1) {
-      // Reuse first buffer
-      if (bufferUpto > 0) {
-        // TODO we need to make sure that if we hold on to the buffers in the allocator that we clear them as well - maybe 
-        // add this to the allocator interface?
-        allocator.recycleIntBlocks(buffers, 1, bufferUpto-1);
-        Arrays.fill(buffers, 1, bufferUpto, null);
+      // We allocated at least one buffer
+
+      if (zeroFillBuffers) {
+        for(int i=0;i<bufferUpto;i++) {
+          // Fully zero fill buffers that we fully used
+          Arrays.fill(buffers[i], 0);
+        }
+        // Partial zero fill the final buffer
+        Arrays.fill(buffers[bufferUpto], 0, intUpto, 0);
       }
-      bufferUpto = 0;
-      intUpto = 0;
-      intOffset = 0;
-      buffer = buffers[0];
-      if (clearBuffers) { // for slices we need to fill them all with 0
-        Arrays.fill(buffer, 0);
-      }
+     
+      if (bufferUpto > 0 || !reuseFirst) {
+        final int offset = reuseFirst ? 1 : 0;  
+       // Recycle all but the first buffer
+       allocator.recycleIntBlocks(buffers, offset, 1+bufferUpto);
+       Arrays.fill(buffers, offset, bufferUpto+1, null);
+     }
+     if (reuseFirst) {
+       // Re-use the first buffer
+       bufferUpto = 0;
+       intUpto = 0;
+       intOffset = 0;
+       buffer = buffers[0];
+     } else {
+       bufferUpto = -1;
+       intUpto = INT_BLOCK_SIZE;
+       intOffset = -INT_BLOCK_SIZE;
+       buffer = null;
+     }
     }
   }
   

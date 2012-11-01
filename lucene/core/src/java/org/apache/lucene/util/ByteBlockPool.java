@@ -20,6 +20,8 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
+import org.apache.lucene.index.IntBlockPool;
+import org.apache.lucene.index.IntBlockPool.SliceWriter;
 import org.apache.lucene.store.DataOutput;
 
 import static org.apache.lucene.util.RamUsageEstimator.NUM_BYTES_OBJECT_REF;
@@ -67,30 +69,6 @@ public final class ByteBlockPool {
     public byte[] getByteBlock() {
       return new byte[blockSize];
     }
-    
-    /**
-     * Returns a synchronized allocator delegating all calls to the given delegate.
-     */
-    public static Allocator synchronizedAllocator(final Allocator delegate) {
-      return new Allocator(delegate.blockSize) {
-        
-        @Override
-        public synchronized void recycleByteBlocks(List<byte[]> blocks) {
-          delegate.recycleByteBlocks(blocks);
-        }
-
-        @Override
-        public synchronized byte[] getByteBlock() {
-          return delegate.getByteBlock();
-        }
-
-        @Override
-        public synchronized void recycleByteBlocks(byte[][] blocks, int start, int end) {
-          delegate.recycleByteBlocks(blocks, start, end);
-        }
-      };
-    }
-    
   }
   
   /** A simple {@link Allocator} that never recycles. */
@@ -155,40 +133,56 @@ public final class ByteBlockPool {
     this.allocator = allocator;
   }
   
-  public void dropBuffersAndReset() {
-    if (bufferUpto != -1) {
-      // Recycle all but the first buffer
-      allocator.recycleByteBlocks(buffers, 0, 1+bufferUpto);
-
-      // Re-use the first buffer
-      bufferUpto = -1;
-      byteUpto = BYTE_BLOCK_SIZE;
-      byteOffset = -BYTE_BLOCK_SIZE;
-      buffers = new byte[10][];
-      buffer = null;
-    }
-  }
-
+  /**
+   * Resets the pool to its initial state reusing the first buffer and fills all
+   * buffers with <tt>0</tt> bytes before they reused or passed to
+   * {@link Allocator#recycleByteBlocks(byte[][], int, int)}. Calling
+   * {@link ByteBlockPool#nextBuffer()} is not needed after reset.
+   */
   public void reset() {
+    reset(true, true);
+  }
+  
+  /**
+   * Expert: Resets the pool to its initial state reusing the first buffer. Calling
+   * {@link ByteBlockPool#nextBuffer()} is not needed after reset. 
+   * @param zeroFillBuffers if <code>true</code> the buffers are filled with <tt>0</tt>. 
+   *        This should be set to <code>true</code> if this pool is used with slices.
+   * @param reuseFirst if <code>true</code> the first buffer will be reused and calling
+   *        {@link ByteBlockPool#nextBuffer()} is not needed after reset iff the 
+   *        block pool was used before ie. {@link ByteBlockPool#nextBuffer()} was called before.
+   */
+  public void reset(boolean zeroFillBuffers, boolean reuseFirst) {
     if (bufferUpto != -1) {
       // We allocated at least one buffer
 
-      for(int i=0;i<bufferUpto;i++)
-        // Fully zero fill buffers that we fully used
-        Arrays.fill(buffers[i], (byte) 0);
-
-      // Partial zero fill the final buffer
-      Arrays.fill(buffers[bufferUpto], 0, byteUpto, (byte) 0);
-          
-      if (bufferUpto > 0)
-        // Recycle all but the first buffer
-        allocator.recycleByteBlocks(buffers, 1, 1+bufferUpto);
-
-      // Re-use the first buffer
-      bufferUpto = 0;
-      byteUpto = 0;
-      byteOffset = 0;
-      buffer = buffers[0];
+      if (zeroFillBuffers) {
+        for(int i=0;i<bufferUpto;i++) {
+          // Fully zero fill buffers that we fully used
+          Arrays.fill(buffers[i], (byte) 0);
+        }
+        // Partial zero fill the final buffer
+        Arrays.fill(buffers[bufferUpto], 0, byteUpto, (byte) 0);
+      }
+     
+     if (bufferUpto > 0 || !reuseFirst) {
+       final int offset = reuseFirst ? 1 : 0;  
+       // Recycle all but the first buffer
+       allocator.recycleByteBlocks(buffers, offset, 1+bufferUpto);
+       Arrays.fill(buffers, offset, 1+bufferUpto, null);
+     }
+     if (reuseFirst) {
+       // Re-use the first buffer
+       bufferUpto = 0;
+       byteUpto = 0;
+       byteOffset = 0;
+       buffer = buffers[0];
+     } else {
+       bufferUpto = -1;
+       byteUpto = BYTE_BLOCK_SIZE;
+       byteOffset = -BYTE_BLOCK_SIZE;
+       buffer = null;
+     }
     }
   }
   
