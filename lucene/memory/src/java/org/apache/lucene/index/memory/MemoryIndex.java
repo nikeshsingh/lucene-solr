@@ -376,6 +376,7 @@ public class MemoryIndex {
       final BytesRefHash terms;
       final SliceByteStartArray sliceArray;
       Info info = null;
+      long sumTotalTermFreq = 0;
       if ((info = fields.get(fieldName)) != null) {
         numTokens = info.numTokens;
         numOverlapTokens = info.numOverlapTokens;
@@ -383,6 +384,7 @@ public class MemoryIndex {
         terms = info.terms;
         boost *= info.boost;
         sliceArray = info.sliceArray;
+        sumTotalTermFreq = info.sumTotalTermFreq;
       } else {
         sliceArray = new SliceByteStartArray(BytesRefHash.DEFAULT_CAPACITY);
         terms = new BytesRefHash(byteBlockPool, BytesRefHash.DEFAULT_CAPACITY, sliceArray);
@@ -415,6 +417,7 @@ public class MemoryIndex {
           sliceArray.start[ord] = postingsWriter.startNewSlice();
         }
         sliceArray.freq[ord]++;
+        sumTotalTermFreq++;
         if (!storeOffsets) {
           postingsWriter.writeInt(pos);
         } else {
@@ -428,7 +431,7 @@ public class MemoryIndex {
 
       // ensure infos.numTokens > 0 invariant; needed for correct operation of terms()
       if (numTokens > 0) {
-        fields.put(fieldName, new Info(terms, sliceArray, numTokens, numOverlapTokens, boost, pos));
+        fields.put(fieldName, new Info(terms, sliceArray, numTokens, numOverlapTokens, boost, pos, sumTotalTermFreq));
         sortedFields = null;    // invalidate sorted view, if any
       }
     } catch (Exception e) { // can never happen
@@ -641,17 +644,13 @@ public class MemoryIndex {
     /** the last position encountered in this field for multi field support*/
     private int lastPosition;
 
-    public Info(BytesRefHash terms, SliceByteStartArray sliceArray, int numTokens, int numOverlapTokens, float boost, int lastPosition) {
+    public Info(BytesRefHash terms, SliceByteStartArray sliceArray, int numTokens, int numOverlapTokens, float boost, int lastPosition, long sumTotalTermFreq) {
       this.terms = terms;
       this.sliceArray = sliceArray; 
       this.numTokens = numTokens;
       this.numOverlapTokens = numOverlapTokens;
       this.boost = boost;
-      long sum = 0;
-      for (int i = 0; i < terms.size(); i++) {
-        sum+=sliceArray.freq[i];
-      }
-      sumTotalTermFreq = sum;
+      this.sumTotalTermFreq = sumTotalTermFreq;
       this.lastPosition = lastPosition;
     }
 
@@ -975,7 +974,7 @@ public class MemoryIndex {
     }
     
     private class MemoryDocsAndPositionsEnum extends DocsAndPositionsEnum {
-      private int posUpto;
+      private int posUpto; // for assert
       private boolean hasNext;
       private Bits liveDocs;
       private int doc = -1;
@@ -991,7 +990,7 @@ public class MemoryIndex {
       public DocsAndPositionsEnum reset(Bits liveDocs, int start, int end, int freq) {
         this.liveDocs = liveDocs;
         this.sliceReader.reset(start, end);
-        posUpto = 0;
+        posUpto = 0; // for assert
         hasNext = true;
         doc = -1;
         this.freq = freq;
@@ -1026,6 +1025,7 @@ public class MemoryIndex {
 
       @Override
       public int nextPosition() {
+        assert posUpto++ < freq;
         assert !sliceReader.endOfSlice() : " stores offsets : " + startOffset;
         if (storeOffsets) {
           int pos = sliceReader.readInt();
@@ -1146,9 +1146,9 @@ public class MemoryIndex {
   }
   
   private static final class SliceByteStartArray extends DirectBytesStartArray {
-    int[] start; // nocommit maybe we can safe the end array and just check freq - need to change the SliceReader for this
-    int[] end;
-    int[] freq;
+    int[] start; // the start offset in the IntBlockPool per term
+    int[] end; // the end pointer in the IntBlockPool for the postings slice per term
+    int[] freq; // the term frequency
     
     public SliceByteStartArray(int initSize) {
       super(initSize);
