@@ -32,7 +32,12 @@ import org.apache.lucene.store.IOContext;
 /**
  * A {@link StoredFieldsFormat} that is very similar to
  * {@link Lucene40StoredFieldsFormat} but compresses documents in chunks in
- * order to improve compression ratio.
+ * order to improve the compression ratio.
+ * <p>
+ * For a chunk size of <tt>chunkSize</tt> bytes, this {@link StoredFieldsFormat}
+ * does not support documents larger than (<tt>2<sup>31</sup> - chunkSize</tt>)
+ * bytes. In case this is a problem, you should use another format, such as
+ * {@link Lucene40StoredFieldsFormat}.
  * <p>
  * For optimal performance, you should use a {@link MergePolicy} that returns
  * segments that have the biggest byte size first.
@@ -48,7 +53,7 @@ public class CompressingStoredFieldsFormat extends StoredFieldsFormat {
    * Create a new {@link CompressingStoredFieldsFormat}.
    * <p>
    * The <code>compressionMode</code> parameter allows you to choose between
-   * compression algorithms that have various compression and uncompression
+   * compression algorithms that have various compression and decompression
    * speeds so that you can pick the one that best fits your indexing and
    * searching throughput.
    * <p>
@@ -59,7 +64,7 @@ public class CompressingStoredFieldsFormat extends StoredFieldsFormat {
    * fields.
    * <p>
    * Higher values of <code>chunkSize</code> should improve the compression
-   * atio but will require more memory at indexing time and might make document
+   * ratio but will require more memory at indexing time and might make document
    * loading a little slower (depending on the size of your OS cache compared
    * to the size of your index).
    * <p>
@@ -90,9 +95,7 @@ public class CompressingStoredFieldsFormat extends StoredFieldsFormat {
    * @see CompressingStoredFieldsFormat#CompressingStoredFieldsFormat(CompressionMode, int, CompressingStoredFieldsIndex)
    */
   public CompressingStoredFieldsFormat(CompressionMode compressionMode, int chunkSize) {
-    this (compressionMode, chunkSize, chunkSize == 1
-        ? CompressingStoredFieldsIndex.MEMORY_DOC
-        : CompressingStoredFieldsIndex.MEMORY_CHUNK);
+    this (compressionMode, chunkSize, CompressingStoredFieldsIndex.MEMORY_CHUNK);
   }
 
   /**
