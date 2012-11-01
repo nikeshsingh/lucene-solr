@@ -24,7 +24,7 @@ import java.util.Arrays;
  * @lucene.internal
  */
 public final class IntBlockPool {
-//TODO move to o.a.l.utils
+  //nocommit move to o.a.l.utils
   public final static int INT_BLOCK_SHIFT = 13;
   public final static int INT_BLOCK_SIZE = 1 << INT_BLOCK_SHIFT;
   public final static int INT_BLOCK_MASK = INT_BLOCK_SIZE - 1;
@@ -60,12 +60,17 @@ public final class IntBlockPool {
     }
   }
   
+  /** array of buffers currently used in the pool. Buffers are allocated if needed don't modify this outside of this class */
   public int[][] buffers = new int[10][];
 
-  int bufferUpto = -1;                        // Which buffer we are upto
-  public int intUpto = INT_BLOCK_SIZE;             // Where we are in head buffer
-  public int[] buffer;                              // Current head buffer
-  public int intOffset = -INT_BLOCK_SIZE;          // Current head offset
+  /** index into the buffers array pointing to the current buffer used as the head */
+  private int bufferUpto = -1;   
+  /** Pointer to the current position in head buffer */
+  public int intUpto = INT_BLOCK_SIZE;
+  /** Current head buffer */
+  public int[] buffer;
+  /** Current head offset */
+  public int intOffset = -INT_BLOCK_SIZE;
 
   private final Allocator allocator;
 
@@ -187,6 +192,7 @@ public final class IntBlockPool {
    * to quickly navigate to the next slice level.
    */
   private final static int[] NEXT_LEVEL_ARRAY = {1, 2, 3, 4, 5, 6, 7, 8, 9, 9};
+  
   /**
    * An array holding the level sizes for int slices.
    */

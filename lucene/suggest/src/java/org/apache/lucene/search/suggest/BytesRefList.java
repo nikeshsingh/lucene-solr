@@ -101,10 +101,10 @@ public final class BytesRefList {
    */
   public BytesRef get(BytesRef spare, int ord) {
     if (lastElement > ord) {
-      spare.offset = offsets[ord];
-      spare.length = ord == lastElement - 1 ? currentOffset - spare.offset
-          : offsets[ord + 1] - spare.offset;
-      pool.copyFrom(spare);
+      int offset = offsets[ord];
+      int length = ord == lastElement - 1 ? currentOffset - offset
+          : offsets[ord + 1] - offset;
+      pool.copyFrom(spare, offset, length);
       return spare;
     }
     throw new IndexOutOfBoundsException("index " + ord
