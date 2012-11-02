@@ -34,7 +34,10 @@ import org.apache.lucene.codecs.lucene41.Lucene41PostingsFormat;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.CompositeReader;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.DocValues;
+import org.apache.lucene.index.DocValues.Source;
 import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.Fields;
@@ -43,6 +46,7 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
@@ -157,22 +161,31 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
       assertTrue(memory.getMemorySize() > 0L);
     }
     AtomicReader reader = (AtomicReader) memory.createSearcher().getIndexReader();
-    IndexReader competitor = DirectoryReader.open(ramdir);
+    DirectoryReader competitor = DirectoryReader.open(ramdir);
     duellReaders(competitor, reader);
     IOUtils.close(reader, competitor);
     assertAllQueries(memory, ramdir, analyzer);  
     ramdir.close();    
   }
 
-  private void duellReaders(IndexReader competitor, AtomicReader memIndexReader)
+  private void duellReaders(CompositeReader other, AtomicReader memIndexReader)
       throws IOException {
+    AtomicReader competitor = new SlowCompositeReaderWrapper(other);
     Fields memFields = memIndexReader.fields();
-    for (String field : MultiFields.getFields(competitor)) {
+    for (String field : competitor.fields()) {
       Terms memTerms = memFields.terms(field);
-      Terms iwTerms = MultiFields.getTerms(memIndexReader, field);
+      Terms iwTerms = memIndexReader.terms(field);
       if (iwTerms == null) {
         assertNull(memTerms);
       } else {
+        DocValues normValues = competitor.normValues(field);
+        DocValues memNormValues = memIndexReader.normValues(field);
+        if (normValues != null) {
+          // mem idx always computes norms on the fly
+          assertNotNull(memNormValues);
+          assertEquals(normValues.getDirectSource().getInt(0), memNormValues.getDirectSource().getInt(0), 0.01);
+        }
+          
         assertNotNull(memTerms);
         assertEquals(iwTerms.getDocCount(), memTerms.getDocCount());
         assertEquals(iwTerms.getSumDocFreq(), memTerms.getSumDocFreq());
@@ -393,7 +406,7 @@ public class MemoryIndexTest extends BaseTokenStreamTestCase {
       for (IndexableField field : doc.indexableFields()) {
           memory.addField(field.name(), ((Field)field).stringValue(), mockAnalyzer);  
       }
-      IndexReader competitor = DirectoryReader.open(dir);
+      DirectoryReader competitor = DirectoryReader.open(dir);
       AtomicReader memIndexReader= (AtomicReader) memory.createSearcher().getIndexReader();
       duellReaders(competitor, memIndexReader);
       IOUtils.close(competitor, memIndexReader);

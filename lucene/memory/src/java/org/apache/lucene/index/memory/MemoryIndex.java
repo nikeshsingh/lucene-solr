@@ -247,7 +247,7 @@ public class MemoryIndex {
    *            each token term in the text
    */
   public MemoryIndex(boolean storeOffsets) {
-    this(storeOffsets, 5*1024*1024 /*~5mb*/);
+    this(storeOffsets, 0);
     
   }
   
@@ -255,14 +255,14 @@ public class MemoryIndex {
    * Expert: This constructor accepts a byte and int block allocator that is used internally to allocate 
    * int & byte blocks for term and posting storage.  
    * @param storeOffsets <code>true</code> if offsets should be stored
-   * @param maxBufferedBytes the number of bytes that should remain in the internal memory pools after {@link #reset()} is called
+   * @param maxReusedBytes the number of bytes that should remain in the internal memory pools after {@link #reset()} is called
    */
-  MemoryIndex(boolean storeOffsets, long maxBufferedBytes) {
+  MemoryIndex(boolean storeOffsets, long maxReusedBytes) {
     this.storeOffsets = storeOffsets;
     this.bytesUsed = Counter.newCounter();
-    final int maxBufferedByteBlocks = (int)((maxBufferedBytes/2) / ByteBlockPool.BYTE_BLOCK_SIZE );
-    final int maxBufferedIntBlocks = (int) ((maxBufferedBytes - (maxBufferedByteBlocks*ByteBlockPool.BYTE_BLOCK_SIZE))/(IntBlockPool.INT_BLOCK_SIZE * RamUsageEstimator.NUM_BYTES_INT));
-    assert (maxBufferedByteBlocks * ByteBlockPool.BYTE_BLOCK_SIZE) + (maxBufferedIntBlocks * IntBlockPool.INT_BLOCK_SIZE * RamUsageEstimator.NUM_BYTES_INT) <= maxBufferedBytes;
+    final int maxBufferedByteBlocks = (int)((maxReusedBytes/2) / ByteBlockPool.BYTE_BLOCK_SIZE );
+    final int maxBufferedIntBlocks = (int) ((maxReusedBytes - (maxBufferedByteBlocks*ByteBlockPool.BYTE_BLOCK_SIZE))/(IntBlockPool.INT_BLOCK_SIZE * RamUsageEstimator.NUM_BYTES_INT));
+    assert (maxBufferedByteBlocks * ByteBlockPool.BYTE_BLOCK_SIZE) + (maxBufferedIntBlocks * IntBlockPool.INT_BLOCK_SIZE * RamUsageEstimator.NUM_BYTES_INT) <= maxReusedBytes;
     byteBlockPool = new ByteBlockPool(new RecyclingByteBlockAllocator(ByteBlockPool.BYTE_BLOCK_SIZE, maxBufferedByteBlocks, bytesUsed));
     intBlockPool = new IntBlockPool(new RecyclingIntBlockAllocator(IntBlockPool.INT_BLOCK_SIZE, maxBufferedIntBlocks, bytesUsed));
     postingsWriter = new SliceWriter(intBlockPool);
@@ -401,7 +401,7 @@ public class MemoryIndex {
 
       if (!fieldInfos.containsKey(fieldName)) {
         fieldInfos.put(fieldName, 
-            new FieldInfo(fieldName, true, fieldInfos.size(), false, false, false, IndexOptions.DOCS_AND_FREQS_AND_POSITIONS, null, null, null));
+            new FieldInfo(fieldName, true, fieldInfos.size(), false, false, false, this.storeOffsets ? IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS : IndexOptions.DOCS_AND_FREQS_AND_POSITIONS , null, null, null));
       }
       TermToBytesRefAttribute termAtt = stream.getAttribute(TermToBytesRefAttribute.class);
       PositionIncrementAttribute posIncrAttribute = stream.addAttribute(PositionIncrementAttribute.class);
@@ -1121,6 +1121,8 @@ public class MemoryIndex {
     
     @Override
     public DocValues normValues(String field) {
+      if (fieldInfos.get(field).omitsNorms())
+        return null;
       DocValues norms = cachedNormValues;
       Similarity sim = getSimilarity();
       if (!field.equals(cachedFieldName) || sim != cachedSimilarity) { // not cached?
@@ -1150,8 +1152,8 @@ public class MemoryIndex {
     this.fieldInfos.clear();
     this.fields.clear();
     this.sortedFields = null;
-    byteBlockPool.reset(false, true); // no need to 0-fill the buffers
-    intBlockPool.reset(true, true); // here must must 0-fill since we use slices
+    byteBlockPool.reset(false, false); // no need to 0-fill the buffers
+    intBlockPool.reset(true, false); // here must must 0-fill since we use slices
   }
   
   private static final class SliceByteStartArray extends DirectBytesStartArray {
