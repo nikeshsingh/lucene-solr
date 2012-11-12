@@ -21,6 +21,11 @@ import java.util.Iterator;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
+import org.apache.lucene.util.ArrayUtil;
+import org.apache.lucene.util.IntBlockPool;
+import org.apache.lucene.util.IntBlockPool.SliceWriter;
+import org.apache.lucene.util.IntsRef;
+
 /**
  * Class to construct DFAs that match a word within some edit distance.
  * <p>
@@ -42,7 +47,7 @@ public class LevenshteinAutomata {
   /* the ranges outside of alphabet */
   final int rangeLower[];
   final int rangeUpper[];
-  int numRanges = 0;
+  final int numRanges;
   
   ParametricDescription descriptions[]; 
   
@@ -81,6 +86,7 @@ public class LevenshteinAutomata {
     // calculate the unicode range intervals that exclude the alphabet
     // these are the ranges for all unicode characters not in the alphabet
     int lower = 0;
+    int numRanges = 0;
     for (int i = 0; i < alphabet.length; i++) {
       int higher = alphabet[i];
       if (higher > lower) {
@@ -96,7 +102,7 @@ public class LevenshteinAutomata {
       rangeUpper[numRanges] = alphaMax;
       numRanges++;
     }
-
+    this.numRanges = numRanges;
     descriptions = new ParametricDescription[] {
         null, /* for n=0, we do not need to go through the trouble */
         withTranspositions ? new Lev1TParametricDescription(word.length) : new Lev1ParametricDescription(word.length),
@@ -180,26 +186,27 @@ public class LevenshteinAutomata {
   }
   
   
-  public Automaton toRunAutomaton(int n) {
+  public CompiledAutomaton toRunAutomaton(IntsRef prefix, int n) {
     if (n == 0) {
-      return BasicAutomata.makeString(word, 0, word.length);
+      if (prefix == null || prefix.length == 0) {
+        return new CompiledAutomaton(BasicAutomata.makeString(word, 0, word.length),  true, false);
+      }
+      return new CompiledAutomaton(BasicAutomata.makeString(prefix.ints, prefix.offset, prefix.length).
+          concatenate(BasicAutomata.makeString(word, 0, word.length)), true, false);
     }
     
     if (n >= descriptions.length)
       return null;
-    
+    final int[] transitionBuffer = new int[(alphabet.length + numRanges) * 3];
+    int transitionUpTo = 0;
     final int range = 2*n+1;
     ParametricDescription description = descriptions[n];
     // the number of states is based on the length of the word and n
-    State states[] = new State[description.size()];
+    SliceTransitionBuilder builder = new SliceTransitionBuilder(description.size());
     // create all states, and mark as accept states if appropriate
-    for (int i = 0; i < states.length; i++) {
-      states[i] = new State();
-      states[i].number = i;
-      states[i].setAccept(description.isAccept(i));
-    }
+    final int numInitStates = description.size();
     // create transitions from state to state
-    for (int k = 0; k < states.length; k++) {
+    for (int k = 0; k < numInitStates; k++) {
       final int xpos = description.getPosition(k);
       if (xpos < 0)
         continue;
@@ -210,30 +217,130 @@ public class LevenshteinAutomata {
         // get the characteristic vector at this position wrt ch
         final int cvec = getVector(ch, xpos, end);
         int dest = description.transition(k, xpos, cvec);
-        if (dest >= 0)
-          states[k].addTransition(new Transition(ch, states[dest]));
+        if (dest >= 0) {
+          transitionBuffer[transitionUpTo++] = ch;
+          transitionBuffer[transitionUpTo++] = ch;
+          transitionBuffer[transitionUpTo++] = dest;
+        }
       }
       // add transitions for all other chars in unicode
       // by definition, their characteristic vectors are always 0,
       // because they do not exist in the input string.
       int dest = description.transition(k, xpos, 0); // by definition
-      if (dest >= 0)
-        for (int r = 0; r < numRanges; r++)
-          states[k].addTransition(new Transition(rangeLower[r], rangeUpper[r], states[dest]));      
+      if (dest >= 0) {
+        for (int r = 0; r < numRanges; r++) {
+          transitionBuffer[transitionUpTo++] = rangeLower[r];
+          transitionBuffer[transitionUpTo++] = rangeUpper[r];
+          transitionBuffer[transitionUpTo++] = dest;
+        }
+      }
+      builder.addBuffer(k, transitionBuffer, transitionUpTo);
+      transitionUpTo = 0;
+      
+    }
+    SlicedTransitions slicedTransitions = builder.toSlicedTransitions();
+    boolean[] isAccept = new boolean[description.size()];
+    for (int i = 0; i < isAccept.length; i++) {
+      isAccept[i] = description.isAccept(i);
     }
 
-    Automaton a = new Automaton(states[0]);
-    a.setDeterministic(true);
-    // we create some useless unconnected states, and its a net-win overall to remove these,
-    // as well as to combine any adjacent transitions (it makes later algorithms more efficient).
-    // so, while we could set our numberedStates here, its actually best not to, and instead to
-    // force a traversal in reduce, pruning the unconnected states while we combine adjacent transitions.
-    //a.setNumberedStates(states);
-    a.reduce();
-    // we need not trim transitions to dead states, as they are not created.
-    //a.restoreInvariant();
-    return a;
+    
+    Automaton automaton = builder.toAutomaton(isAccept);
+    automaton.setDeterministic(true);
+    if (prefix != null) {
+      automaton = new UTF32ToUTF8().convert(BasicAutomata.makeString(prefix.ints, prefix.offset, prefix.length)).concatenate(automaton);
+      automaton.setDeterministic(true);
+    }
+    ByteRunAutomaton runAutomaton = new ByteRunAutomaton(automaton, true);
+    return new CompiledAutomaton(automaton.getSlicedTransitions(), runAutomaton);
   }
+  
+  private static class SliceTransitionBuilder {
+    UTF32ToUTF8.Transitions utf8Transitions =  new UTF32ToUTF8.Transitions();
+    UTF32ToUTF8 utf32ToUTF8 = new UTF32ToUTF8();
+    final IntBlockPool pool = new IntBlockPool();
+    IntBlockPool.SliceWriter writer = new IntBlockPool.SliceWriter(pool);
+    int[] stateStart;
+    int[] stateEnd;
+    int numStates;
+    int numTransitions;
+    
+    public SliceTransitionBuilder(int numUTF32States) {
+      stateStart = new int[numUTF32States];
+      stateEnd = new int[numUTF32States];
+      numStates = numUTF32States;
+      writer.startNewSlice();// ignore first slice to safe a fill 
+    }
+    
+    public void addBuffer(int start, int[] transitionBuffer, int transitionUpTo) {
+      for (int i = 0; i < transitionUpTo; i++) {
+        int min = transitionBuffer[i++];
+        int max = transitionBuffer[i++];
+        int transDest = transitionBuffer[i];
+        utf8Transitions.reset(numStates);
+        utf32ToUTF8.convertOneEdge(start, transDest, min, max, utf8Transitions);
+        stateStart = ArrayUtil.grow(stateStart, utf8Transitions.addedStates + utf8Transitions.stateCounter);
+        stateEnd = ArrayUtil.grow(stateEnd, utf8Transitions.addedStates + utf8Transitions.stateCounter);
+        for (int j = 0; j < utf8Transitions.offset; j++) {
+            int fromState = utf8Transitions.transitions[j++];
+            int toState = utf8Transitions.transitions[j++];
+            int minT = utf8Transitions.transitions[j++];
+            int maxT = utf8Transitions.transitions[j];
+            if (stateStart[fromState] <= 0) {
+              stateEnd[fromState] = stateStart[fromState] = writer.startNewSlice();
+            } else {
+              writer.reset(stateEnd[fromState]);
+            }
+            writer.writeInt(minT);
+            writer.writeInt(maxT);
+            writer.writeInt(toState);
+            numTransitions++;
+            stateEnd[fromState] = writer.getCurrentOffset();
+        }
+        numStates += utf8Transitions.addedStates;
+      }
+    }
+    
+    public SlicedTransitions toSlicedTransitions() {
+      final int[] from = new int[numStates+1];
+      final int[] transitions = new int[numTransitions*3];
+      IntBlockPool.SliceReader reader = new IntBlockPool.SliceReader(pool);
+      int transIndex = 0;
+      for (int i = 0; i < numStates; i++) {
+        reader.reset(stateStart[i], stateEnd[i]);
+        from[i] = transIndex;
+        while(!reader.endOfSlice()) {
+          transitions[transIndex++] = reader.readInt();
+          transitions[transIndex++] = reader.readInt();
+          transitions[transIndex++] = reader.readInt();
+        }
+      }
+      from[from.length-1] = transIndex;
+      
+      return new SlicedTransitions(from, transitions, numStates);
+    }
+    
+    public Automaton toAutomaton(boolean[] accept) {
+      State[] states = new State[numStates];
+      IntBlockPool.SliceReader reader = new IntBlockPool.SliceReader(pool);
+      for (int i = 0; i < states.length; i++) {
+        states[i] = new State();
+        if (i < accept.length) {
+          states[i].setAccept(accept[i]);
+        }
+      }
+      for (int i = 0; i < numStates; i++) {
+        State s = states[i];
+        reader.reset(stateStart[i], stateEnd[i]);
+        while(!reader.endOfSlice()) {
+          s.addTransition(new Transition(reader.readInt(), reader.readInt(), states[reader.readInt()]));
+        }
+      }
+      return new Automaton(states[0]);
+    }
+    
+  }
+  
   
   /**
    * Get the characteristic vector <code>X(x, V)</code> 

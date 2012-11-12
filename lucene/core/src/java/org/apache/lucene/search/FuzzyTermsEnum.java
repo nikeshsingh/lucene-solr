@@ -34,6 +34,7 @@ import org.apache.lucene.util.AttributeImpl;
 import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util.automaton.Automaton;
 import org.apache.lucene.util.automaton.BasicAutomata;
@@ -165,21 +166,15 @@ public class FuzzyTermsEnum extends TermsEnum {
   private List<CompiledAutomaton> initAutomata(int maxDistance) {
     final List<CompiledAutomaton> runAutomata = dfaAtt.automata();
     //System.out.println("cached automata size: " + runAutomata.size());
+    IntsRef prefix = realPrefixLength > 0 ? new IntsRef(termText, 0, realPrefixLength) : null;
     if (runAutomata.size() <= maxDistance && 
         maxDistance <= LevenshteinAutomata.MAXIMUM_SUPPORTED_DISTANCE) {
       LevenshteinAutomata builder = 
         new LevenshteinAutomata(UnicodeUtil.newString(termText, realPrefixLength, termText.length - realPrefixLength), transpositions);
 
       for (int i = runAutomata.size(); i <= maxDistance; i++) {
-        Automaton a = builder.toAutomaton(i);
-        //System.out.println("compute automaton n=" + i);
-        // constant prefix
-        if (realPrefixLength > 0) {
-          Automaton prefix = BasicAutomata.makeString(
-            UnicodeUtil.newString(termText, 0, realPrefixLength));
-          a = BasicOperations.concatenate(prefix, a);
-        }
-        runAutomata.add(new CompiledAutomaton(a, true, false));
+        CompiledAutomaton automata = builder.toRunAutomaton(prefix, i);
+        runAutomata.add(automata);
       }
     }
     return runAutomata;

@@ -357,7 +357,7 @@ public final class UTF32ToUTF8 {
     
     public void addTransition(int start, int end, int min, int max) {
       assert start < stateCounter + addedStates : "start: " + start + " current: " + (stateCounter + addedStates);
-      assert end < stateCounter + addedStates;
+      assert end < stateCounter + addedStates : "end: " + end + " expected: " + (stateCounter + addedStates);
       if (transitions.length <= offset+4) {
         transitions = ArrayUtil.grow(transitions, offset+4);
       }
