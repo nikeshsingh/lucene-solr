@@ -110,6 +110,39 @@ public abstract class RunAutomaton {
   final int getCharClass(int c) {
     return SpecialOperations.findIndex(c, points);
   }
+  
+  //nocommit
+  protected  RunAutomaton(SlicedTransitions slices, int maxInterval, boolean tableize) {
+    this.maxInterval = maxInterval;
+    points = slices.getPoints();
+    initial = 0;
+    size = slices.numStates;
+    accept = slices.accept;
+    transitions = new int[size * points.length];
+    for (int n = 0; n < size * points.length; n++)
+      transitions[n] = -1;
+    for (int i = 0; i < size; i++) {
+      for (int c = 0; c < points.length; c++) {
+        int state = slices.step(i, points[c]);
+        if (state >=0 ) transitions[i * points.length + c] = state;
+      }
+    }
+    /*
+     * Set alphabet table for optimal run performance.
+     */
+    if (tableize) {
+      classmap = new int[maxInterval + 1];
+      int i = 0;
+      for (int j = 0; j <= maxInterval; j++) {
+        if (i + 1 < points.length && j == points[i + 1])
+          i++;
+        classmap[j] = i;
+      }
+    } else {
+      classmap = null;
+    }
+    
+  }
 
   /**
    * Constructs a new <code>RunAutomaton</code> from a deterministic

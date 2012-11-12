@@ -17,6 +17,7 @@ package org.apache.lucene.util.automaton;
  * limitations under the License.
  */
 
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.SortedSet;
 import java.util.TreeSet;
@@ -238,21 +239,48 @@ public class LevenshteinAutomata {
       transitionUpTo = 0;
       
     }
-    SlicedTransitions slicedTransitions = builder.toSlicedTransitions();
-    boolean[] isAccept = new boolean[description.size()];
-    for (int i = 0; i < isAccept.length; i++) {
+   
+   
+//    SlicedTransitions slicedTransitions = builder.toSlicedTransitions(prefix, description);
+//    ByteRunAutomaton runAutomaton = new ByteRunAutomaton(slicedTransitions);
+//    return new CompiledAutomaton(slicedTransitions, runAutomaton);
+    
+    
+    boolean[] isAccept = new boolean[builder.numStates];
+    int limit = description.size();
+    for (int i = 0; i < limit; i++) {
       isAccept[i] = description.isAccept(i);
     }
-
-    
     Automaton automaton = builder.toAutomaton(isAccept);
     automaton.setDeterministic(true);
     if (prefix != null) {
       automaton = new UTF32ToUTF8().convert(BasicAutomata.makeString(prefix.ints, prefix.offset, prefix.length)).concatenate(automaton);
       automaton.setDeterministic(true);
     }
-    ByteRunAutomaton runAutomaton = new ByteRunAutomaton(automaton, true);
-    return new CompiledAutomaton(automaton.getSlicedTransitions(), runAutomaton);
+    return new CompiledAutomaton(automaton.getSlicedTransitions(), new ByteRunAutomaton(automaton, true));
+  }
+  
+  public static void main(String[] args) {
+    IntsRef prefix = toUTF32("落ちる".toCharArray(), 0, "落ちる".toCharArray().length, new IntsRef());
+    SlicedTransitions prefixTransitions = new UTF32ToUTF8().convert(BasicAutomata.makeString(prefix.ints, prefix.offset, prefix.length)).getSlicedTransitions();
+    System.out.println(Arrays.toString(prefixTransitions.transitions));
+    System.out.println(Arrays.toString(prefixTransitions.accept));
+  }
+  
+  
+  public static IntsRef toUTF32(char[] s, int offset, int length, IntsRef scratch) {
+    int charIdx = offset;
+    int intIdx = 0;
+    final int charLimit = offset + length;
+    while(charIdx < charLimit) {
+      scratch.grow(intIdx+1);
+      final int utf32 = Character.codePointAt(s, charIdx);
+      scratch.ints[intIdx] = utf32;
+      charIdx += Character.charCount(utf32);
+      intIdx++;
+    }
+    scratch.length = intIdx;
+    return scratch;
   }
   
   private static class SliceTransitionBuilder {
@@ -273,6 +301,7 @@ public class LevenshteinAutomata {
     }
     
     public void addBuffer(int start, int[] transitionBuffer, int transitionUpTo) {
+      // TODO can we a.reduce() this on the fly?
       for (int i = 0; i < transitionUpTo; i++) {
         int min = transitionBuffer[i++];
         int max = transitionBuffer[i++];
@@ -301,23 +330,37 @@ public class LevenshteinAutomata {
       }
     }
     
-    public SlicedTransitions toSlicedTransitions() {
-      final int[] from = new int[numStates+1];
-      final int[] transitions = new int[numTransitions*3];
+    public SlicedTransitions toSlicedTransitions(IntsRef prefix, ParametricDescription description) {
+      // TODO do this on the fly
+      SlicedTransitions prefixTransitions = this.utf32ToUTF8.convert(BasicAutomata.makeString(prefix.ints, prefix.offset, prefix.length)).getSlicedTransitions();
+      int numPrefixStates = prefixTransitions.numStates;
+      int numPrefixTransitions = prefixTransitions.transitions.length;
+      
+      final int[] from = new int[numPrefixStates + numStates+1];
+      final int[] transitions = new int[numPrefixTransitions + numTransitions*3];
       IntBlockPool.SliceReader reader = new IntBlockPool.SliceReader(pool);
       int transIndex = 0;
+      int descLimit = description.size();
+      boolean[] accept = new boolean[numPrefixStates + numStates];
+      for (int i = 0; i < numPrefixStates; i++) {
+        
+      }
+      
       for (int i = 0; i < numStates; i++) {
+        if (i < descLimit) {
+          accept[numPrefixStates+i] = description.isAccept(i);
+        }
         reader.reset(stateStart[i], stateEnd[i]);
         from[i] = transIndex;
         while(!reader.endOfSlice()) {
           transitions[transIndex++] = reader.readInt();
           transitions[transIndex++] = reader.readInt();
-          transitions[transIndex++] = reader.readInt();
+          transitions[transIndex++] = numPrefixStates+reader.readInt();
         }
       }
       from[from.length-1] = transIndex;
       
-      return new SlicedTransitions(from, transitions, numStates);
+      return new SlicedTransitions(from, transitions, numStates, accept);
     }
     
     public Automaton toAutomaton(boolean[] accept) {

@@ -1,7 +1,8 @@
 package org.apache.lucene.util.automaton;
 
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.SorterTemplate;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
@@ -25,18 +26,47 @@ public class SlicedTransitions {
   public final int[] from;
   public final int[] transitions;
   public final int numStates;
+  public final boolean[] accept;
   
-  public SlicedTransitions(int[] from, int[] transitions, int numStates) {
-    super();
+  public SlicedTransitions(int[] from, int[] transitions, int numStates, boolean[] accept) {
+    this.accept = accept;
     this.from = from;
     this.transitions = transitions;
     this.numStates = numStates;
   }
+  
+  public SlicedTransitions(int[] from, int[] transitions, int numStates) {
+    this(from, transitions, numStates, null);
+  }
 
+  public int[] getPoints() {
+    // nocommit maybe we can precompute this?
+    Set<Integer> pointset = new HashSet<Integer>();
+    pointset.add(Character.MIN_CODE_POINT);
+    for (int i = 0; i < numStates; i++) {
+      int end = from[i+1];
+      for (int j=from[i];j<end;j+=3) {
+        pointset.add(transitions[j]);
+        if (transitions[j+1] < Character.MAX_CODE_POINT) pointset.add((transitions[j+1]+1));
 
-
-  public int getTransitionsLength(int state) {
-    return from[state+1] - from[state];   
+      }
+    }
+    int[] points = new int[pointset.size()];
+    int n = 0;
+    for (Integer m : pointset)
+      points[n++] = m;
+    Arrays.sort(points);
+    return points;
+  }
+  
+  public int step(int state, int c) {
+    assert state < from.length-1;
+    assert c >= 0;
+    int end = from[state+1];
+    for (int i=from[state];i<end;i+=3) {
+      if (transitions[i] <= c && c <= transitions[i+1]) return transitions[i+2];
+    }
+    return -1;
   }
   
 }

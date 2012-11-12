@@ -30,6 +30,11 @@ public class ByteRunAutomaton extends RunAutomaton {
   public ByteRunAutomaton(Automaton a, boolean utf8) {
     super(utf8 ? a : new UTF32ToUTF8().convert(a), 256, true);
   }
+  
+  // nocommit
+  ByteRunAutomaton(SlicedTransitions slices) {
+    super(slices, 256, true);
+  }
 
   /**
    * Returns true if the given byte array is accepted by this automaton

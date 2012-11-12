@@ -777,6 +777,7 @@ public class Automaton implements Cloneable {
   public SlicedTransitions getSlicedTransitions() {
     final State[] states = getNumberedStates();
     final int[] stateOffsets = new int[states.length+1];
+    boolean[] accept = new boolean[states.length];
     int numTrans = 0;
     for (State s : states) {
       s.sortTransitions(Transition.CompareByMinMaxThenDest);
@@ -788,6 +789,7 @@ public class Automaton implements Cloneable {
     int offset = 0;
     for (int i = 0; i < states.length; i++) {
       State state = states[i];
+      accept[i] = state.isAccept();
       stateOffsets[i] = offset;
       Transition[] trans = state.transitionsArray;
       for (int j = 0; j < trans.length; j++) {
@@ -797,6 +799,6 @@ public class Automaton implements Cloneable {
       }
     }
     stateOffsets[stateOffsets.length-1] = offset;
-    return new SlicedTransitions(stateOffsets, transitions, states.length);
+    return new SlicedTransitions(stateOffsets, transitions, states.length, accept);
   }
 }
