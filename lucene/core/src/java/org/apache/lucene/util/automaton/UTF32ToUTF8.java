@@ -129,49 +129,48 @@ public final class UTF32ToUTF8 {
   private final UTF8Sequence tmpUTF8b = new UTF8Sequence();
 
   // Builds necessary utf8 edges between start & end
-  void convertOneEdge(State start, State end, int startCodePoint, int endCodePoint) {
+  void convertOneEdge(int start, int end, int startCodePoint, int endCodePoint, Transitions transitions) {
     startUTF8.set(startCodePoint);
     endUTF8.set(endCodePoint);
     //System.out.println("start = " + startUTF8);
     //System.out.println("  end = " + endUTF8);
-    build(start, end, startUTF8, endUTF8, 0);
+    build(start, end, startUTF8, endUTF8, 0, transitions);
   }
 
-  private void build(State start, State end, UTF8Sequence startUTF8, UTF8Sequence endUTF8, int upto) {
+  private void build(int start, int end, UTF8Sequence startUTF8, UTF8Sequence endUTF8, int upto, Transitions transitions) {
 
     // Break into start, middle, end:
     if (startUTF8.byteAt(upto) == endUTF8.byteAt(upto)) {
       // Degen case: lead with the same byte:
       if (upto == startUTF8.len-1 && upto == endUTF8.len-1) {
         // Super degen: just single edge, one UTF8 byte:
-        start.addTransition(new Transition(startUTF8.byteAt(upto), endUTF8.byteAt(upto), end));
+        transitions.addTransition(start, end, startUTF8.byteAt(upto), endUTF8.byteAt(upto));
         return;
       } else {
         assert startUTF8.len > upto+1;
         assert endUTF8.len > upto+1;
-        State n = newUTF8State();
-
+        
         // Single value leading edge
-        start.addTransition(new Transition(startUTF8.byteAt(upto), n));  // type=single
+        int n = transitions.addTransition(start, startUTF8.byteAt(upto), endUTF8.byteAt(upto));  // type=single
 
         // Recurse for the rest
-        build(n, end, startUTF8, endUTF8, 1+upto);
+        build(n, end, startUTF8, endUTF8, 1+upto, transitions);
       }
     } else if (startUTF8.len == endUTF8.len) {
       if (upto == startUTF8.len-1) {
-        start.addTransition(new Transition(startUTF8.byteAt(upto), endUTF8.byteAt(upto), end));        // type=startend
+        transitions.addTransition(start, end, startUTF8.byteAt(upto), endUTF8.byteAt(upto));        // type=startend
       } else {
-        start(start, end, startUTF8, upto, false);
+        start(start, end, startUTF8, upto, false, transitions);
         if (endUTF8.byteAt(upto) - startUTF8.byteAt(upto) > 1) {
           // There is a middle
-          all(start, end, startUTF8.byteAt(upto)+1, endUTF8.byteAt(upto)-1, startUTF8.len-upto-1);
+          all(start, end, startUTF8.byteAt(upto)+1, endUTF8.byteAt(upto)-1, startUTF8.len-upto-1, transitions);
         }
-        end(start, end, endUTF8, upto, false);
+        end(start, end, endUTF8, upto, false, transitions);
       }
     } else {
 
       // start
-      start(start, end, startUTF8, upto, true);
+      start(start, end, startUTF8, upto, true, transitions);
 
       // possibly middle, spanning multiple num bytes
       int byteCount = 1+startUTF8.len-upto;
@@ -184,34 +183,33 @@ public final class UTF32ToUTF8 {
         all(start, end,
             tmpUTF8a.byteAt(0),
             tmpUTF8b.byteAt(0),
-            tmpUTF8a.len - 1);
+            tmpUTF8a.len - 1, transitions);
         byteCount++;
       }
 
       // end
-      end(start, end, endUTF8, upto, true);
+      end(start, end, endUTF8, upto, true, transitions);
     }
   }
 
-  private void start(State start, State end, UTF8Sequence utf8, int upto, boolean doAll) {
+  private void start(int start, int end, UTF8Sequence utf8, int upto, boolean doAll, Transitions transitions) {
     if (upto == utf8.len-1) {
       // Done recursing
-      start.addTransition(new Transition(utf8.byteAt(upto), utf8.byteAt(upto) | MASKS[utf8.numBits(upto)-1], end));  // type=start
+      transitions.addTransition(start, end, utf8.byteAt(upto), utf8.byteAt(upto) | MASKS[utf8.numBits(upto)-1]);  // type=start
     } else {
-      State n = newUTF8State();
-      start.addTransition(new Transition(utf8.byteAt(upto), n));  // type=start
-      start(n, end, utf8, 1+upto, true);
+      int n = transitions.addTransition(start, utf8.byteAt(upto), utf8.byteAt(upto));// type=start
+      start(n, end, utf8, 1+upto, true, transitions);
       int endCode = utf8.byteAt(upto) | MASKS[utf8.numBits(upto)-1];
       if (doAll && utf8.byteAt(upto) != endCode) {
-        all(start, end, utf8.byteAt(upto)+1, endCode, utf8.len-upto-1);
+        all(start, end, utf8.byteAt(upto)+1, endCode, utf8.len-upto-1, transitions);
       }
     }
   }
 
-  private void end(State start, State end, UTF8Sequence utf8, int upto, boolean doAll) {
+  private void end(int start, int end, UTF8Sequence utf8, int upto, boolean doAll, Transitions transitions) {
     if (upto == utf8.len-1) {
       // Done recursing
-      start.addTransition(new Transition(utf8.byteAt(upto) & (~MASKS[utf8.numBits(upto)-1]), utf8.byteAt(upto), end));   // type=end
+      transitions.addTransition(start, end, utf8.byteAt(upto) & (~MASKS[utf8.numBits(upto)-1]), utf8.byteAt(upto)); // type=end
     } else {
       final int startCode;
       if (utf8.numBits(upto) == 5) {
@@ -223,27 +221,23 @@ public final class UTF32ToUTF8 {
         startCode = utf8.byteAt(upto) & (~MASKS[utf8.numBits(upto)-1]);
       }
       if (doAll && utf8.byteAt(upto) != startCode) {
-        all(start, end, startCode, utf8.byteAt(upto)-1, utf8.len-upto-1);
+        all(start, end, startCode, utf8.byteAt(upto)-1, utf8.len-upto-1, transitions);
       }
-      State n = newUTF8State();
-      start.addTransition(new Transition(utf8.byteAt(upto), n));  // type=end
-      end(n, end, utf8, 1+upto, true);
+      int n = transitions.addTransition(start, utf8.byteAt(upto), utf8.byteAt(upto)); // type=end
+      end(n, end, utf8, 1+upto, true, transitions);
     }
   }
 
-  private void all(State start, State end, int startCode, int endCode, int left) {
+  private void all(int start, int end, int startCode, int endCode, int left, Transitions transitions) {
     if (left == 0) {
-      start.addTransition(new Transition(startCode, endCode, end));  // type=all
+      transitions.addTransition(start, end, startCode, endCode);  // type=all
     } else {
-      State lastN = newUTF8State();
-      start.addTransition(new Transition(startCode, endCode, lastN));  // type=all
+      int lastN = transitions.addTransition(start, startCode, endCode); // type=all
       while (left > 1) {
-        State n = newUTF8State();
-        lastN.addTransition(new Transition(128, 191, n));  // type=all*
+        lastN = transitions.addTransition(lastN, 128, 191); // type=all*
         left--;
-        lastN = n;
       }
-      lastN.addTransition(new Transition(128, 191, end)); // type = all*
+      transitions.addTransition(lastN, end, 128, 191); // type = all*
     }
   }
 
@@ -278,7 +272,7 @@ public final class UTF32ToUTF8 {
     utf8State.setAccept(utf32State.isAccept());
 
     map[utf32State.number] = utf8State;
-    
+    Transitions trans = new Transitions();
     while(pending.size() != 0) {
       utf32State = pending.remove(pending.size()-1);
       utf8State = map[utf32State.number];
@@ -292,7 +286,9 @@ public final class UTF32ToUTF8 {
           map[destUTF32.number] = destUTF8;
           pending.add(destUTF32);
         }
-        convertOneEdge(utf8State, destUTF8, t.min, t.max);
+        trans.reset(utf8StateCount);
+        convertOneEdge(utf8State.number, destUTF8.number, t.min, t.max, trans);
+        convertTransitions(trans);
       }
     }
 
@@ -312,5 +308,64 @@ public final class UTF32ToUTF8 {
     s.number = utf8StateCount;
     utf8StateCount++;
     return s;
+  }
+  
+  private void convertTransitions(Transitions trans) {
+    int addedStates = trans.addedStates;
+    if (utf8StateCount+addedStates >=  utf8States.length) {
+      final State[] newArray = new State[ArrayUtil.oversize(addedStates+utf8StateCount, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
+      System.arraycopy(utf8States, 0, newArray, 0, utf8StateCount);
+      utf8States = newArray;
+    }
+    for (int i = 0; i < addedStates; i++) {
+      State s = new State();
+      utf8States[utf8StateCount] = s;
+      s.number = utf8StateCount;
+      utf8StateCount++;  
+    }
+    for (int i = 0; i < trans.offset; i++) {
+      State state = utf8States[trans.transitions[i++]];
+      State end = utf8States[trans.transitions[i++]];
+      state.addTransition(new Transition(trans.transitions[i++], trans.transitions[i], end));
+    }
+    
+  }
+  
+  static class Transitions {
+    int[] transitions = new int[4];
+    int stateCounter;
+    int addedStates;
+    int offset;
+    
+    public void reset(int counter) {
+      this.stateCounter = counter;
+      addedStates = 0;
+      offset = 0;
+    }
+    
+    public int addTransition(int start, int min, int max) {
+      assert start < stateCounter + addedStates;
+      if (transitions.length <= offset+4) {
+        transitions = ArrayUtil.grow(transitions, offset+4);
+      }
+      transitions[offset++] = start;
+      transitions[offset++] = addedStates+stateCounter;
+      transitions[offset++] = min;
+      transitions[offset++] = max;
+      return (addedStates++)+stateCounter;
+    }
+    
+    public void addTransition(int start, int end, int min, int max) {
+      assert start < stateCounter + addedStates : "start: " + start + " current: " + (stateCounter + addedStates);
+      assert end < stateCounter + addedStates;
+      if (transitions.length <= offset+4) {
+        transitions = ArrayUtil.grow(transitions, offset+4);
+      }
+      transitions[offset++] = start;
+      transitions[offset++] = end;
+      transitions[offset++] = min;
+      transitions[offset++] = max;
+      
+    }
   }
 }
