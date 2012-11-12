@@ -72,7 +72,8 @@ public class CompiledAutomaton {
    * {@link #runAutomaton}. 
    * Only valid for {@link AUTOMATON_TYPE#NORMAL}.
    */
-  public final Transition[][] sortedTransitions;
+  //nocommit - document....
+  public final SlicedTransitions slicedTransitions;
   /**
    * Shared common suffix accepted by the automaton. Only valid
    * for {@link AUTOMATON_TYPE#NORMAL}, and only when the
@@ -102,7 +103,7 @@ public class CompiledAutomaton {
         term = null;
         commonSuffixRef = null;
         runAutomaton = null;
-        sortedTransitions = null;
+        slicedTransitions = null;
         this.finite = null;
         return;
       } else if (BasicOperations.isTotal(automaton)) {
@@ -111,7 +112,7 @@ public class CompiledAutomaton {
         term = null;
         commonSuffixRef = null;
         runAutomaton = null;
-        sortedTransitions = null;
+        slicedTransitions = null;
         this.finite = null;
         return;
       } else {
@@ -136,7 +137,7 @@ public class CompiledAutomaton {
           term = new BytesRef(singleton);
           commonSuffixRef = null;
           runAutomaton = null;
-          sortedTransitions = null;
+          slicedTransitions = null;
           this.finite = null;
           return;
         } else if (BasicOperations.sameLanguage(automaton, BasicOperations.concatenate(
@@ -146,7 +147,7 @@ public class CompiledAutomaton {
           term = new BytesRef(commonPrefix);
           commonSuffixRef = null;
           runAutomaton = null;
-          sortedTransitions = null;
+          slicedTransitions = null;
           this.finite = null;
           return;
         }
@@ -167,7 +168,16 @@ public class CompiledAutomaton {
       commonSuffixRef = SpecialOperations.getCommonSuffixBytesRef(utf8);
     }
     runAutomaton = new ByteRunAutomaton(utf8, true);
-    sortedTransitions = utf8.getSortedTransitions();
+    slicedTransitions = utf8.getSlicedTransitions();
+  }
+  
+  CompiledAutomaton(SlicedTransitions transitions, ByteRunAutomaton runAutomaton) {
+    this.runAutomaton = runAutomaton;
+    slicedTransitions = transitions;
+    commonSuffixRef = null;
+    this.finite = true;
+    type = AUTOMATON_TYPE.NORMAL;
+    term = null;
   }
   
   //private static final boolean DEBUG = BlockTreeTermsWriter.DEBUG;
@@ -176,21 +186,23 @@ public class CompiledAutomaton {
 
     // Find biggest transition that's < label
     // TODO: use binary search here
-    Transition maxTransition = null;
-    for (Transition transition : sortedTransitions[state]) {
-      if (transition.min < leadLabel) {
-        maxTransition = transition;
-      }
+    int maxTransition = -1;
+    int offset = slicedTransitions.from[state];
+    int end = slicedTransitions.from[state+1];
+    for (int i = offset; i < end; i+=3) {
+      if (slicedTransitions.transitions[i] < leadLabel) {
+        maxTransition = i;
+      }      
     }
 
-    assert maxTransition != null;
+    assert maxTransition >= 0 ;
 
     // Append floorLabel
     final int floorLabel;
-    if (maxTransition.max > leadLabel-1) {
+    if (slicedTransitions.transitions[maxTransition+1] > leadLabel-1) {
       floorLabel = leadLabel-1;
     } else {
-      floorLabel = maxTransition.max;
+      floorLabel = slicedTransitions.transitions[maxTransition+1];
     }
     if (idx >= term.bytes.length) {
       term.grow(1+idx);
@@ -198,13 +210,14 @@ public class CompiledAutomaton {
     //if (DEBUG) System.out.println("  add floorLabel=" + (char) floorLabel + " idx=" + idx);
     term.bytes[idx] = (byte) floorLabel;
 
-    state = maxTransition.to.getNumber();
+    state = slicedTransitions.transitions[maxTransition+2];
     idx++;
 
     // Push down to last accept state
     while (true) {
-      Transition[] transitions = sortedTransitions[state];
-      if (transitions.length == 0) {
+      offset = slicedTransitions.from[state];
+      end = slicedTransitions.from[state+1];
+      if (offset == end) {
         assert runAutomaton.isAccept(state);
         term.length = idx;
         //if (DEBUG) System.out.println("  return " + term.utf8ToString());
@@ -212,14 +225,15 @@ public class CompiledAutomaton {
       } else {
         // We are pushing "top" -- so get last label of
         // last transition:
-        assert transitions.length != 0;
-        Transition lastTransition = transitions[transitions.length-1];
+        assert offset < end : "offset: " + offset + " end: " + end + " state: " + state + " numStates: " + slicedTransitions.numStates;
+        int lastMax = slicedTransitions.transitions[end-2];
+        int lastTo = slicedTransitions.transitions[end-1];
         if (idx >= term.bytes.length) {
           term.grow(1+idx);
         }
         //if (DEBUG) System.out.println("  push maxLabel=" + (char) lastTransition.max + " idx=" + idx);
-        term.bytes[idx] = (byte) lastTransition.max;
-        state = lastTransition.to.getNumber();
+        term.bytes[idx] = (byte) lastMax;
+        state = lastTo;
         idx++;
       }
     }
@@ -300,13 +314,14 @@ public class CompiledAutomaton {
         // Pop back to a state that has a transition
         // <= our label:
         while (true) {
-          Transition[] transitions = sortedTransitions[state];
-          if (transitions.length == 0) {
+          int offset = slicedTransitions.from[state];
+          int end = slicedTransitions.from[state+1];
+          if (offset == end) {
             assert runAutomaton.isAccept(state);
             output.length = idx;
             //if (DEBUG) System.out.println("  return " + output.utf8ToString());
             return output;
-          } else if (label-1 < transitions[0].min) {
+          } else if (label-1 < slicedTransitions.transitions[offset]) {
 
             if (runAutomaton.isAccept(state)) {
               output.length = idx;

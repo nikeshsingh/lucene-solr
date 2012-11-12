@@ -25,7 +25,7 @@ import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.util.automaton.ByteRunAutomaton;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
-import org.apache.lucene.util.automaton.Transition;
+import org.apache.lucene.util.automaton.SlicedTransitions;
 
 /**
  * A FilteredTermsEnum that enumerates terms based upon what is accepted by a
@@ -52,7 +52,7 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
   // true if the automaton accepts a finite language
   private final boolean finite;
   // array of sorted transitions for each state, indexed by state number
-  private final Transition[][] allTransitions;
+//  private final Transition[][] allTransitions;
   // for path tracking: each long records gen when we last
   // visited the state; we use gens to avoid having to clear
   private final long[] visited;
@@ -66,6 +66,7 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
   private boolean linear = false;
   private final BytesRef linearUpperBound = new BytesRef(10);
   private final Comparator<BytesRef> termComp;
+  private final SlicedTransitions slicedTransitions;
 
   /**
    * Construct an enumerator based upon an automaton, enumerating the specified
@@ -81,7 +82,7 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
     this.runAutomaton = compiled.runAutomaton;
     assert this.runAutomaton != null;
     this.commonSuffixRef = compiled.commonSuffixRef;
-    this.allTransitions = compiled.sortedTransitions;
+    this.slicedTransitions = compiled.slicedTransitions;
 
     // used for path tracking, where each bit is a numbered state.
     visited = new long[runAutomaton.getSize()];
@@ -142,11 +143,14 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
       state = runAutomaton.step(state, seekBytesRef.bytes[i] & 0xff);
       assert state >= 0: "state=" + state;
     }
-    for (int i = 0; i < allTransitions[state].length; i++) {
-      Transition t = allTransitions[state][i];
-      if (t.getMin() <= (seekBytesRef.bytes[position] & 0xff) && 
-          (seekBytesRef.bytes[position] & 0xff) <= t.getMax()) {
-        maxInterval = t.getMax();
+    int start = slicedTransitions.from[state];
+    int end = slicedTransitions.from[state+1];
+    for (int i = start; i < end; i++) {
+      final int min = slicedTransitions.transitions[i];
+      final int max = slicedTransitions.transitions[i+1];
+      if (min <= (seekBytesRef.bytes[position] & 0xff) && 
+          (seekBytesRef.bytes[position] & 0xff) <= max) {
+        maxInterval = max;
         break;
       }
     }
@@ -254,19 +258,21 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
     seekBytesRef.length = position;
     visited[state] = curGen;
 
-    Transition transitions[] = allTransitions[state];
+    int start = slicedTransitions.from[state];
+    int end = slicedTransitions.from[state+1];
 
     // find the minimal path (lexicographic order) that is >= c
     
-    for (int i = 0; i < transitions.length; i++) {
-      Transition transition = transitions[i];
-      if (transition.getMax() >= c) {
-        int nextChar = Math.max(c, transition.getMin());
+    for (int i = start; i < end; i+=3) {
+      final int max = slicedTransitions.transitions[i+1];
+      if (max >= c) {
+        final int min = slicedTransitions.transitions[i];
+        int nextChar = Math.max(c, min);
         // append either the next sequential char, or the minimum transition
         seekBytesRef.grow(seekBytesRef.length + 1);
         seekBytesRef.length++;
         seekBytesRef.bytes[seekBytesRef.length - 1] = (byte) nextChar;
-        state = transition.getDest().getNumber();
+        state = slicedTransitions.transitions[i+2];
         /* 
          * as long as is possible, continue down the minimal path in
          * lexicographic order. if a loop or accept state is encountered, stop.
@@ -278,13 +284,13 @@ class AutomatonTermsEnum extends FilteredTermsEnum {
            * so the below is ok, if it is not an accept state,
            * then there MUST be at least one transition.
            */
-          transition = allTransitions[state][0];
-          state = transition.getDest().getNumber();
+          int offset = slicedTransitions.from[state];
+          state = slicedTransitions.transitions[offset+2];
           
           // append the minimum transition
           seekBytesRef.grow(seekBytesRef.length + 1);
           seekBytesRef.length++;
-          seekBytesRef.bytes[seekBytesRef.length - 1] = (byte) transition.getMin();
+          seekBytesRef.bytes[seekBytesRef.length - 1] = (byte) slicedTransitions.transitions[offset];
           
           // we found a loop, record it for faster enumeration
           if (!finite && !linear && visited[state] == curGen) {

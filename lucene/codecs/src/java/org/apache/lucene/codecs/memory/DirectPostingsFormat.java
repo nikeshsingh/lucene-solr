@@ -46,6 +46,7 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
 import org.apache.lucene.util.automaton.RunAutomaton;
+import org.apache.lucene.util.automaton.SlicedTransitions;
 import org.apache.lucene.util.automaton.Transition;
 
 // TODO: 
@@ -861,11 +862,13 @@ public final class DirectPostingsFormat extends PostingsFormat {
       private final CompiledAutomaton compiledAutomaton;
       private int termOrd;
       private final BytesRef scratch = new BytesRef();
+      private final SlicedTransitions slicedTransitions;
 
       private final class State {
         int changeOrd;
         int state;
-        Transition[] transitions;
+        int transitionsStart;
+        int transitionsEnd;
         int transitionUpto;
         int transitionMax;
         int transitionMin;
@@ -879,11 +882,13 @@ public final class DirectPostingsFormat extends PostingsFormat {
         compiledAutomaton = compiled;
         termOrd = -1;
         states = new State[1];
+        slicedTransitions = compiledAutomaton.slicedTransitions;
         states[0] = new State();
         states[0].changeOrd = terms.length;
         states[0].state = runAutomaton.getInitialState();
-        states[0].transitions = compiledAutomaton.sortedTransitions[states[0].state];
-        states[0].transitionUpto = -1;
+        states[0].transitionsStart = slicedTransitions.from[states[0].state];
+        states[0].transitionsEnd = slicedTransitions.from[states[0].state+1];
+        states[0].transitionUpto = -3;
         states[0].transitionMax = -1;
 
         //System.out.println("IE.init startTerm=" + startTerm);
@@ -902,10 +907,11 @@ public final class DirectPostingsFormat extends PostingsFormat {
               final int label = startTerm.bytes[startTerm.offset+i] & 0xFF;
 
               while (label > states[i].transitionMax) {
-                states[i].transitionUpto++;
-                assert states[i].transitionUpto < states[i].transitions.length;
-                states[i].transitionMin = states[i].transitions[states[i].transitionUpto].getMin();
-                states[i].transitionMax = states[i].transitions[states[i].transitionUpto].getMax();
+                states[i].transitionUpto += 3;
+                assert states[i].transitionsStart + states[i].transitionUpto < states[i].transitionsEnd;
+                int base = states[i].transitionsStart + states[i].transitionUpto;
+                states[i].transitionMin = slicedTransitions.transitions[base];
+                states[i].transitionMax = slicedTransitions.transitions[base+1];
                 assert states[i].transitionMin >= 0;
                 assert states[i].transitionMin <= 255;
                 assert states[i].transitionMax >= 0;
@@ -962,8 +968,9 @@ public final class DirectPostingsFormat extends PostingsFormat {
                     stateUpto++;
                     states[stateUpto].changeOrd = skips[skipOffset + skipUpto++];
                     states[stateUpto].state = nextState;
-                    states[stateUpto].transitions = compiledAutomaton.sortedTransitions[nextState];
-                    states[stateUpto].transitionUpto = -1;
+                    states[stateUpto].transitionsStart = slicedTransitions.from[nextState];
+                    states[stateUpto].transitionsEnd = slicedTransitions.from[nextState+1];
+                    states[stateUpto].transitionUpto = -3;
                     states[stateUpto].transitionMax = -1;
                     //System.out.println("  push " + states[stateUpto].transitions.length + " trans");
 
@@ -1119,8 +1126,8 @@ public final class DirectPostingsFormat extends PostingsFormat {
 
           while (label > state.transitionMax) {
             //System.out.println("  label=" + label + " vs max=" + state.transitionMax + " transUpto=" + state.transitionUpto + " vs " + state.transitions.length);
-            state.transitionUpto++;
-            if (state.transitionUpto == state.transitions.length) {
+            state.transitionUpto+=3;
+            if (state.transitionUpto + state.transitionsStart == state.transitionsEnd) {
               // We've exhausted transitions leaving this
               // state; force pop+next/skip now:
               //System.out.println("forcepop: stateUpto=" + stateUpto);
@@ -1139,9 +1146,10 @@ public final class DirectPostingsFormat extends PostingsFormat {
               }
               continue nextTerm;
             }
-            assert state.transitionUpto < state.transitions.length: " state.transitionUpto=" + state.transitionUpto + " vs " + state.transitions.length;
-            state.transitionMin = state.transitions[state.transitionUpto].getMin();
-            state.transitionMax = state.transitions[state.transitionUpto].getMax();
+            assert state.transitionUpto+state.transitionsStart < state.transitionsEnd: " state.transitionUpto=" + state.transitionUpto+state.transitionsStart  + " vs " + state.transitionsEnd;
+            int base = state.transitionUpto+state.transitionsStart;
+            state.transitionMin = slicedTransitions.transitions[base];
+            state.transitionMax = slicedTransitions.transitions[base+1];
             assert state.transitionMin >= 0;
             assert state.transitionMin <= 255;
             assert state.transitionMax >= 0;
@@ -1239,8 +1247,9 @@ public final class DirectPostingsFormat extends PostingsFormat {
             stateUpto++;
             states[stateUpto].state = nextState;
             states[stateUpto].changeOrd = skips[skipOffset + skipUpto++];
-            states[stateUpto].transitions = compiledAutomaton.sortedTransitions[nextState];
-            states[stateUpto].transitionUpto = -1;
+            states[stateUpto].transitionsStart = slicedTransitions.from[states[nextState].state];
+            states[stateUpto].transitionsEnd = slicedTransitions.from[states[nextState].state+1];
+            states[stateUpto].transitionUpto = -3;
             states[stateUpto].transitionMax = -1;
             
             if (stateUpto == termLength) {

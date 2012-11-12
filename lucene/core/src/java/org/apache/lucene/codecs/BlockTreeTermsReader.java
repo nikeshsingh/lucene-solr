@@ -50,6 +50,7 @@ import org.apache.lucene.util.RamUsageEstimator;
 import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
 import org.apache.lucene.util.automaton.RunAutomaton;
+import org.apache.lucene.util.automaton.SlicedTransitions;
 import org.apache.lucene.util.automaton.Transition;
 import org.apache.lucene.util.fst.ByteSequenceOutputs;
 import org.apache.lucene.util.fst.FST;
@@ -611,7 +612,9 @@ public class BlockTreeTermsReader extends FieldsProducer {
         int numFollowFloorBlocks;
         int nextFloorLabel;
         
-        Transition[] transitions;
+        SlicedTransitions slicedTransitions;
+        int transitionStart;
+        int transitionEnd;
         int curTransitionMax;
         int transitionIndex;
 
@@ -645,17 +648,19 @@ public class BlockTreeTermsReader extends FieldsProducer {
               nextFloorLabel = 256;
             }
             // if (DEBUG) System.out.println("    nextFloorLabel=" + (char) nextFloorLabel);
-          } while (numFollowFloorBlocks != 0 && nextFloorLabel <= transitions[transitionIndex].getMin());
+          } while (numFollowFloorBlocks != 0 && nextFloorLabel <= slicedTransitions.transitions[transitionIndex]); // getMin
 
           load(null);
         }
 
         public void setState(int state) {
           this.state = state;
-          transitionIndex = 0;
-          transitions = compiledAutomaton.sortedTransitions[state];
-          if (transitions.length != 0) {
-            curTransitionMax = transitions[0].getMax();
+          slicedTransitions = compiledAutomaton.slicedTransitions;
+          transitionStart = slicedTransitions.from[state];
+          transitionEnd = slicedTransitions.from[state+1];
+          transitionIndex = transitionStart;
+          if (transitionStart != transitionEnd) {
+            curTransitionMax = slicedTransitions.transitions[transitionIndex+1]; // getMax
           } else {
             curTransitionMax = -1;
           }
@@ -665,7 +670,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
 
           // if (DEBUG) System.out.println("    load fp=" + fp + " fpOrig=" + fpOrig + " frameIndexData=" + frameIndexData + " trans=" + (transitions.length != 0 ? transitions[0] : "n/a" + " state=" + state));
 
-          if (frameIndexData != null && transitions.length != 0) {
+          if (frameIndexData != null && transitionStart != transitionEnd) {
             // Floor frame
             if (floorData.length < frameIndexData.length) {
               this.floorData = new byte[ArrayUtil.oversize(frameIndexData.length, 1)];
@@ -684,7 +689,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
               // first block in case it has empty suffix:
               if (!runAutomaton.isAccept(state)) {
                 // Maybe skip floor blocks:
-                while (numFollowFloorBlocks != 0 && nextFloorLabel <= transitions[0].getMin()) {
+                while (numFollowFloorBlocks != 0 && nextFloorLabel <= slicedTransitions.transitions[transitionIndex]/*getMin()*/) {
                   fp = fpOrig + (floorDataReader.readVLong() >>> 1);
                   numFollowFloorBlocks--;
                   // if (DEBUG) System.out.println("    skip floor block!  nextFloorLabel=" + (char) nextFloorLabel + " vs target=" + (char) transitions[0].getMin() + " newFP=" + fp + " numFollowFloorBlocks=" + numFollowFloorBlocks);
@@ -1101,7 +1106,7 @@ public class BlockTreeTermsReader extends FieldsProducer {
           if (currentFrame.suffix != 0) {
             final int label = currentFrame.suffixBytes[currentFrame.startBytePos] & 0xff;
             while (label > currentFrame.curTransitionMax) {
-              if (currentFrame.transitionIndex >= currentFrame.transitions.length-1) {
+              if (currentFrame.transitionIndex >= currentFrame.transitionEnd-3) {
                 // Stop processing this frame -- no further
                 // matches are possible because we've moved
                 // beyond what the max transition will allow
@@ -1112,8 +1117,8 @@ public class BlockTreeTermsReader extends FieldsProducer {
                 currentFrame.nextEnt = currentFrame.entCount;
                 continue nextTerm;
               }
-              currentFrame.transitionIndex++;
-              currentFrame.curTransitionMax = currentFrame.transitions[currentFrame.transitionIndex].getMax();
+              currentFrame.transitionIndex += 3;
+              currentFrame.curTransitionMax = currentFrame.slicedTransitions.transitions[currentFrame.transitionIndex+1]/*getMax()*/;
               //if (DEBUG) System.out.println("      next trans=" + currentFrame.transitions[currentFrame.transitionIndex]);
             }
           }

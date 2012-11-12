@@ -773,4 +773,30 @@ public class Automaton implements Cloneable {
     MinimizationOperations.minimize(a);
     return a;
   }
+  
+  public SlicedTransitions getSlicedTransitions() {
+    final State[] states = getNumberedStates();
+    final int[] stateOffsets = new int[states.length+1];
+    int numTrans = 0;
+    for (State s : states) {
+      s.sortTransitions(Transition.CompareByMinMaxThenDest);
+      s.trimTransitionsArray();
+      numTrans += s.transitionsArray.length;
+      assert s.transitionsArray != null;
+    }
+    int[] transitions = new int[numTrans*3];
+    int offset = 0;
+    for (int i = 0; i < states.length; i++) {
+      State state = states[i];
+      stateOffsets[i] = offset;
+      Transition[] trans = state.transitionsArray;
+      for (int j = 0; j < trans.length; j++) {
+        transitions[offset++] = trans[j].getMin();
+        transitions[offset++] = trans[j].getMax();
+        transitions[offset++] = trans[j].to.number;
+      }
+    }
+    stateOffsets[stateOffsets.length-1] = offset;
+    return new SlicedTransitions(stateOffsets, transitions, states.length);
+  }
 }
