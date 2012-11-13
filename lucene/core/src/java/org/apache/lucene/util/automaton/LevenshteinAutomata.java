@@ -24,6 +24,7 @@ import java.util.TreeSet;
 
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.IntBlockPool;
+import org.apache.lucene.util.SorterTemplate;
 import org.apache.lucene.util.IntBlockPool.SliceWriter;
 import org.apache.lucene.util.IntsRef;
 
@@ -241,8 +242,8 @@ public class LevenshteinAutomata {
     }
    
    
-//    SlicedTransitions slicedTransitions = builder.toSlicedTransitions(prefix, description);
-//    ByteRunAutomaton runAutomaton = new ByteRunAutomaton(slicedTransitions);
+    SlicedTransitions slicedTransitions = builder.toSlicedTransitions(prefix, description);
+    ByteRunAutomaton runAutomaton = new ByteRunAutomaton(slicedTransitions);
 //    return new CompiledAutomaton(slicedTransitions, runAutomaton);
     
     
@@ -257,14 +258,23 @@ public class LevenshteinAutomata {
       automaton = new UTF32ToUTF8().convert(BasicAutomata.makeString(prefix.ints, prefix.offset, prefix.length)).concatenate(automaton);
       automaton.setDeterministic(true);
     }
-    return new CompiledAutomaton(automaton.getSlicedTransitions(), new ByteRunAutomaton(automaton, true));
+    SlicedTransitions slicedTransitions2 = automaton.getSlicedTransitions();
+    return new CompiledAutomaton(automaton.getSlicedTransitions(), new ByteRunAutomaton(automaton.getSlicedTransitions()));
   }
   
   public static void main(String[] args) {
-    IntsRef prefix = toUTF32("落ちる".toCharArray(), 0, "落ちる".toCharArray().length, new IntsRef());
+    IntsRef prefix = toUTF32("落".toCharArray(), 0, "落".toCharArray().length, new IntsRef());
     SlicedTransitions prefixTransitions = new UTF32ToUTF8().convert(BasicAutomata.makeString(prefix.ints, prefix.offset, prefix.length)).getSlicedTransitions();
+    System.out.println(Arrays.toString(prefixTransitions.from));
     System.out.println(Arrays.toString(prefixTransitions.transitions));
     System.out.println(Arrays.toString(prefixTransitions.accept));
+    
+    int[] from = new int[prefixTransitions.from.length];
+    int[] trans = new int[prefixTransitions.transitions.length];
+    SliceTransitionBuilder.insertSingletonPrefix(from, trans, prefixTransitions);
+    
+    System.out.println(Arrays.toString(from));
+    System.out.println(Arrays.toString(trans));
   }
   
   
@@ -330,35 +340,65 @@ public class LevenshteinAutomata {
       }
     }
     
+    static int insertSingletonPrefix(int[] from, int[] transitions, SlicedTransitions singleton) {
+      int state = 0;
+      int transIndex = 0;
+      for (int i = 0; i < singleton.numStates-1; i++) {
+        from[i] = i*3;
+        int offset = singleton.from[state];
+        transitions[transIndex++] = singleton.transitions[offset++];
+        transitions[transIndex++] = singleton.transitions[offset++];
+        transitions[transIndex++] = i+1;
+        state = singleton.transitions[offset];
+      }
+      assert singleton.accept[state];
+      return singleton.numStates-1;
+    }
+    
     public SlicedTransitions toSlicedTransitions(IntsRef prefix, ParametricDescription description) {
       // TODO do this on the fly
-      SlicedTransitions prefixTransitions = this.utf32ToUTF8.convert(BasicAutomata.makeString(prefix.ints, prefix.offset, prefix.length)).getSlicedTransitions();
-      int numPrefixStates = prefixTransitions.numStates;
-      int numPrefixTransitions = prefixTransitions.transitions.length;
-      
-      final int[] from = new int[numPrefixStates + numStates+1];
-      final int[] transitions = new int[numPrefixTransitions + numTransitions*3];
+      int numPrefixStates = 0;
+      int numPrefixTransitions = 0;
+      int fromOffset = 0;
+      final int[] from;
+      final int[] transitions;
+      if (prefix == null || prefix.length == 0) {
+        from = new int[numStates + 1];
+        transitions = new int[numTransitions * 3];
+      } else {
+        SlicedTransitions singleton = this.utf32ToUTF8
+            .convert(
+                BasicAutomata.makeString(prefix.ints, prefix.offset,
+                    prefix.length)).getSlicedTransitions();
+        numPrefixStates = singleton.numStates;
+        numPrefixTransitions = singleton.transitions.length;
+        from = new int[singleton.numStates + numStates + 1];
+        transitions = new int[singleton.transitions.length + numTransitions * 3];
+        fromOffset = insertSingletonPrefix(from, transitions, singleton);
+      }
       IntBlockPool.SliceReader reader = new IntBlockPool.SliceReader(pool);
-      int transIndex = 0;
+      int transIndex = numPrefixTransitions;
       int descLimit = description.size();
       boolean[] accept = new boolean[numPrefixStates + numStates];
-      for (int i = 0; i < numPrefixStates; i++) {
-        
-      }
-      
       for (int i = 0; i < numStates; i++) {
         if (i < descLimit) {
-          accept[numPrefixStates+i] = description.isAccept(i);
+          accept[numPrefixStates + i] = description.isAccept(i);
         }
         reader.reset(stateStart[i], stateEnd[i]);
-        from[i] = transIndex;
-        while(!reader.endOfSlice()) {
+        from[fromOffset + i] = transIndex;
+        int numTrans = 0;
+        int startOffset = transIndex;
+        while (!reader.endOfSlice()) {
+          numTrans++;
           transitions[transIndex++] = reader.readInt();
           transitions[transIndex++] = reader.readInt();
-          transitions[transIndex++] = numPrefixStates+reader.readInt();
+          transitions[transIndex++] = numPrefixStates + reader.readInt();
         }
+//        System.out.println(Arrays.toString(transitions));
+        sortTransitions(transitions, startOffset, numTrans);
+//        System.out.println(Arrays.toString(transitions));
       }
-      from[from.length-1] = transIndex;
+      from[from.length - 1] = transIndex;
       
       return new SlicedTransitions(from, transitions, numStates, accept);
     }
@@ -381,9 +421,63 @@ public class LevenshteinAutomata {
       }
       return new Automaton(states[0]);
     }
+    private final int[] pivot = new int[3];
     
+    private void sortTransitions(final int[] transitions, final int start, final int num) {
+      if (num==1) {
+        return;// sorted only one transition!
+      }
+      
+      new SorterTemplate() {
+        
+        @Override
+        protected void swap(int i, int j) {
+          for (int k = 0; k < 3; k++) {
+            int tmp = transitions[start+3*i+k];
+            transitions[start+3*i+k] = transitions[start+3*j+k];
+            transitions[start+3*j+k] = tmp; 
+          }
+        }
+        
+        @Override
+        protected void setPivot(int i) {
+          for (int k = 0; k < 3; k++) {
+            pivot[k] = transitions[start+3*i+k];
+          }
+          
+        }
+        
+        @Override
+        protected int comparePivot(int j) {
+          int rOffset = start + 3 * j;
+          if (pivot[0] < transitions[rOffset]) return -1;
+          if (pivot[0] > transitions[rOffset]) return 1;
+          if (pivot[1] > transitions[rOffset + 1]) return -1;
+          if (pivot[1] < transitions[rOffset + 1]) return 1;
+          if (pivot[2] != transitions[rOffset + 2]) {
+            if (pivot[2] < transitions[rOffset + 2]) return -1;
+            if (pivot[2] > transitions[rOffset + 2]) return 1;
+          }
+          return 0;
+        }
+        
+        @Override
+        protected int compare(int i, int j) {
+          int lOffset = start+3*i;
+          int rOffset = start+3*j;
+          if (transitions[lOffset] < transitions[rOffset]) return -1;
+          if (transitions[lOffset] > transitions[rOffset]) return 1;
+          if (transitions[lOffset+1] > transitions[rOffset+1]) return -1;
+          if (transitions[lOffset+1] < transitions[rOffset+1]) return 1;
+          if (transitions[lOffset+2] != transitions[rOffset+2]) {
+            if (transitions[lOffset+2] < transitions[rOffset+2]) return -1;
+            if (transitions[lOffset+2] > transitions[rOffset+2]) return 1;
+          }
+          return 0;
+        }
+      }.quickSort(0, num-1);
+    }
   }
-  
   
   /**
    * Get the characteristic vector <code>X(x, V)</code> 
