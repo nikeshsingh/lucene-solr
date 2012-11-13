@@ -21,6 +21,7 @@ import java.util.Set;
  * limitations under the License.
  */
 
+//nocommit - find a better name - we could extract a MinimalAutomaton interface and impl this here....
 public class SlicedTransitions {
 
   public final int[] from;
@@ -57,6 +58,32 @@ public class SlicedTransitions {
       points[n++] = m;
     Arrays.sort(points);
     return points;
+  }
+  
+  public Automaton toAutomaton() {
+    assert accept != null;
+    State[] states = new State[numStates];
+    for (int i = 0; i < states.length; i++) {
+      states[i] = new State();
+      states[i].setAccept(accept[i]);
+      states[i].number = i;
+
+    }
+    for (int i = 0; i < numStates; i++) {
+      int start = from[i];
+      int end = from[i+1];
+      assert start % 3 == 0;
+      assert end % 3 == 0;
+      State state = states[i];
+      for (int j = start; j < end;j+=3) {
+        int k = transitions[j+2];
+        state.addTransition(new Transition(transitions[j], transitions[j+1], states[k]));
+      }
+    }
+    Automaton automaton = new Automaton(states[0]);
+    automaton.setDeterministic(true);
+    automaton.reduce();
+    return automaton;
   }
   
   public int step(int state, int c) {

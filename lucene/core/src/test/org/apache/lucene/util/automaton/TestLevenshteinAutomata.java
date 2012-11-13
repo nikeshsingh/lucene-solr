@@ -42,6 +42,8 @@ public class TestLevenshteinAutomata extends LuceneTestCase {
   // LUCENE-3094
   public void testNoWastedStates() throws Exception {
     AutomatonTestUtil.assertNoDetachedStates(new LevenshteinAutomata("abc", false).toAutomaton(1));
+    AutomatonTestUtil.assertNoDetachedStates(new LevenshteinAutomata("abc", false).toRunAutomaton(null, 1).slicedTransitions.toAutomaton());
+
   }
   
   /** 
@@ -64,47 +66,49 @@ public class TestLevenshteinAutomata extends LuceneTestCase {
    * up to some maximum distance.
    */
   private void assertLev(String s, int maxDistance) {
-    LevenshteinAutomata builder = new LevenshteinAutomata(s, false);
-    LevenshteinAutomata tbuilder = new LevenshteinAutomata(s, true);
-    Automaton automata[] = new Automaton[maxDistance + 1];
-    Automaton tautomata[] = new Automaton[maxDistance + 1];
-    for (int n = 0; n < automata.length; n++) {
-      automata[n] = builder.toAutomaton(n);
-      tautomata[n] = tbuilder.toAutomaton(n);
-      assertNotNull(automata[n]);
-      assertNotNull(tautomata[n]);
-      assertTrue(automata[n].isDeterministic());
-      assertTrue(tautomata[n].isDeterministic());
-      assertTrue(SpecialOperations.isFinite(automata[n]));
-      assertTrue(SpecialOperations.isFinite(tautomata[n]));
-      AutomatonTestUtil.assertNoDetachedStates(automata[n]);
-      AutomatonTestUtil.assertNoDetachedStates(tautomata[n]);
-      // check that the dfa for n-1 accepts a subset of the dfa for n
-      if (n > 0) {
-        assertTrue(automata[n-1].subsetOf(automata[n]));
-        assertTrue(automata[n-1].subsetOf(tautomata[n]));
-        assertTrue(tautomata[n-1].subsetOf(automata[n]));
-        assertTrue(tautomata[n-1].subsetOf(tautomata[n]));
-        assertNotSame(automata[n-1], automata[n]);
-      }
-      // check that Lev(N) is a subset of LevT(N)
-      assertTrue(automata[n].subsetOf(tautomata[n]));
-      // special checks for specific n
-      switch(n) {
-        case 0:
-          // easy, matches the string itself
-          assertTrue(BasicOperations.sameLanguage(BasicAutomata.makeString(s), automata[0]));
-          assertTrue(BasicOperations.sameLanguage(BasicAutomata.makeString(s), tautomata[0]));
-          break;
-        case 1:
-          // generate a lev1 naively, and check the accepted lang is the same.
-          assertTrue(BasicOperations.sameLanguage(naiveLev1(s), automata[1]));
-          assertTrue(BasicOperations.sameLanguage(naiveLev1T(s), tautomata[1]));
-          break;
-        default:
-          assertBruteForce(s, automata[n], n);
-          assertBruteForceT(s, tautomata[n], n);
-          break;
+    for (int i = 0; i < 1; i++) {
+      LevenshteinAutomata builder = new LevenshteinAutomata(s, false);
+      LevenshteinAutomata tbuilder = new LevenshteinAutomata(s, true);
+      Automaton automata[] = new Automaton[maxDistance + 1];
+      Automaton tautomata[] = new Automaton[maxDistance + 1];
+      for (int n = 0; n < automata.length; n++) {
+        automata[n] = i == 0 ? builder.toAutomaton(n) : builder.toRunAutomaton(null, n).slicedTransitions.toAutomaton() ;
+        tautomata[n] = i == 0 ? tbuilder.toAutomaton(n) : tbuilder.toRunAutomaton(null, n).slicedTransitions.toAutomaton();
+        assertNotNull(automata[n]);
+        assertNotNull(tautomata[n]);
+        assertTrue(automata[n].isDeterministic());
+        assertTrue(tautomata[n].isDeterministic());
+        assertTrue(SpecialOperations.isFinite(automata[n]));
+        assertTrue(SpecialOperations.isFinite(tautomata[n]));
+        AutomatonTestUtil.assertNoDetachedStates(automata[n]);
+        AutomatonTestUtil.assertNoDetachedStates(tautomata[n]);
+        // check that the dfa for n-1 accepts a subset of the dfa for n
+        if (n > 0) {
+          assertTrue(automata[n-1].subsetOf(automata[n]));
+          assertTrue(automata[n-1].subsetOf(tautomata[n]));
+          assertTrue(tautomata[n-1].subsetOf(automata[n]));
+          assertTrue(tautomata[n-1].subsetOf(tautomata[n]));
+          assertNotSame(automata[n-1], automata[n]);
+        }
+        // check that Lev(N) is a subset of LevT(N)
+        assertTrue(automata[n].subsetOf(tautomata[n]));
+        // special checks for specific n
+        switch(n) {
+          case 0:
+            // easy, matches the string itself
+            assertTrue(BasicOperations.sameLanguage(BasicAutomata.makeString(s), automata[0]));
+            assertTrue(BasicOperations.sameLanguage(BasicAutomata.makeString(s), tautomata[0]));
+            break;
+          case 1:
+            // generate a lev1 naively, and check the accepted lang is the same.
+            assertTrue("string: " + s + " i: " + i, BasicOperations.sameLanguage(i == 0 ? naiveLev1(s) : new UTF32ToUTF8().convert(naiveLev1(s)), automata[1]));
+            assertTrue("string: " + s + " i: " + i, BasicOperations.sameLanguage(i == 0 ? naiveLev1T(s) : new UTF32ToUTF8().convert(naiveLev1T(s)), tautomata[1]));
+            break;
+          default:
+            assertBruteForce(s, automata[n], n);
+            assertBruteForceT(s, tautomata[n], n);
+            break;
+        }
       }
     }
   }

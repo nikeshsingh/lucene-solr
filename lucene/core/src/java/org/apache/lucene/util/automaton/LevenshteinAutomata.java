@@ -17,7 +17,6 @@ package org.apache.lucene.util.automaton;
  * limitations under the License.
  */
 
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.SortedSet;
 import java.util.TreeSet;
@@ -25,7 +24,6 @@ import java.util.TreeSet;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.IntBlockPool;
 import org.apache.lucene.util.SorterTemplate;
-import org.apache.lucene.util.IntBlockPool.SliceWriter;
 import org.apache.lucene.util.IntsRef;
 
 /**
@@ -173,7 +171,7 @@ public class LevenshteinAutomata {
         for (int r = 0; r < numRanges; r++)
           states[k].addTransition(new Transition(rangeLower[r], rangeUpper[r], states[dest]));      
     }
-
+    
     Automaton a = new Automaton(states[0]);
     a.setDeterministic(true);
     // we create some useless unconnected states, and its a net-win overall to remove these,
@@ -240,64 +238,32 @@ public class LevenshteinAutomata {
       transitionUpTo = 0;
       
     }
-   
-   
-    SlicedTransitions slicedTransitions = builder.toSlicedTransitions(prefix, description);
-    ByteRunAutomaton runAutomaton = new ByteRunAutomaton(slicedTransitions);
-//    return new CompiledAutomaton(slicedTransitions, runAutomaton);
-    
-    
+    final SlicedTransitions slicedTransitions = builder.toSlicedTransitions(prefix, description);
+    final ByteRunAutomaton runAutomaton = new ByteRunAutomaton(slicedTransitions);
+    assert assertAutomatons(slicedTransitions, prefix, builder, description) : " prefix: " + prefix + " n: " + n;
+    return new CompiledAutomaton(slicedTransitions, runAutomaton);
+  }
+  
+  public static boolean assertAutomatons(SlicedTransitions transitions, IntsRef prefix, SliceTransitionBuilder builder, ParametricDescription description) {
     boolean[] isAccept = new boolean[builder.numStates];
     int limit = description.size();
     for (int i = 0; i < limit; i++) {
       isAccept[i] = description.isAccept(i);
     }
-    Automaton automaton = builder.toAutomaton(isAccept);
+    Automaton automaton =  builder.toAutomaton(isAccept);
     automaton.setDeterministic(true);
     if (prefix != null) {
       automaton = new UTF32ToUTF8().convert(BasicAutomata.makeString(prefix.ints, prefix.offset, prefix.length)).concatenate(automaton);
       automaton.setDeterministic(true);
     }
-    SlicedTransitions slicedTransitions2 = automaton.getSlicedTransitions();
-    return new CompiledAutomaton(automaton.getSlicedTransitions(), new ByteRunAutomaton(automaton.getSlicedTransitions()));
+    return BasicOperations.sameLanguage(transitions.toAutomaton(), automaton);
   }
-  
-  public static void main(String[] args) {
-    IntsRef prefix = toUTF32("落".toCharArray(), 0, "落".toCharArray().length, new IntsRef());
-    SlicedTransitions prefixTransitions = new UTF32ToUTF8().convert(BasicAutomata.makeString(prefix.ints, prefix.offset, prefix.length)).getSlicedTransitions();
-    System.out.println(Arrays.toString(prefixTransitions.from));
-    System.out.println(Arrays.toString(prefixTransitions.transitions));
-    System.out.println(Arrays.toString(prefixTransitions.accept));
-    
-    int[] from = new int[prefixTransitions.from.length];
-    int[] trans = new int[prefixTransitions.transitions.length];
-    SliceTransitionBuilder.insertSingletonPrefix(from, trans, prefixTransitions);
-    
-    System.out.println(Arrays.toString(from));
-    System.out.println(Arrays.toString(trans));
-  }
-  
-  
-  public static IntsRef toUTF32(char[] s, int offset, int length, IntsRef scratch) {
-    int charIdx = offset;
-    int intIdx = 0;
-    final int charLimit = offset + length;
-    while(charIdx < charLimit) {
-      scratch.grow(intIdx+1);
-      final int utf32 = Character.codePointAt(s, charIdx);
-      scratch.ints[intIdx] = utf32;
-      charIdx += Character.charCount(utf32);
-      intIdx++;
-    }
-    scratch.length = intIdx;
-    return scratch;
-  }
-  
+
   private static class SliceTransitionBuilder {
-    UTF32ToUTF8.Transitions utf8Transitions =  new UTF32ToUTF8.Transitions();
-    UTF32ToUTF8 utf32ToUTF8 = new UTF32ToUTF8();
+    final UTF32ToUTF8.Transitions utf8Transitions =  new UTF32ToUTF8.Transitions();
+    final UTF32ToUTF8 utf32ToUTF8 = new UTF32ToUTF8();
     final IntBlockPool pool = new IntBlockPool();
-    IntBlockPool.SliceWriter writer = new IntBlockPool.SliceWriter(pool);
+    final IntBlockPool.SliceWriter writer = new IntBlockPool.SliceWriter(pool);
     int[] stateStart;
     int[] stateEnd;
     int numStates;
@@ -312,6 +278,11 @@ public class LevenshteinAutomata {
     
     public void addBuffer(int start, int[] transitionBuffer, int transitionUpTo) {
       // TODO can we a.reduce() this on the fly?
+      /* nocommit
+       *  - do we need the slice writer or can we sort and serialized into fixed length directly. 
+       *  - we know that the states transition here are fixed make use of it.
+       * 
+       */
       for (int i = 0; i < transitionUpTo; i++) {
         int min = transitionBuffer[i++];
         int max = transitionBuffer[i++];
@@ -366,13 +337,13 @@ public class LevenshteinAutomata {
         from = new int[numStates + 1];
         transitions = new int[numTransitions * 3];
       } else {
-        SlicedTransitions singleton = this.utf32ToUTF8
+        SlicedTransitions singleton = new UTF32ToUTF8()
             .convert(
                 BasicAutomata.makeString(prefix.ints, prefix.offset,
                     prefix.length)).getSlicedTransitions();
-        numPrefixStates = singleton.numStates;
+        numPrefixStates = singleton.numStates-1;
         numPrefixTransitions = singleton.transitions.length;
-        from = new int[singleton.numStates + numStates + 1];
+        from = new int[numPrefixStates+ numStates + 1];
         transitions = new int[singleton.transitions.length + numTransitions * 3];
         fromOffset = insertSingletonPrefix(from, transitions, singleton);
       }
@@ -380,12 +351,14 @@ public class LevenshteinAutomata {
       int transIndex = numPrefixTransitions;
       int descLimit = description.size();
       boolean[] accept = new boolean[numPrefixStates + numStates];
+      
       for (int i = 0; i < numStates; i++) {
         if (i < descLimit) {
           accept[numPrefixStates + i] = description.isAccept(i);
         }
         reader.reset(stateStart[i], stateEnd[i]);
         from[fromOffset + i] = transIndex;
+        assert transIndex%3 == 0;
         int numTrans = 0;
         int startOffset = transIndex;
         while (!reader.endOfSlice()) {
@@ -393,16 +366,27 @@ public class LevenshteinAutomata {
           transitions[transIndex++] = reader.readInt();
           transitions[transIndex++] = reader.readInt();
           transitions[transIndex++] = numPrefixStates + reader.readInt();
+          assert transitions[transIndex-1] < from.length;
+          // nocommit we should reduce the transitions on the fly here we have them sorted already and can apply the reduce alg directly
         }
-//        System.out.println(Arrays.toString(transitions));
-        sortTransitions(transitions, startOffset, numTrans);
-//        System.out.println(Arrays.toString(transitions));
+        assert assertTransitions(transitions, numPrefixStates + numStates);
+        assert from[fromOffset+i] % 3 == 0;
+        sortTransitions(transitions, startOffset, numTrans); // nocommit should we do that during building
       }
       from[from.length - 1] = transIndex;
+      assert assertTransitions(transitions, numPrefixStates + numStates);
       
-      return new SlicedTransitions(from, transitions, numStates, accept);
+      assert transitions.length == from[from.length-1] : " " + from[from.length-1] + " " + transitions.length;
+      return new SlicedTransitions(from, transitions, numPrefixStates+numStates, accept);
     }
     
+    private static boolean assertTransitions(int[] transitions, int numStates) {
+      for (int i = 0; i < transitions.length; i+=3) {
+        assert transitions[i+2] < numStates : "tansition to state: " + transitions[i+2] + " numStates: " + numStates;
+      }
+      return true;
+    }
+
     public Automaton toAutomaton(boolean[] accept) {
       State[] states = new State[numStates];
       IntBlockPool.SliceReader reader = new IntBlockPool.SliceReader(pool);
@@ -411,6 +395,8 @@ public class LevenshteinAutomata {
         if (i < accept.length) {
           states[i].setAccept(accept[i]);
         }
+        states[i].number = i;
+        
       }
       for (int i = 0; i < numStates; i++) {
         State s = states[i];
@@ -419,7 +405,9 @@ public class LevenshteinAutomata {
           s.addTransition(new Transition(reader.readInt(), reader.readInt(), states[reader.readInt()]));
         }
       }
-      return new Automaton(states[0]);
+      Automaton automaton = new Automaton(states[0]);
+      automaton.setNumberedStates(states);
+      return automaton;
     }
     private final int[] pivot = new int[3];
     
