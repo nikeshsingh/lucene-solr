@@ -66,7 +66,7 @@ public class TestLevenshteinAutomata extends LuceneTestCase {
    * up to some maximum distance.
    */
   private void assertLev(String s, int maxDistance) {
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < 2; i++) {
       LevenshteinAutomata builder = new LevenshteinAutomata(s, false);
       LevenshteinAutomata tbuilder = new LevenshteinAutomata(s, true);
       Automaton automata[] = new Automaton[maxDistance + 1];
