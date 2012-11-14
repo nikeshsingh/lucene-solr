@@ -407,8 +407,8 @@ public class ZkStateReader {
     long timeoutAt = System.currentTimeMillis() + timeout;
     while (System.currentTimeMillis() < timeoutAt) {
       if (clusterState != null) {    
-        final ZkNodeProps nodeProps = clusterState.getLeader(collection, shard);
-        if (nodeProps != null) {
+        final ZkNodeProps nodeProps = clusterState.getLeader(collection, shard);     
+        if (nodeProps != null && getClusterState().liveNodesContain((String) nodeProps.get(ZkStateReader.NODE_NAME_PROP))) {
           return nodeProps;
         }
       }

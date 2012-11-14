@@ -197,11 +197,12 @@ final class CompressingStoredFieldsReader extends StoredFieldsReader {
           + ", numDocs=" + numDocs);
     }
 
-    final int numStoredFields, offset, length;
+    final int numStoredFields, offset, length, totalLength;
     if (chunkDocs == 1) {
       numStoredFields = fieldsStream.readVInt();
       offset = 0;
       length = fieldsStream.readVInt();
+      totalLength = length;
     } else {
       final int bitsPerStoredFields = fieldsStream.readVInt();
       if (bitsPerStoredFields == 0) {
@@ -219,10 +220,10 @@ final class CompressingStoredFieldsReader extends StoredFieldsReader {
       if (bitsPerLength == 0) {
         length = fieldsStream.readVInt();
         offset = (docID - docBase) * length;
+        totalLength = chunkDocs * length;
       } else if (bitsPerStoredFields > 31) {
         throw new CorruptIndexException("bitsPerLength=" + bitsPerLength);
       } else {
-        final long filePointer = fieldsStream.getFilePointer();
         final PackedInts.ReaderIterator it = PackedInts.getReaderIteratorNoHeader(fieldsStream, PackedInts.Format.PACKED, packedIntsVersion, chunkDocs, bitsPerLength, 1);
         int off = 0;
         for (int i = 0; i < docID - docBase; ++i) {
@@ -230,7 +231,11 @@ final class CompressingStoredFieldsReader extends StoredFieldsReader {
         }
         offset = off;
         length = (int) it.next();
-        fieldsStream.seek(filePointer + PackedInts.Format.PACKED.byteCount(packedIntsVersion, chunkDocs, bitsPerLength));
+        off += length;
+        for (int i = docID - docBase + 1; i < chunkDocs; ++i) {
+          off += it.next();
+        }
+        totalLength = off;
       }
     }
 
@@ -242,13 +247,14 @@ final class CompressingStoredFieldsReader extends StoredFieldsReader {
       return;
     }
 
-    decompressor.decompress(fieldsStream, offset, length, bytes);
+    decompressor.decompress(fieldsStream, totalLength, offset, length, bytes);
+    assert bytes.length == length;
 
     final ByteArrayDataInput documentInput = new ByteArrayDataInput(bytes.bytes, bytes.offset, bytes.length);
     for (int fieldIDX = 0; fieldIDX < numStoredFields; fieldIDX++) {
       final long infoAndBits = documentInput.readVLong();
       final int fieldNumber = (int) (infoAndBits >>> TYPE_BITS);
-      FieldInfo fieldInfo = fieldInfos.fieldInfo(fieldNumber);
+      final FieldInfo fieldInfo = fieldInfos.fieldInfo(fieldNumber);
 
       final int bits = (int) (infoAndBits & TYPE_MASK);
       assert bits <= NUMERIC_DOUBLE: "bits=" + Integer.toHexString(bits);
@@ -370,8 +376,9 @@ final class CompressingStoredFieldsReader extends StoredFieldsReader {
      */
     void decompress() throws IOException {
       // decompress data
-      decompressor.decompress(fieldsStream, bytes);
-      if (bytes.length != chunkSize()) {
+      final int chunkSize = chunkSize();
+      decompressor.decompress(fieldsStream, chunkSize, 0, chunkSize, bytes);
+      if (bytes.length != chunkSize) {
         throw new CorruptIndexException("Corrupted: expected chunk size = " + chunkSize() + ", got " + bytes.length);
       }
     }
@@ -380,7 +387,8 @@ final class CompressingStoredFieldsReader extends StoredFieldsReader {
      * Copy compressed data.
      */
     void copyCompressedData(DataOutput out) throws IOException {
-      decompressor.copyCompressedData(fieldsStream, out);
+      final int chunkSize = chunkSize();
+      decompressor.copyCompressedData(fieldsStream, chunkSize, out);
     }
 
   }
