@@ -34,11 +34,11 @@ import org.apache.lucene.queries.function.FunctionQuery;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.valuesource.ProductFloatFunction;
 import org.apache.lucene.queries.function.valuesource.QueryValueSource;
-import org.apache.lucene.queryparser.classic.ParseException;
-import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.*;
 import org.apache.solr.analysis.TokenizerChain;
-import org.apache.solr.search.SolrQueryParser.MagicFieldName;
+import org.apache.solr.parser.ParseException;
+import org.apache.solr.parser.QueryParser;
+import org.apache.solr.parser.SolrQueryParserBase.MagicFieldName;
 import org.apache.solr.common.params.DisMaxParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
@@ -118,7 +118,7 @@ class ExtendedDismaxQParser extends QParser {
 
 
   @Override
-  public Query parse() throws ParseException {
+  public Query parse() throws SyntaxError {
     SolrParams localParams = getLocalParams();
     SolrParams params = getParams();
     
@@ -173,7 +173,7 @@ class ExtendedDismaxQParser extends QParser {
         query.add( altUserQuery , BooleanClause.Occur.MUST );
       } else {
         return null;
-        // throw new ParseException("missing query string" );
+        // throw new SyntaxError("missing query string" );
       }
     }
     else {     
@@ -243,6 +243,8 @@ class ExtendedDismaxQParser extends QParser {
       // For correct lucene queries, turn off mm processing if there
       // were explicit operators (except for AND).
       boolean doMinMatched = (numOR + numNOT + numPluses + numMinuses) == 0;
+      // but always for unstructured implicit bqs created by getFieldQuery
+      up.minShouldMatch = minShouldMatch;
 
       try {
         up.setRemoveStopFilter(!stopwords);
@@ -449,7 +451,7 @@ class ExtendedDismaxQParser extends QParser {
                                         int shingleSize,
                                         final float tiebreaker,
                                         final int slop) 
-    throws ParseException {
+    throws SyntaxError {
     
     if (null == fields || fields.isEmpty() || 
         null == clauses || clauses.size() < shingleSize ) 
@@ -517,7 +519,7 @@ class ExtendedDismaxQParser extends QParser {
   }
 
   @Override
-  public Query getHighlightQuery() throws ParseException {
+  public Query getHighlightQuery() throws SyntaxError {
     return parsedUserQuery == null ? altUserQuery : parsedUserQuery;
   }
 
@@ -888,6 +890,7 @@ class ExtendedDismaxQParser extends QParser {
 
     private Map<String, Analyzer> nonStopFilterAnalyzerPerField;
     private boolean removeStopFilter;
+    String minShouldMatch; // for inner boolean queries produced from a single fieldQuery
 
     /**
      * Where we store a map from field name we expect to see in our query
@@ -897,7 +900,7 @@ class ExtendedDismaxQParser extends QParser {
     protected Map<String,Alias> aliases = new HashMap<String,Alias>(3);
 
     public ExtendedSolrQueryParser(QParser parser, String defaultField) {
-      super(parser, defaultField, null);
+      super(parser, defaultField);
       // don't trust that our parent class won't ever change it's default
       setDefaultOperator(QueryParser.Operator.OR);
     }
@@ -908,7 +911,7 @@ class ExtendedDismaxQParser extends QParser {
     }
 
     @Override
-    protected Query getBooleanQuery(List clauses, boolean disableCoord) throws ParseException {
+    protected Query getBooleanQuery(List clauses, boolean disableCoord) throws SyntaxError {
       Query q = super.getBooleanQuery(clauses, disableCoord);
       if (q != null) {
         q = QueryUtils.makeQueryable(q);
@@ -968,7 +971,7 @@ class ExtendedDismaxQParser extends QParser {
     int slop;
 
     @Override
-    protected Query getFieldQuery(String field, String val, boolean quoted) throws ParseException {
+    protected Query getFieldQuery(String field, String val, boolean quoted) throws SyntaxError {
 //System.out.println("getFieldQuery: val="+val);
 
       this.type = QType.FIELD;
@@ -979,7 +982,7 @@ class ExtendedDismaxQParser extends QParser {
     }
 
     @Override
-    protected Query getFieldQuery(String field, String val, int slop) throws ParseException {
+    protected Query getFieldQuery(String field, String val, int slop) throws SyntaxError {
 //System.out.println("getFieldQuery: val="+val+" slop="+slop);
 
       this.type = QType.PHRASE;
@@ -990,7 +993,7 @@ class ExtendedDismaxQParser extends QParser {
     }
 
     @Override
-    protected Query getPrefixQuery(String field, String val) throws ParseException {
+    protected Query getPrefixQuery(String field, String val) throws SyntaxError {
 //System.out.println("getPrefixQuery: val="+val);
       if (val.equals("") && field.equals("*")) {
         return new MatchAllDocsQuery();
@@ -1002,7 +1005,7 @@ class ExtendedDismaxQParser extends QParser {
     }
 
     @Override
-    protected Query newFieldQuery(Analyzer analyzer, String field, String queryText, boolean quoted) throws ParseException {
+    protected Query newFieldQuery(Analyzer analyzer, String field, String queryText, boolean quoted) throws SyntaxError {
       Analyzer actualAnalyzer;
       if (removeStopFilter) {
         if (nonStopFilterAnalyzerPerField == null) {
@@ -1019,7 +1022,7 @@ class ExtendedDismaxQParser extends QParser {
     }
 
     @Override
-     protected Query getRangeQuery(String field, String a, String b, boolean startInclusive, boolean endInclusive) throws ParseException {
+     protected Query getRangeQuery(String field, String a, String b, boolean startInclusive, boolean endInclusive) throws SyntaxError {
 //System.out.println("getRangeQuery:");
 
       this.type = QType.RANGE;
@@ -1032,7 +1035,7 @@ class ExtendedDismaxQParser extends QParser {
     }
 
     @Override
-    protected Query getWildcardQuery(String field, String val) throws ParseException {
+    protected Query getWildcardQuery(String field, String val) throws SyntaxError {
 //System.out.println("getWildcardQuery: val="+val);
 
       if (val.equals("*")) {
@@ -1049,7 +1052,7 @@ class ExtendedDismaxQParser extends QParser {
     }
 
     @Override
-    protected Query getFuzzyQuery(String field, String val, float minSimilarity) throws ParseException {
+    protected Query getFuzzyQuery(String field, String val, float minSimilarity) throws SyntaxError {
 //System.out.println("getFuzzyQuery: val="+val);
 
       this.type = QType.FUZZY;
@@ -1066,7 +1069,7 @@ class ExtendedDismaxQParser extends QParser {
      * DisjunctionMaxQuery.  (so yes: aliases which point at other
      * aliases should work)
      */
-    protected Query getAliasedQuery() throws ParseException {
+    protected Query getAliasedQuery() throws SyntaxError {
       Alias a = aliases.get(field);
       this.validateCyclicAliasing(field);
       if (a != null) {
@@ -1109,11 +1112,11 @@ class ExtendedDismaxQParser extends QParser {
     /**
      * Validate there is no cyclic referencing in the aliasing
      */
-    private void validateCyclicAliasing(String field) throws ParseException {
+    private void validateCyclicAliasing(String field) throws SyntaxError {
        Set<String> set = new HashSet<String>();
        set.add(field);
        if(validateField(field, set)) {
-         throw new ParseException("Field aliases lead to a cycle");
+         throw new SyntaxError("Field aliases lead to a cycle");
        }
     }
     
@@ -1135,7 +1138,7 @@ class ExtendedDismaxQParser extends QParser {
       return hascycle;
     }
 
-    protected List<Query> getQueries(Alias a) throws ParseException {
+    protected List<Query> getQueries(Alias a) throws SyntaxError {
        if (a == null) return null;
        if (a.fields.size()==0) return null;
        List<Query> lst= new ArrayList<Query>(4);
@@ -1161,6 +1164,18 @@ class ExtendedDismaxQParser extends QParser {
           case FIELD:  // fallthrough
           case PHRASE:
             Query query = super.getFieldQuery(field, val, type == QType.PHRASE);
+            // A BooleanQuery is only possible from getFieldQuery if it came from
+            // a single whitespace separated term. In this case, check the coordination
+            // factor on the query: if its enabled, that means we aren't a set of synonyms
+            // but instead multiple terms from one whitespace-separated term, we must
+            // apply minShouldMatch here so that it works correctly with other things
+            // like aliasing.
+            if (query instanceof BooleanQuery) {
+              BooleanQuery bq = (BooleanQuery) query;
+              if (!bq.isCoordDisabled()) {
+                SolrPluginUtils.setMinShouldMatch(bq, minShouldMatch);
+              }
+            }
             if (query instanceof PhraseQuery) {
               PhraseQuery pq = (PhraseQuery)query;
               if (minClauseSize > 1 && pq.getTerms().length < minClauseSize) return null;

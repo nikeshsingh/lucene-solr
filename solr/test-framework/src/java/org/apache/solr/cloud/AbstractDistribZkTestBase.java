@@ -44,7 +44,8 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
 
   @BeforeClass
   public static void beforeThisClass() throws Exception {
-    useFactory(null);
+    // Only For Manual Testing: this will force an fs based dir factory
+    //useFactory(null);
   }
 
 
@@ -78,8 +79,16 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
     FileUtils.copyDirectory(new File(getSolrHome()), controlHome);
     
     System.setProperty("collection", "control_collection");
-    controlJetty = createJetty(controlHome, null, "control_shard");
+    String numShardsS = System.getProperty(ZkStateReader.NUM_SHARDS_PROP);
+    System.setProperty(ZkStateReader.NUM_SHARDS_PROP, "1");
+    controlJetty = createJetty(controlHome, null);      // let the shardId default to shard1
     System.clearProperty("collection");
+    if(numShardsS != null) {
+      System.setProperty(ZkStateReader.NUM_SHARDS_PROP, numShardsS);
+    } else {
+      System.clearProperty(ZkStateReader.NUM_SHARDS_PROP);
+    }
+
     controlClient = createNewSolrServer(controlJetty.getLocalPort());
 
     StringBuilder sb = new StringBuilder();
@@ -112,7 +121,7 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
   
   protected void waitForRecoveriesToFinish(String collection, ZkStateReader zkStateReader, boolean verbose, boolean failOnTimeout)
       throws Exception {
-    waitForRecoveriesToFinish(collection, zkStateReader, verbose, failOnTimeout, 600 * (TEST_NIGHTLY ? 2 : 1) * RANDOM_MULTIPLIER);
+    waitForRecoveriesToFinish(collection, zkStateReader, verbose, failOnTimeout, 180 * (TEST_NIGHTLY ? 2 : 1) * RANDOM_MULTIPLIER);
   }
   
   protected void waitForRecoveriesToFinish(String collection,
@@ -127,7 +136,7 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
       boolean sawLiveRecovering = false;
       zkStateReader.updateClusterState(true);
       ClusterState clusterState = zkStateReader.getClusterState();
-      Map<String,Slice> slices = clusterState.getSlices(collection);
+      Map<String,Slice> slices = clusterState.getSlicesMap(collection);
       assertNotNull("Could not find collection:" + collection, slices);
       for (Map.Entry<String,Slice> entry : slices.entrySet()) {
         Map<String,Replica> shards = entry.getValue().getReplicasMap();
@@ -150,13 +159,22 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
         if (!sawLiveRecovering) {
           if (verbose) System.out.println("no one is recoverying");
         } else {
+          if (verbose) System.out
+          .println("Gave up waiting for recovery to finish..");
           if (failOnTimeout) {
-            fail("There are still nodes recoverying");
+            Map<Thread,StackTraceElement[]> stackTraces = Thread.getAllStackTraces();
+            for (Map.Entry<Thread,StackTraceElement[]>  entry : stackTraces.entrySet()) {
+              System.out.println("");
+              System.out.println(entry.getKey().toString());
+              for (StackTraceElement st : entry.getValue()) {
+                System.out.println(st);
+              }
+            }
             printLayout();
+            fail("There are still nodes recoverying - waited for " + timeoutSeconds + " seconds");
+            // won't get here
             return;
           }
-          if (verbose) System.out
-              .println("gave up waiting for recovery to finish..");
         }
         cont = false;
       } else {
@@ -171,7 +189,7 @@ public abstract class AbstractDistribZkTestBase extends BaseDistributedSearchTes
 
       zkStateReader.updateClusterState(true);
       ClusterState clusterState = zkStateReader.getClusterState();
-      Map<String,Slice> slices = clusterState.getSlices(collection);
+      Map<String,Slice> slices = clusterState.getSlicesMap(collection);
       if (slices == null) {
         throw new IllegalArgumentException("Cannot find collection:" + collection);
       }

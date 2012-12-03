@@ -26,6 +26,21 @@ $Id$
 
 ==================  4.1.0 ==================
 
+Versions of Major Components
+---------------------
+Apache Tika 1.2
+Carrot2 3.5.0
+Velocity 1.6.4 and Velocity Tools 2.0
+Apache UIMA 2.3.1
+Apache ZooKeeper 3.4.5
+
+Upgrading from Solr 4.0.0-BETA
+----------------------
+
+Custom java parsing plugins need to migrade from throwing the internal
+ParseException to throwing SyntaxError.
+
+
 Detailed Change List
 ----------------------
 
@@ -45,6 +60,53 @@ New Features
 * SOLR-3929: Support configuring IndexWriter max thread count in solrconfig.
   (phunt via Mark Miller)
 
+* SOLR-3906: Add support for AnalyzingSuggester (LUCENE-3842), where the
+  underlying analyzed form used for suggestions is separate from the returned
+  text.  (Robert Muir)
+
+* SOLR-3985: ExternalFileField caches can be reloaded on firstSearcher/
+  newSearcher events using the ExternalFileFieldReloader (Alan Woodward)
+
+* SOLR-3911: Make Directory and DirectoryFactory first class so that the majority 
+  of Solr's features work with any custom implementations. (Mark Miller)
+  Additional Work:
+  - SOLR-4032: Files larger than an internal buffer size fail to replicate.
+    (Mark Miller, Markus Jelsma)
+
+* SOLR-1972: Add extra statistics to RequestHandlers - 5 & 15-minute reqs/sec
+  rolling averages; median, 75th, 95th, 99th, 99.9th percentile request times
+  (Alan Woodward, Shawn Heisey, Adrien Grand)
+  
+* SOLR-4051: Add <propertyWriter /> element to DIH's data-config.xml file,  
+  allowing the user to specify the location, filename and Locale for
+  the "data-config.properties" file.  Alternatively, users can specify their
+  own property writer implementation for greater control. This new configuration 
+  element is optional, and defaults mimic prior behavior.  The one exception is 
+  that the "root" locale is default. Previously it was the machine's default locale.  
+  (James Dyer)
+
+* SOLR-4084: Add FuzzyLookupFactory, which is like AnalyzingSuggester except that 
+  it can tolerate typos in the input.  (Areek Zillur via Robert Muir)
+
+* SOLR-4088: New and improved auto host detection strategy for SolrCloud.
+  (Raintung Li via Mark Miller)
+
+* SOLR-3970: SystemInfoHandler now exposes more details about the 
+  JRE/VM/Java version in use.  (hossman)
+
+* SOLR-4101: Add support for storing term offsets in the index via a
+  'storeOffsetsWithPositions' flag on field definitions in the schema.
+  (Tom Winch, Alan Woodward)
+
+* SOLR-4093: Solr QParsers may now be directly invoked in the lucene
+  query syntax without the _query_ magic field hack.
+  Example:  foo AND {!term f=myfield v=$qq}
+  (yonik)
+
+* SOLR-4087: Add MAX_DOC_FREQ option to MoreLikeThis.
+  (Andrew Janowczyk via Mark Miller)
+
+
 Optimizations
 ----------------------
 
@@ -63,9 +125,15 @@ Optimizations
   
 * SOLR-3941: The "commitOnLeader" part of distributed recovery can use
   openSearcher=false. (Tomas Fernandez Lobbe via Mark Miller)
+  
+* SOLR-4063: Allow CoreContainer to load multiple SolrCores in parallel rather
+  than just serially. (Mark Miller)
 
 Bug Fixes
 ----------------------
+
+* SOLR-4007: Morfologik dictionaries not available in Solr field type
+  due to class loader lookup problems. (Lance Norskog, Dawid Weiss)
 
 * SOLR-3560: Handle different types of Exception Messages for Logging UI
   (steffkes)
@@ -81,6 +149,129 @@ Bug Fixes
 * SOLR-3940: Rejoining the leader election incorrectly triggers the code path
   for a fresh cluster start rather than fail over. (Mark Miller)
 
+* SOLR-3961: Fixed error using LimitTokenCountFilterFactory 
+  (Jack Krupansky, hossman)
+
+* SOLR-3933: Distributed commits are not guaranteed to be ordered within a 
+  request. (Mark Miller)
+
+* SOLR-3939: An empty or just replicated index cannot become the leader of a
+  shard after a leader goes down. (Joel Bernstein, yonik, Mark Miller)
+  
+* SOLR-3971: A collection that is created with numShards=1 turns into a 
+  numShards=2 collection after starting up a second core and not specifying 
+  numShards. (Mark Miller)
+
+* SOLR-3988: Fixed SolrTestCaseJ4.adoc(SolrInputDocument) to respect 
+  field and document boosts (hossman)
+
+* SOLR-3981: Fixed bug that resulted in document boosts being compounded in
+  <copyField/> destination fields. (hossman)
+
+* SOLR-3920: Fix server list caching in CloudSolrServer when using more than one
+  collection list with the same instance. (Grzegorz Sobczyk, Mark Miller)
+
+* SOLR-3938: prepareCommit command omits commitData causing a failure to trigger
+  replication to slaves. (yonik)
+
+* SOLR-3992: QuerySenderListener doesn't populate document cache.
+  (Shotaro Kamio, yonik)
+
+* SOLR-3995: Recovery may never finish on SolrCore shutdown if the last reference to 
+  a SolrCore is closed by the recovery process. (Mark Miller)
+
+* SOLR-3998: Atomic update on uniqueKey field itself causes duplicate document.
+  (Eric Spencer, yonik)
+
+* SOLR-4001: In CachingDirectoryFactory#close, if there are still refs for a
+  Directory outstanding, we need to wait for them to be released before closing.
+  (Mark Miller)
+
+* SOLR-4005: If CoreContainer fails to register a created core, it should close it.
+  (Mark Miller)
+
+* SOLR-4009: OverseerCollectionProcessor is not resilient to many error conditions
+  and can stop running on errors. (Raintung Li, milesli, Mark Miller)
+
+* SOLR-4019: Log stack traces for 503/Service Unavailable SolrException if not
+  thrown by PingRequestHandler. Do not log exceptions if a user tries to view a
+  hidden file using ShowFileRequestHandler.  (Tomás Fernández Löbbe via James Dyer)
+
+* SOLR-3589: Edismax parser does not honor mm parameter if analyzer splits a token.
+  (Tom Burton-West, Robert Muir)
+
+* SOLR-4031: Upgrade to Jetty 8.1.7 to fix a bug where in very rare occasions 
+  the content of two concurrent requests get mixed up. (Per Steffensen, yonik)
+
+* SOLR-4060: ReplicationHandler can try and do a snappull and open a new IndexWriter
+  after shutdown has already occurred, leaving an IndexWriter that is not closed.
+  (Mark Miller)
+
+* SOLR-4055: Fix a thread safety issue with the Collections API that could
+  cause actions to be targeted at the wrong SolrCores. 
+  (Raintung Li, Per Steffensen via Mark Miller)
+
+* SOLR-3993: If multiple SolrCore's for a shard coexist on a node, on cluster
+  restart, leader election would stall until timeout, waiting to see all of 
+  the replicas come up. (Mark Miller, Alexey Kudinov)
+  
+* SOLR-2045: Databases that require a commit to be issued before closing the 
+  connection on a non-read-only database leak connections.  Also expanded the
+  SqlEntityProcessor test to sometimes use Derby as well as HSQLDB (Derby is
+  one db affected by this bug).  (Fenlor Sebastia, James Dyer)
+
+* SOLR-4064: When there is an unexpected exception while trying to run the new
+  leader process, the SolrCore will not correctly rejoin the election.
+  (Po Rui Via Mark Miller)
+
+* SOLR-3989: SolrZkClient constructor dropped exception cause when throwing
+  a new RuntimeException. (Colin Bartolome, yonik)
+
+* SOLR-4036: field aliases in fl should not cause properties of target field
+  to be used. (Martin Koch, yonik)
+
+* SOLR-4003: The SolrZKClient clean method should not try and clear zk paths
+  that start with /zookeeper, as this can fail and stop the removal of
+  further nodes. (Mark Miller)
+
+* SOLR-4076: SolrQueryParser should run fuzzy terms through
+  MultiTermAwareComponents to ensure that (for example) a fuzzy query of
+  foobar~2 is equivalent to FooBar~2 on a field that includes lowercasing.
+  (yonik)
+
+* SOLR-4081: QueryParsing.toString, used during debugQuery=true, did not
+  correctly handle ExtendedQueries such as WrappedQuery
+  (used when cache=false), spatial queries, and frange queires.
+  (Eirik Lygre, yonik)
+
+* SOLR-3959: Ensure the internal comma separator of poly fields is escaped
+  for CSVResponseWriter.  (Areek Zillur via Robert Muir)
+  
+* SOLR-4075: A logical shard that has had all of it's SolrCores unloaded should 
+  be removed from the cluster state. (Mark Miller, Gilles Comeau)
+  
+* SOLR-4034: Check if a collection already exists before trying to create a
+  new one. (Po Rui, Mark Miller)
+
+* SOLR-4097: Race can cause NPE in logging line on first cluster state update.
+  (Mark Miller)
+  
+* SOLR-4099: Allow the collection api work queue to make forward progress even
+  when it's watcher is not fired for some reason. (Raintung Li via Mark Miller)
+
+* SOLR-3960: Fixed a bug where Distributed Grouping ignored PostFilters
+  (Nathan Visagan, hossman)
+
+* SOLR-3842: DIH would not populate multivalued fields if the column name
+  derives from a resolved variable (James Dyer)
+
+* SOLR-4117: Retrieving the size of the index may use the wrong index dir if
+  you are replicating.
+  (Mark Miller, Markus Jelsma)
+
+* SOLR-2890: Fixed a bug that prevented omitNorms and omitTermFreqAndPositions 
+  options from being respected in some <fieldType/> declarations (hossman)
+
 Other Changes
 ----------------------
 
@@ -89,6 +280,47 @@ Other Changes
 
 * SOLR-3861: Refactor SolrCoreState so that it's managed by SolrCore.
   (Mark Miller, hossman)
+
+* SOLR-3966: Eliminate superfluous warning from LanguageIdentifierUpdateProcessor
+  (Markus Jelsma via hossman)
+
+* SOLR-3932: SolrCmdDistributorTest either takes 3 seconds or 3 minutes.
+  (yonik, Mark Miller)  
+  
+* SOLR-3856: New tests for SqlEntityProcessor/CachedSqlEntityProcessor 
+  (James Dyer)
+
+* SOLR-4067: ZkStateReader#getLeaderProps should not return props for a leader
+  that it does not think is live. (Mark Miller)
+  
+* SOLR-4086: DIH refactor of VariableResolver and Evaluator.  VariableResolver
+  and each built-in Evaluator are separate concrete classes.  DateFormatEvaluator
+  now defaults with the ROOT Locale. However, users may specify a different 
+  Locale using an optional new third parameter. (James Dyer)
+
+* SOLR-3602: Update ZooKeeper to 3.4.5 (Mark Miller)
+
+* SOLR-4095: DIH NumberFormatTransformer & DateFormatTransformer default to the
+  ROOT Locale if none is specified.  These previously used the machine's default.
+  (James Dyer)
+  
+* SOLR-4096: DIH FileDataSource & FieldReaderDataSource default to UTF-8 encoding
+  if none is specified.  These previously used the machine's default.
+  (James Dyer)
+  
+* SOLR-1916: DIH to not use Lucene-forbidden Java APIs 
+  (default encoding, locale, etc.) (James Dyer, Robert Muir)
+
+* SOLR-4111: SpellCheckCollatorTest#testContextSensitiveCollate to test against
+  both DirectSolrSpellChecker & IndexBasedSpellChecker
+  (Tomás Fernández Löbbe via James Dyer)
+
+* SOLR-2141: Better test coverage for Evaluators (James Dyer)
+
+* SOLR-4119: Update Guava to 13.0.1 (Mark Miller)
+
+* SOLR-4074: Raise default ramBufferSizeMB to 100 from 32.
+  (yonik, Mark Miller)
 
 ==================  4.0.0 ==================
 

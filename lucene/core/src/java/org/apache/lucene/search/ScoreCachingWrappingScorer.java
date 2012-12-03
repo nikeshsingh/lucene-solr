@@ -53,6 +53,20 @@ public class ScoreCachingWrappingScorer extends FilteredScorer {
     return curScore;
   }
 
+  @Override
+  public int freq() throws IOException {
+    return in.freq();
+  }
+
+  @Override
+  public int docID() {
+    return in.docID();
+  }
+
+  @Override
+  public int nextDoc() throws IOException {
+    return in.nextDoc();
+  }
   
   @Override
   public void score(Collector collector) throws IOException {

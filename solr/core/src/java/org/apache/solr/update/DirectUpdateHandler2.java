@@ -37,7 +37,6 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queries.function.ValueSource;
-import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
@@ -45,7 +44,6 @@ import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.solr.common.SolrException;
-import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
@@ -58,16 +56,17 @@ import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.FunctionRangeQuery;
 import org.apache.solr.search.QParser;
+import org.apache.solr.search.SyntaxError;
 import org.apache.solr.search.QueryUtils;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.function.ValueSourceRangeFilter;
 import org.apache.solr.util.RefCounted;
 
 /**
- *  TODO: add soft commitWithin support
- * 
  * <code>DirectUpdateHandler2</code> implements an UpdateHandler where documents are added
  * directly to the main Lucene index as opposed to adding to a separate smaller index.
+ * <p>
+ * TODO: add soft commitWithin support
  */
 public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState.IndexWriterCloser {
   protected final SolrCoreState solrCoreState;
@@ -318,7 +317,7 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
 
       return q;
 
-    } catch (ParseException e) {
+    } catch (SyntaxError e) {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, e);
     }
   }
@@ -447,6 +446,10 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
       log.info("start "+cmd);
       RefCounted<IndexWriter> iw = solrCoreState.getIndexWriter(core);
       try {
+        final Map<String,String> commitData = new HashMap<String,String>();
+        commitData.put(SolrIndexWriter.COMMIT_TIME_MSEC_KEY,
+            String.valueOf(System.currentTimeMillis()));
+        iw.get().setCommitData(commitData);
         iw.get().prepareCommit();
       } finally {
         iw.decref();
@@ -522,7 +525,8 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
           final Map<String,String> commitData = new HashMap<String,String>();
           commitData.put(SolrIndexWriter.COMMIT_TIME_MSEC_KEY,
               String.valueOf(System.currentTimeMillis()));
-          writer.commit(commitData);
+          writer.setCommitData(commitData);
+          writer.commit();
           // SolrCore.verbose("writer.commit() end");
           numDocsPending.set(0);
           callPostCommitCallbacks();
@@ -600,8 +604,8 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
   }
 
   @Override
-  public void newIndexWriter(boolean rollback) throws IOException {
-    solrCoreState.newIndexWriter(core, rollback);
+  public void newIndexWriter(boolean rollback, boolean forceNewDir) throws IOException {
+    solrCoreState.newIndexWriter(core, rollback, forceNewDir);
   }
   
   /**
@@ -704,7 +708,8 @@ public class DirectUpdateHandler2 extends UpdateHandler implements SolrCoreState
           // todo: refactor this shared code (or figure out why a real CommitUpdateCommand can't be used)
           final Map<String,String> commitData = new HashMap<String,String>();
           commitData.put(SolrIndexWriter.COMMIT_TIME_MSEC_KEY, String.valueOf(System.currentTimeMillis()));
-          writer.commit(commitData);
+          writer.setCommitData(commitData);
+          writer.commit();
 
           synchronized (solrCoreState.getUpdateLock()) {
             ulog.postCommit(cmd);

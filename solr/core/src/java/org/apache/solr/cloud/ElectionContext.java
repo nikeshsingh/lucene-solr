@@ -14,8 +14,10 @@ import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.update.UpdateLog;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.KeeperException.NoNodeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,7 +39,7 @@ import org.slf4j.LoggerFactory;
  */
 
 public abstract class ElectionContext {
-  
+  private static Logger log = LoggerFactory.getLogger(ElectionContext.class);
   final String electionPath;
   final ZkNodeProps leaderProps;
   final String id;
@@ -57,7 +59,12 @@ public abstract class ElectionContext {
   public void close() {}
   
   public void cancelElection() throws InterruptedException, KeeperException {
-    zkClient.delete(leaderSeqPath, -1, true);
+    try {
+      zkClient.delete(leaderSeqPath, -1, true);
+    } catch (NoNodeException e) {
+      // fine
+      log.warn("cancelElection did not find election node to remove");
+    }
   }
 
   abstract void runLeaderProcess(boolean weAreReplacement) throws KeeperException, InterruptedException, IOException;
@@ -162,6 +169,10 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
       }
       
       log.info("I may be the new leader - try and sync");
+      
+      UpdateLog ulog = core.getUpdateHandler().getUpdateLog();
+ 
+      
       // we are going to attempt to be the leader
       // first cancel any current recovery
       core.getUpdateHandler().getSolrCoreState().cancelRecovery();
@@ -171,6 +182,14 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
       } catch (Throwable t) {
         SolrException.log(log, "Exception while trying to sync", t);
         success = false;
+      }
+      
+      if (!success && ulog.getRecentUpdates().getVersions(1).isEmpty()) {
+        // we failed sync, but we have no versions - we can't sync in that case
+        // - we were active
+        // before, so become leader anyway
+        log.info("We failed sync, but we have no versions - we can't sync in that case - we were active before, so become leader anyway");
+        success = true;
       }
       
       // if !success but no one else is in active mode,
@@ -220,10 +239,17 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
     } catch (Throwable t) {
       try {
         core = cc.getCore(coreName);
+        if (core == null) {
+          cancelElection();
+          throw new SolrException(ErrorCode.SERVER_ERROR,
+              "Fatal Error, SolrCore not found:" + coreName + " in "
+                  + cc.getCoreNames());
+        }
+        
         core.getCoreDescriptor().getCloudDescriptor().isLeader = false;
         
         // we could not publish ourselves as leader - rejoin election
-        rejoinLeaderElection(coreName, core);
+        rejoinLeaderElection(leaderSeqPath, core);
       } finally {
         if (core != null) {
           core.close();
@@ -237,7 +263,7 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
       ZkNodeProps leaderProps, String collection, String shardId) {
     ClusterState clusterState = zkController.getZkStateReader()
         .getClusterState();
-    Map<String,Slice> slices = clusterState.getSlices(collection);
+    Map<String,Slice> slices = clusterState.getSlicesMap(collection);
     Slice slice = slices.get(shardId);
     Map<String,Replica> replicasMap = slice.getReplicasMap();
     for (Map.Entry<String,Replica> shard : replicasMap.entrySet()) {
@@ -267,7 +293,7 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
     final String shardsElectZkPath = electionPath + LeaderElector.ELECTION_NODE;
     
     Slice slices = zkController.getClusterState().getSlice(collection, shardId);
-    
+    int cnt = 0;
     while (true && !isClosed) {
       // wait for everyone to be up
       if (slices != null) {
@@ -284,9 +310,11 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
           log.info("Enough replicas found to continue.");
           return;
         } else {
-          log.info("Waiting until we see more replicas up: total="
+          if (cnt % 40 == 0) {
+            log.info("Waiting until we see more replicas up: total="
               + slices.getReplicasMap().size() + " found=" + found
               + " timeoutin=" + (timeoutAt - System.currentTimeMillis()));
+          }
         }
         
         if (System.currentTimeMillis() > timeoutAt) {
@@ -297,6 +325,8 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
       
       Thread.sleep(500);
       slices = zkController.getClusterState().getSlice(collection, shardId);
+      // System.out.println("###### waitForReplicasToComeUp  : slices=" + slices + " all=" + zkController.getClusterState().getCollectionStates() );
+      cnt++;
     }
   }
 
@@ -308,13 +338,7 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
       return;
     }
     
-    log.info("There is a better leader candidate than us - going back into recovery");
-    
-    try {
-      zkController.publish(core.getCoreDescriptor(), ZkStateReader.DOWN);
-    } catch (Throwable t) {
-      SolrException.log(log, "Error trying to publish down state", t);
-    }
+    log.info("There may be a better leader candidate than us - going back into recovery");
     
     cancelElection();
     
@@ -335,12 +359,15 @@ final class ShardLeaderElectionContext extends ShardLeaderElectionContextBase {
       return false;
     }
     
-    if (core.getCoreDescriptor().getCloudDescriptor().getLastPublished().equals(ZkStateReader.ACTIVE)) {
+    if (core.getCoreDescriptor().getCloudDescriptor().getLastPublished()
+        .equals(ZkStateReader.ACTIVE)) {
       log.info("My last published State was Active, it's okay to be the leader.");
       return true;
     }
-    
-//    TODO: and if no is a good candidate?
+    log.info("My last published State was "
+        + core.getCoreDescriptor().getCloudDescriptor().getLastPublished()
+        + ", I won't be the leader.");
+    // TODO: and if no one is a good candidate?
     
     return false;
   }

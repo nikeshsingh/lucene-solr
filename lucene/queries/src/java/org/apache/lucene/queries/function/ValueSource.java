@@ -89,9 +89,8 @@ public abstract class ValueSource {
    *
    * @param reverse true if this is a reverse sort.
    * @return The {@link org.apache.lucene.search.SortField} for the ValueSource
-   * @throws IOException if there was a problem reading the values.
    */
-  public SortField getSortField(boolean reverse) throws IOException {
+  public SortField getSortField(boolean reverse) {
     return new ValueSourceSortField(reverse);
   }
 
@@ -192,7 +191,7 @@ public abstract class ValueSource {
       if (docValue < value) {
         return -1;
       } else if (docValue > value) {
-        return -1;
+        return 1;
       } else {
         return 0;
       }

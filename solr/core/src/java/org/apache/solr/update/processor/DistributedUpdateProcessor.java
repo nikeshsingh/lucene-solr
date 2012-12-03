@@ -37,6 +37,8 @@ import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.SolrInputField;
 import org.apache.solr.common.cloud.ClusterState;
+import org.apache.solr.common.cloud.DocCollection;
+import org.apache.solr.common.cloud.DocRouter;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
@@ -175,30 +177,50 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
     }
   }
 
-  private List<Node> setupRequest(int hash) {
+
+  private List<Node> setupRequest(String id, SolrInputDocument doc) {
     List<Node> nodes = null;
 
     // if we are in zk mode...
     if (zkEnabled) {
-      // set num nodes
-      numNodes = zkController.getClusterState().getLiveNodes().size();
-      
-      String shardId = getShard(hash, collection, zkController.getClusterState()); // get the right shard based on the hash...
+
+      String coreName = req.getCore().getName();
+      String coreNodeName = zkController.getNodeName() + "_" + coreName;
+
+      ClusterState cstate = zkController.getClusterState();
+      numNodes = cstate.getLiveNodes().size();
+      DocCollection coll = cstate.getCollection(collection);
+      Slice slice = coll.getRouter().getTargetShard(id, doc, req.getParams(), coll);
+
+      if (slice == null) {
+        // No slice found.  Most strict routers will have already thrown an exception, so a null return is
+        // a signal to use the slice of this core.
+        // TODO: what if this core is not in the targeted collection?
+        String shardId = req.getCore().getCoreDescriptor().getCloudDescriptor().getShardId();
+        slice = coll.getSlice(shardId);
+        if (slice == null) {
+          throw new SolrException(ErrorCode.BAD_REQUEST, "No shard " + shardId + " in " + coll);
+        }
+      }
+
+
+      String shardId = slice.getName();
 
       try {
+        // Not equivalent to getLeaderProps, which does retries to find a leader.
+        // Replica leader = slice.getLeader();
+
         ZkCoreNodeProps leaderProps = new ZkCoreNodeProps(zkController.getZkStateReader().getLeaderProps(
             collection, shardId));
-        
+
         String leaderNodeName = leaderProps.getCoreNodeName();
-        String coreName = req.getCore().getName();
-        String coreNodeName = zkController.getNodeName() + "_" + coreName;
         isLeader = coreNodeName.equals(leaderNodeName);
-        
-        DistribPhase phase = 
+
+        DistribPhase phase =
             DistribPhase.parseParam(req.getParams().get(DISTRIB_UPDATE_PARAM));
-       
+
         doDefensiveChecks(shardId, phase);
-     
+
 
         if (DistribPhase.FROMLEADER == phase) {
           // we are coming from the leader, just go local - add no urls
@@ -219,7 +241,7 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
               skipListSet = new HashSet<String>(skipList.length);
               skipListSet.addAll(Arrays.asList(skipList));
             }
-            
+
             for (ZkCoreNodeProps props : replicaProps) {
               if (skipList != null) {
                 if (!skipListSet.contains(props.getCoreUrl())) {
@@ -230,14 +252,14 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
               }
             }
           }
-          
+
         } else {
           // I need to forward onto the leader...
           nodes = new ArrayList<Node>(1);
           nodes.add(new RetryNode(leaderProps, zkController.getZkStateReader(), collection, shardId));
           forwardToLeader = true;
         }
-        
+
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         throw new ZooKeeperException(SolrException.ErrorCode.SERVER_ERROR, "",
@@ -247,6 +269,7 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
 
     return nodes;
   }
+
 
   private void doDefensiveChecks(String shardId, DistribPhase phase) {
     String from = req.getParams().get("distrib.from");
@@ -315,7 +338,7 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
     if (zkEnabled) {
       zkCheck();
       hash = hash(cmd);
-      nodes = setupRequest(hash);
+      nodes = setupRequest(cmd.getHashableId(), cmd.getSolrInputDocument());
     } else {
       isLeader = getNonZkLeaderAssumption(req);
     }
@@ -603,11 +626,15 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
         for (Entry<String,Object> entry : ((Map<String,Object>) val).entrySet()) {
           String key = entry.getKey();
           Object fieldVal = entry.getValue();
+          boolean updateField = false;
           if ("add".equals(key)) {
+            updateField = true;
             oldDoc.addField( sif.getName(), fieldVal, sif.getBoost());
           } else if ("set".equals(key)) {
+            updateField = true;
             oldDoc.setField(sif.getName(),  fieldVal, sif.getBoost());
           } else if ("inc".equals(key)) {
+            updateField = true;
             SolrInputField numericField = oldDoc.get(sif.getName());
             if (numericField == null) {
               oldDoc.setField(sif.getName(),  fieldVal, sif.getBoost());
@@ -636,6 +663,12 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
             }
 
           }
+
+          // validate that the field being modified is not the id field.
+          if (updateField && idField.getName().equals(sif.getName())) {
+            throw new SolrException(ErrorCode.BAD_REQUEST, "Invalid update of id field: " + sif);
+          }
+
         }
       } else {
         // normal fields are treated as a "set"
@@ -658,11 +691,9 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
       return;
     }
 
-    int hash = 0;
     if (zkEnabled) {
       zkCheck();
-      hash = hash(cmd);
-      nodes = setupRequest(hash);
+      nodes = setupRequest(cmd.getId(), null);
     } else {
       isLeader = getNonZkLeaderAssumption(req);
     }
@@ -741,7 +772,7 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
     if (zkEnabled && DistribPhase.NONE == phase) {
       boolean leaderForAnyShard = false;  // start off by assuming we are not a leader for any shard
 
-      Map<String,Slice> slices = zkController.getClusterState().getSlices(collection);
+      Map<String,Slice> slices = zkController.getClusterState().getSlicesMap(collection);
       if (slices == null) {
         throw new SolrException(ErrorCode.BAD_REQUEST,
             "Cannot find collection:" + collection + " in "
@@ -1048,7 +1079,7 @@ public class DistributedUpdateProcessor extends UpdateRequestProcessor {
     ClusterState clusterState = req.getCore().getCoreDescriptor()
         .getCoreContainer().getZkController().getClusterState();
     List<Node> urls = new ArrayList<Node>();
-    Map<String,Slice> slices = clusterState.getSlices(collection);
+    Map<String,Slice> slices = clusterState.getSlicesMap(collection);
     if (slices == null) {
       throw new ZooKeeperException(ErrorCode.BAD_REQUEST,
           "Could not find collection in zk: " + clusterState);

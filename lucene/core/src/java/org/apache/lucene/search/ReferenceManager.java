@@ -19,6 +19,8 @@ package org.apache.lucene.search;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -44,7 +46,9 @@ public abstract class ReferenceManager<G> implements Closeable {
   protected volatile G current;
   
   private final Lock refreshLock = new ReentrantLock();
-  
+
+  private final List<RefreshListener> refreshListeners = new CopyOnWriteArrayList<RefreshListener>();
+
   private void ensureOpen() {
     if (current == null) {
       throw new AlreadyClosedException(REFERENCE_MANAGER_IS_CLOSED_MSG);
@@ -58,18 +62,24 @@ public abstract class ReferenceManager<G> implements Closeable {
     release(oldReference);
   }
 
-  /** Decrement reference counting on the given reference. */
+  /**
+   * Decrement reference counting on the given reference. 
+   * @throws IOException if reference decrement on the given resource failed.
+   * */
   protected abstract void decRef(G reference) throws IOException;
   
   /**
    * Refresh the given reference if needed. Returns {@code null} if no refresh
    * was needed, otherwise a new refreshed reference.
+   * @throws AlreadyClosedException if the reference manager has been {@link #close() closed}.
+   * @throws IOException if the refresh operation failed
    */
   protected abstract G refreshIfNeeded(G referenceToRefresh) throws IOException;
 
   /**
    * Try to increment reference counting on the given reference. Return true if
    * the operation was successful.
+   * @throws AlreadyClosedException if the reference manager has been {@link #close() closed}. 
    */
   protected abstract boolean tryIncRef(G reference);
 
@@ -78,6 +88,7 @@ public abstract class ReferenceManager<G> implements Closeable {
    * call to {@link #release}; it's best to do so in a finally clause, and set
    * the reference to {@code null} to prevent accidental usage after it has been
    * released.
+   * @throws AlreadyClosedException if the reference manager has been {@link #close() closed}. 
    */
   public final G acquire() {
     G ref;
@@ -88,12 +99,27 @@ public abstract class ReferenceManager<G> implements Closeable {
     } while (!tryIncRef(ref));
     return ref;
   }
-
+  
   /**
-   * Close this ReferenceManager to future {@link #acquire() acquiring}. Any
-   * references that were previously {@link #acquire() acquired} won't be
-   * affected, and they should still be {@link #release released} when they are
-   * not needed anymore.
+    * <p>
+    * Closes this ReferenceManager to prevent future {@link #acquire() acquiring}. A
+    * reference manager should be closed if the reference to the managed resource
+    * should be disposed or the application using the {@link ReferenceManager}
+    * is shutting down. The managed resource might not be released immediately,
+    * if the {@link ReferenceManager} user is holding on to a previously
+    * {@link #acquire() acquired} reference. The resource will be released once
+    * when the last reference is {@link #release(Object) released}. Those
+    * references can still be used as if the manager was still active.
+    * </p>
+    * <p>
+    * Applications should not {@link #acquire() acquire} new references from this
+    * manager once this method has been called. {@link #acquire() Acquiring} a
+    * resource on a closed {@link ReferenceManager} will throw an
+    * {@link AlreadyClosedException}.
+    * </p>
+    * 
+    * @throws IOException
+    *           if the underlying reader of the current reference could not be closed
    */
   public final synchronized void close() throws IOException {
     if (current != null) {
@@ -105,7 +131,10 @@ public abstract class ReferenceManager<G> implements Closeable {
     }
   }
 
-  /** Called after close(), so subclass can free any resources. */
+  /**
+   *  Called after close(), so subclass can free any resources.
+   *  @throws IOException if the after close operation in a sub-class throws an {@link IOException} 
+   * */
   protected void afterClose() throws IOException {
   }
 
@@ -117,18 +146,18 @@ public abstract class ReferenceManager<G> implements Closeable {
     // Per ReentrantLock's javadoc, calling lock() by the same thread more than
     // once is ok, as long as unlock() is called a matching number of times.
     refreshLock.lock();
+    boolean refreshed = false;
     try {
       final G reference = acquire();
       try {
         G newReference = refreshIfNeeded(reference);
         if (newReference != null) {
           assert newReference != reference : "refreshIfNeeded should return null if refresh wasn't needed";
-          boolean success = false;
           try {
             swapReference(newReference);
-            success = true;
+            refreshed = true;
           } finally {
-            if (!success) {
+            if (!refreshed) {
               release(newReference);
             }
           }
@@ -136,12 +165,15 @@ public abstract class ReferenceManager<G> implements Closeable {
       } finally {
         release(reference);
       }
-      afterRefresh();
+      afterMaybeRefresh();
+      if (refreshed) {
+        notifyRefreshListeners();
+      }
     } finally {
       refreshLock.unlock();
     }
   }
-  
+
   /**
    * You must call this (or {@link #maybeRefreshBlocking()}), periodically, if
    * you want that {@link #acquire()} will return refreshed instances.
@@ -158,6 +190,9 @@ public abstract class ReferenceManager<G> implements Closeable {
    * If this method returns true it means the calling thread either refreshed or
    * that there were no changes to refresh. If it returns false it means another
    * thread is currently refreshing.
+   * </p>
+   * @throws IOException if refreshing the resource causes an {@link IOException}
+   * @throws AlreadyClosedException if the reference manager has been {@link #close() closed}. 
    */
   public final boolean maybeRefresh() throws IOException {
     ensureOpen();
@@ -185,6 +220,8 @@ public abstract class ReferenceManager<G> implements Closeable {
    * useful if you want to guarantee that the next call to {@link #acquire()}
    * will return a refreshed instance. Otherwise, consider using the
    * non-blocking {@link #maybeRefresh()}.
+   * @throws IOException if refreshing the resource causes an {@link IOException}
+   * @throws AlreadyClosedException if the reference manager has been {@link #close() closed}. 
    */
   public final void maybeRefreshBlocking() throws IOException {
     ensureOpen();
@@ -198,18 +235,57 @@ public abstract class ReferenceManager<G> implements Closeable {
     }
   }
 
-  /** Called after swapReference has installed a new
-   *  instance. */
-  protected void afterRefresh() throws IOException {
+  /** Called after a refresh was attempted, regardless of
+   *  whether a new reference was in fact created.
+   *  @throws IOException if a low level I/O exception occurs  
+   **/
+  protected void afterMaybeRefresh() throws IOException {
   }
   
   /**
-   * Release the refernce previously obtained via {@link #acquire()}.
+   * Release the reference previously obtained via {@link #acquire()}.
    * <p>
    * <b>NOTE:</b> it's safe to call this after {@link #close()}.
+   * @throws IOException if the release operation on the given resource throws an {@link IOException}
    */
   public final void release(G reference) throws IOException {
     assert reference != null;
     decRef(reference);
+  }
+
+  private void notifyRefreshListeners() {
+    for (RefreshListener refreshListener : refreshListeners) {
+      refreshListener.afterRefresh();
+    }
+  }
+
+  /**
+   * Adds a listener, to be notified when a reference is refreshed/swapped.
+   */
+  public void addListener(RefreshListener listener) {
+    if (listener == null) {
+      throw new NullPointerException("Listener cannot be null");
+    }
+    refreshListeners.add(listener);
+  }
+
+  /**
+   * Remove a listener added with {@link #addListener(RefreshListener)}.
+   */
+  public void removeListener(RefreshListener listener) {
+    if (listener == null) {
+      throw new NullPointerException("Listener cannot be null");
+    }
+    refreshListeners.remove(listener);
+  }
+
+  /** Use to receive notification when a refresh has
+   *  finished.  See {@link #addListener}. */
+  public interface RefreshListener {
+
+    /**
+     * Called after a successful refresh and a new reference has been installed. When this is called {@link #acquire()} is guaranteed to return a new instance.
+     */
+    void afterRefresh();
   }
 }

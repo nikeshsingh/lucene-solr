@@ -29,7 +29,6 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Version;
 import org.apache.solr.common.SolrException;
@@ -85,18 +84,8 @@ public class TestArbitraryIndexDir extends AbstractSolrTestCase{
 
   }
 
-  @Override
-  public String getSchemaFile() {
-    return null;
-  }
-
-  @Override
-  public String getSolrConfigFile() {
-    return null;  // prevent superclass from creating it's own TestHarness
-  }
-
   @Test
-  public void testLoadNewIndexDir() throws IOException, ParserConfigurationException, SAXException, ParseException {
+  public void testLoadNewIndexDir() throws IOException, ParserConfigurationException, SAXException {
     //add a doc in original index dir
     assertU(adoc("id", String.valueOf(1),
         "name", "name"+String.valueOf(1)));

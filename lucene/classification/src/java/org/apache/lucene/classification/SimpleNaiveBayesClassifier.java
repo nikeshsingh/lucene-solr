@@ -1,5 +1,3 @@
-package org.apache.lucene.classification;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.classification;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.classification;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
@@ -39,6 +38,7 @@ import java.util.LinkedList;
 
 /**
  * A simplistic Lucene based NaiveBayes classifier, see <code>http://en.wikipedia.org/wiki/Naive_Bayes_classifier</code>
+ *
  * @lucene.experimental
  */
 public class SimpleNaiveBayesClassifier implements Classifier {
@@ -49,14 +49,19 @@ public class SimpleNaiveBayesClassifier implements Classifier {
   private int docsWithClassSize;
   private Analyzer analyzer;
   private IndexSearcher indexSearcher;
-  
-  /** 
+
+  /**
    * Creates a new NaiveBayes classifier.
    * Note that you must call {@link #train(AtomicReader, String, String, Analyzer) train()} before you can
    * classify any documents.
    */
-  public SimpleNaiveBayesClassifier() {}
+  public SimpleNaiveBayesClassifier() {
+  }
 
+  /**
+   * {@inheritDoc}
+   */
+  @Override
   public void train(AtomicReader atomicReader, String textFieldName, String classFieldName, Analyzer analyzer)
       throws IOException {
     this.atomicReader = atomicReader;
@@ -80,7 +85,11 @@ public class SimpleNaiveBayesClassifier implements Classifier {
     return result.toArray(new String[result.size()]);
   }
 
-  public String assignClass(String inputDocument) throws IOException {
+  /**
+   * {@inheritDoc}
+   */
+  @Override
+  public ClassificationResult assignClass(String inputDocument) throws IOException {
     if (atomicReader == null) {
       throw new RuntimeException("need to train the classifier first");
     }
@@ -90,22 +99,23 @@ public class SimpleNaiveBayesClassifier implements Classifier {
     Terms terms = MultiFields.getTerms(atomicReader, classFieldName);
     TermsEnum termsEnum = terms.iterator(null);
     BytesRef next;
-    while((next = termsEnum.next()) != null) {
+    String[] tokenizedDoc = tokenizeDoc(inputDocument);
+    while ((next = termsEnum.next()) != null) {
       // TODO : turn it to be in log scale
-      double clVal = calculatePrior(next) * calculateLikelihood(inputDocument, next);
+      double clVal = calculatePrior(next) * calculateLikelihood(tokenizedDoc, next);
       if (clVal > max) {
         max = clVal;
         foundClass = next.utf8ToString();
       }
     }
-    return foundClass;
+    return new ClassificationResult(foundClass, max);
   }
 
 
-  private double calculateLikelihood(String document, BytesRef c) throws IOException {
+  private double calculateLikelihood(String[] tokenizedDoc, BytesRef c) throws IOException {
     // for each word
     double result = 1d;
-    for (String word : tokenizeDoc(document)) {
+    for (String word : tokenizedDoc) {
       // search with text:word AND class:c
       int hits = getWordFreqForClass(word, c);
 

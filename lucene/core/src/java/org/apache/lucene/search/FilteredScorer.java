@@ -43,7 +43,7 @@ public abstract class FilteredScorer extends Scorer {
   }
 
   @Override
-  public float freq() throws IOException {
+  public int freq() throws IOException {
     return in.freq();
   }
 

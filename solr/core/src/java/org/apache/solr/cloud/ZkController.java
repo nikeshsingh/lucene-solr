@@ -20,7 +20,9 @@ package org.apache.solr.cloud;
 import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.util.Collections;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -42,6 +44,7 @@ import org.apache.solr.client.solrj.request.CoreAdminRequest.WaitForState;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.cloud.ClusterState;
+import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.OnReconnect;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkCmdExecutor;
@@ -193,8 +196,6 @@ public final class ZkController {
               ElectionContext context = new OverseerElectionContext(zkClient, overseer, getNodeName());
               overseerElector.joinElection(context, true);
               zkStateReader.createClusterStateWatchersAndUpdate();
-
-            //  cc.newCmdDistribExecutor();
               
               // we have to register as live first to pick up docs in the buffer
               createEphemeralLiveNode();
@@ -308,7 +309,11 @@ public final class ZkController {
     }
     
     for (ElectionContext context : electionContexts.values()) {
-      context.close();
+      try {
+        context.close();
+      } catch (Throwable t) {
+        log.error("Error closing overseer", t);
+      }
     }
     
     try {
@@ -356,7 +361,29 @@ public final class ZkController {
   private String getHostAddress(String host) throws IOException {
 
     if (host == null) {
-      host = "http://" + InetAddress.getLocalHost().getHostName();
+      String hostaddress = InetAddress.getLocalHost().getHostAddress();
+      // Re-get the IP again for "127.0.0.1", the other case we trust the hosts
+      // file is right.
+      if ("127.0.0.1".equals(hostaddress)) {
+        Enumeration<NetworkInterface> netInterfaces = null;
+        try {
+          netInterfaces = NetworkInterface.getNetworkInterfaces();
+          while (netInterfaces.hasMoreElements()) {
+            NetworkInterface ni = netInterfaces.nextElement();
+            Enumeration<InetAddress> ips = ni.getInetAddresses();
+            while (ips.hasMoreElements()) {
+              InetAddress ip = ips.nextElement();
+              if (ip.isSiteLocalAddress()) {
+                hostaddress = ip.getHostAddress();
+              }
+            }
+          }
+        } catch (Throwable e) {
+          SolrException.log(log,
+              "Error while looking for a better host name than 127.0.0.1", e);
+        }
+      }
+      host = "http://" + hostaddress;
     } else {
       Matcher m = URL_PREFIX.matcher(host);
       if (m.matches()) {
@@ -603,7 +630,7 @@ public final class ZkController {
           recoveryFuture.get(); // NOTE: this could potentially block for
           // minutes or more!
           // TODO: public as recovering in the mean time?
-          // TODO: in the future we could do peerync in parallel with recoverFromLog
+          // TODO: in the future we could do peersync in parallel with recoverFromLog
         } else {
           log.info("No LogReplay needed for core="+core.getName() + " baseURL=" + baseUrl);
         }
@@ -781,6 +808,7 @@ public final class ZkController {
     //System.out.println(Thread.currentThread().getStackTrace()[3]);
     Integer numShards = cd.getCloudDescriptor().getNumShards();
     if (numShards == null) { //XXX sys prop hack
+      log.info("numShards not found on descriptor - reading it from system property");
       numShards = Integer.getInteger(ZkStateReader.NUM_SHARDS_PROP);
     }
     
@@ -862,6 +890,10 @@ public final class ZkController {
 
         try {
           Map<String,Object> collectionProps = new HashMap<String,Object>();
+
+          // set defaults
+          collectionProps.put(DocCollection.DOC_ROUTER, "compositeId");
+
           // TODO: if collection.configName isn't set, and there isn't already a conf in zk, just use that?
           String defaultConfigName = System.getProperty(COLLECTION_PARAM_PREFIX+CONFIGNAME_PROP, collection);
 
@@ -876,8 +908,10 @@ public final class ZkController {
             }
 
             // if the config name wasn't passed in, use the default
-            if (!collectionProps.containsKey(CONFIGNAME_PROP))
+            if (!collectionProps.containsKey(CONFIGNAME_PROP)) {
+              // TODO: getting the configName from the collectionPath should fail since we already know it doesn't exist?
               getConfName(collection, collectionPath, collectionProps);
+            }
             
           } else if(System.getProperty("bootstrap_confdir") != null) {
             // if we are bootstrapping a collection, default the config for
@@ -901,7 +935,6 @@ public final class ZkController {
           } else {
             getConfName(collection, collectionPath, collectionProps);
           }
-          
           ZkNodeProps zkProps = new ZkNodeProps(collectionProps);
           zkClient.makePath(collectionPath, ZkStateReader.toJSON(zkProps), CreateMode.PERSISTENT, null, true);
 
@@ -993,7 +1026,7 @@ public final class ZkController {
     }
     
     throw new SolrException(ErrorCode.SERVER_ERROR,
-        "Could not get shard_id for core: " + coreName);
+        "Could not get shard_id for core: " + coreName + " coreNodeName:" + shardZkNodeName);
   }
   
   public static void uploadToZK(SolrZkClient zkClient, File dir, String zkPath) throws IOException, KeeperException, InterruptedException {

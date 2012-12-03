@@ -32,7 +32,7 @@ import java.util.Properties;
  * <p/>
  * The datasouce may be configured as follows
  * <p/>
- * <datasource name="f1" type="FieldReaderDataSource" />
+ * &lt;datasource name="f1" type="FieldReaderDataSource" /&gt;
  * <p/>
  * The enity which uses this datasource must keep the url value as the variable name url="field-name"
  * <p/>
@@ -106,7 +106,7 @@ public class FieldReaderDataSource extends DataSource<Reader> {
   private Reader getReader(Blob blob)
           throws SQLException, UnsupportedEncodingException {
     if (encoding == null) {
-      return (new InputStreamReader(blob.getBinaryStream()));
+      return (new InputStreamReader(blob.getBinaryStream(), "UTF-8"));
     } else {
       return (new InputStreamReader(blob.getBinaryStream(), encoding));
     }

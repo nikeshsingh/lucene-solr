@@ -18,12 +18,10 @@ package org.apache.solr.search;
  */
 
 
-import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.Query;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
-import org.apache.solr.handler.SnapPuller;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.lucene.queryparser.surround.parser.*;
 import org.apache.lucene.queryparser.surround.query.*;
@@ -32,15 +30,14 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Plugin for lucene/contrib Surround query parser, bringing SpanQuery support
- * to Solr
- * 
- * <queryParser name="surround"
- * class="org.apache.solr.search.SurroundQParserPlugin" />
- * 
- * Examples of query syntax can be found in lucene/queryparser/docs/surround
- * 
+ * to Solr.
+ * <p>
+ * &lt;queryParser name="surround"
+ * class="org.apache.solr.search.SurroundQParserPlugin" /&gt;
+ * <p>
  * Note that the query string is not analyzed in any way
  * 
+ * @see QueryParser
  * @since 4.0
  */
 
@@ -75,7 +72,7 @@ class SurroundQParser extends QParser {
 
   @Override
   public Query parse()
-      throws org.apache.lucene.queryparser.classic.ParseException {
+      throws SyntaxError {
     SrndQuery sq;
     String qstr = getString();
     if (qstr == null)
@@ -96,8 +93,7 @@ class SurroundQParser extends QParser {
       sq = org.apache.lucene.queryparser.surround.parser.QueryParser
           .parse(qstr);
     } catch (org.apache.lucene.queryparser.surround.parser.ParseException pe) {
-      throw new org.apache.lucene.queryparser.classic.ParseException(
-          pe.getMessage());
+      throw new SyntaxError(pe);
     }
     
     // so what do we do with the SrndQuery ??

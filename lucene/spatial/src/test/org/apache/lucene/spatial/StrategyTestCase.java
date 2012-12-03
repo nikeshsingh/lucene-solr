@@ -34,6 +34,7 @@ import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.spatial.query.SpatialArgsParser;
 import org.junit.Assert;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -81,7 +82,10 @@ public abstract class StrategyTestCase extends SpatialTestCase {
   }
 
   protected List<Document> getDocuments(String testDataFile) throws IOException {
-    Iterator<SampleData> sampleData = getSampleData(testDataFile);
+    return getDocuments(getSampleData(testDataFile));
+  }
+
+  protected List<Document> getDocuments(Iterator<SampleData> sampleData) {
     List<Document> documents = new ArrayList<Document>();
     while (sampleData.hasNext()) {
       SampleData data = sampleData.next();
@@ -109,8 +113,11 @@ public abstract class StrategyTestCase extends SpatialTestCase {
   }
 
   protected Iterator<SampleData> getSampleData(String testDataFile) throws IOException {
-    return new SampleDataReader(
-        getClass().getClassLoader().getResourceAsStream("data/"+testDataFile) );
+    String path = "data/" + testDataFile;
+    InputStream stream = getClass().getClassLoader().getResourceAsStream(path);
+    if (stream == null)
+      throw new FileNotFoundException("classpath resource not found: "+path);
+    return new SampleDataReader(stream);
   }
 
   protected Iterator<SpatialTestQuery> getTestQueries(String testQueryFile, SpatialContext ctx) throws IOException {

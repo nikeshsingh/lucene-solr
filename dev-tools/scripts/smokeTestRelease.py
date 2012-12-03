@@ -64,7 +64,7 @@ def javaExe(version):
     raise RuntimeError("unknown Java version '%s'" % version)
   if cygwin:
     path = os.popen('cygpath -u "%s"' % path).read().strip()
-  return 'export JAVA_HOME="%s" PATH="%s/bin:$PATH"' % (path, path)
+  return 'export JAVA_HOME="%s" PATH="%s/bin:$PATH" JAVACMD="%s/bin/java"' % (path, path, path)
 
 def verifyJavaVersion(version):
   s = os.popen('%s; java -version 2>&1' % javaExe(version)).read()
@@ -77,11 +77,13 @@ try:
   JAVA6_HOME = env['JAVA6_HOME']
 except KeyError:
   JAVA6_HOME = '/usr/local/jdk1.6.0_27'
+print('JAVA6_HOME is %s' % JAVA6_HOME)
 
 try:
   JAVA7_HOME = env['JAVA7_HOME']
 except KeyError:
   JAVA7_HOME = '/usr/local/jdk1.7.0_01'
+print('JAVA7_HOME is %s' % JAVA7_HOME)
 
 verifyJavaVersion('1.6')
 verifyJavaVersion('1.7')
@@ -461,27 +463,29 @@ def cygwinifyPaths(command):
   if '; ant ' in command: command = reUnixPath.sub(unix2win, command)
   return command
 
+def printFileContents(fileName):
+
+  # Assume log file was written in system's default encoding, but
+  # even if we are wrong, we replace errors ... the ASCII chars
+  # (which is what we mostly care about eg for the test seed) should
+  # still survive:
+  txt = codecs.open(fileName, 'r', encoding=sys.getdefaultencoding(), errors='replace').read()
+
+  # Encode to our output encoding (likely also system's default
+  # encoding):
+  bytes = txt.encode(sys.stdout.encoding, errors='replace')
+
+  # Decode back to string and print... we should hit no exception here
+  # since all errors have been replaced:
+  print(codecs.getdecoder(sys.stdout.encoding)(bytes)[0])
+  print()
+
 def run(command, logFile):
   if cygwin: command = cygwinifyPaths(command)
   if os.system('%s > %s 2>&1' % (command, logFile)):
     logPath = os.path.abspath(logFile)
     print('\ncommand "%s" failed:' % command)
-
-    # Assume log file was written in system's default encoding, but
-    # even if we are wrong, we replace errors ... the ASCII chars
-    # (which is what we mostly care about eg for the test seed) should
-    # still survive:
-    txt = codecs.open(logPath, 'r', encoding=sys.getdefaultencoding(), errors='replace').read()
-
-    # Encode to our output encoding (likely also system's default
-    # encoding):
-    bytes = txt.encode(sys.stdout.encoding, errors='replace')
-
-    # Decode back to string and print... we should hit no exception here
-    # since all errors have been replaced:
-    print(codecs.getdecoder(sys.stdout.encoding)(bytes)[0])
-    print()
-
+    printFileContents(logFile)
     raise RuntimeError('command "%s" failed; see log file %s' % (command, logPath))
     
 def verifyDigests(artifact, urlString, tmpDir):
@@ -578,9 +582,12 @@ def verifyUnpacked(project, artifact, unpackPath, version, tmpDir):
   l = os.listdir(unpackPath)
   textFiles = ['LICENSE', 'NOTICE', 'README']
   if project == 'lucene':
-    textFiles.extend(('JRE_VERSION_MIGRATION', 'CHANGES', 'MIGRATE'))
+    textFiles.extend(('JRE_VERSION_MIGRATION', 'CHANGES', 'MIGRATE', 'SYSTEM_REQUIREMENTS'))
     if isSrc:
       textFiles.append('BUILD')
+  elif not isSrc:
+    textFiles.append('SYSTEM_REQUIREMENTS')
+    
   for fileName in textFiles:
     fileName += '.txt'
     if fileName not in l:
@@ -629,6 +636,8 @@ def verifyUnpacked(project, artifact, unpackPath, version, tmpDir):
   if project == 'lucene':
     if len(l) > 0:
       raise RuntimeError('%s: unexpected files/dirs in artifact %s: %s' % (project, artifact, l))
+  elif isSrc and not os.path.exists('%s/solr/SYSTEM_REQUIREMENTS.txt' % unpackPath):
+    raise RuntimeError('%s: solr/SYSTEM_REQUIREMENTS.txt does not exist in artifact %s' % (project, artifact))
 
   if isSrc:
     print('    make sure no JARs/WARs in src dist...')
@@ -652,11 +661,21 @@ def verifyUnpacked(project, artifact, unpackPath, version, tmpDir):
       print('    run tests w/ Java 6...')
       run('%s; ant test' % javaExe('1.6'), '%s/test.log' % unpackPath)
       run('%s; ant jar' % javaExe('1.6'), '%s/compile.log' % unpackPath)
-      testDemo(isSrc, version)
+      testDemo(isSrc, version, '1.6')
       # test javadocs
       print('    generate javadocs w/ Java 6...')
       run('%s; ant javadocs' % javaExe('1.6'), '%s/javadocs.log' % unpackPath)
       checkJavadocpath('%s/build/docs' % unpackPath)
+
+      print('    run tests w/ Java 7...')
+      run('%s; ant clean test' % javaExe('1.7'), '%s/test.log' % unpackPath)
+      run('%s; ant jar' % javaExe('1.7'), '%s/compile.log' % unpackPath)
+      testDemo(isSrc, version, '1.7')
+
+      print('    generate javadocs w/ Java 7...')
+      run('%s; ant javadocs' % javaExe('1.7'), '%s/javadocs.log' % unpackPath)
+      checkJavadocpathFull('%s/build/docs' % unpackPath)
+
     else:
       os.chdir('solr')
       # DISABLED until solr tests consistently pass
@@ -674,8 +693,8 @@ def verifyUnpacked(project, artifact, unpackPath, version, tmpDir):
  
       # test javadocs
       print('    generate javadocs w/ Java 7...')
-      run('%s; ant javadocs' % javaExe('1.7'), '%s/javadocs.log' % unpackPath)
-      checkJavadocpath('%s/solr/build/docs' % unpackPath, False)
+      run('%s; ant clean javadocs' % javaExe('1.7'), '%s/javadocs.log' % unpackPath)
+      checkJavadocpathFull('%s/solr/build/docs' % unpackPath, False)
 
       print('    test solr example w/ Java 6...')
       run('%s; ant clean example' % javaExe('1.6'), '%s/antexample.log' % unpackPath)
@@ -694,7 +713,8 @@ def verifyUnpacked(project, artifact, unpackPath, version, tmpDir):
     checkAllJARs(os.getcwd(), project, version)
     
     if project == 'lucene':
-      testDemo(isSrc, version)
+      testDemo(isSrc, version, '1.6')
+      testDemo(isSrc, version, '1.7')
 
     else:
       checkSolrWAR('%s/example/webapps/solr.war' % unpackPath, version)
@@ -744,19 +764,29 @@ def readSolrOutput(p, startupEvent, failureEvent, logFile):
   f = open(logFile, 'wb')
   try:
     while True:
-      line = p.readline()
+      line = p.stderr.readline()
       if len(line) == 0:
+        p.poll()
+        if not startupEvent.isSet():
+          failureEvent.set()
+          startupEvent.set()
         break
       f.write(line)
       f.flush()
-      # print 'SOLR: %s' % line.strip()
-      if not startupEvent.isSet() and line.find(b'Started SocketConnector@0.0.0.0:8983') != -1:
-        startupEvent.set()
+      #print('SOLR: %s' % line.strip())
+      if not startupEvent.isSet():
+        if line.find(b'Started SocketConnector@0.0.0.0:8983') != -1:
+          startupEvent.set()
+        elif p.poll() is not None:
+          failureEvent.set()
+          startupEvent.set()
+          break
   except:
     print()
     print('Exception reading Solr output:')
     traceback.print_exc()
     failureEvent.set()
+    startupEvent.set()
   finally:
     f.close()
     
@@ -768,16 +798,24 @@ def testSolrExample(unpackPath, javaPath, isSrc):
   env.update(os.environ)
   env['JAVA_HOME'] = javaPath
   env['PATH'] = '%s/bin:%s' % (javaPath, env['PATH'])
-  server = subprocess.Popen(['java', '-jar', 'start.jar'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+  server = subprocess.Popen(['java', '-jar', 'start.jar'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE, env=env)
 
   startupEvent = threading.Event()
   failureEvent = threading.Event()
-  serverThread = threading.Thread(target=readSolrOutput, args=(server.stderr, startupEvent, failureEvent, logFile))
+  serverThread = threading.Thread(target=readSolrOutput, args=(server, startupEvent, failureEvent, logFile))
   serverThread.setDaemon(True)
   serverThread.start()
 
   # Make sure Solr finishes startup:
-  startupEvent.wait()
+  if not startupEvent.wait(1800):
+    raise RuntimeError('startup took more than 30 minutes')
+  if failureEvent.isSet():
+    logFile = os.path.abspath(logFile)
+    print
+    print('Startup failed; see log %s' % logFile)
+    printFileContents(logFile)
+    raise RuntimeError('failure on startup; see log %s' % logFile)
+    
   print('      startup done')
   
   try:
@@ -814,6 +852,9 @@ def testSolrExample(unpackPath, javaPath, isSrc):
     
   os.chdir('..')
     
+# the weaker check: we can use this on java6 for some checks,
+# but its generated HTML is hopelessly broken so we cannot run
+# the link checking that checkJavadocpathFull does.
 def checkJavadocpath(path, failOnMissing=True):
   # check for level='package'
   # we fail here if its screwed up
@@ -826,11 +867,20 @@ def checkJavadocpath(path, failOnMissing=True):
     # raise RuntimeError('javadoc problems')
     print('\n***WARNING***: javadocs want to fail!\n')
 
+# full checks
+def checkJavadocpathFull(path, failOnMissing=True):
+  # check for missing, etc
+  checkJavadocpath(path, failOnMissing)
+
+  # also validate html/check for broken links
   if checkJavadocLinks.checkAll(path):
     raise RuntimeError('broken javadocs links found!')
 
-def testDemo(isSrc, version):
-  print('    test demo...')
+def testDemo(isSrc, version, jdk):
+  if os.path.exists('index'):
+    shutil.rmtree('index') # nuke any index from any previous iteration
+
+  print('    test demo with %s...' % jdk)
   sep = ';' if cygwin else ':'
   if isSrc:
     cp = 'build/core/classes/java{0}build/demo/classes/java{0}build/analysis/common/classes/java{0}build/queryparser/classes/java'.format(sep)
@@ -838,8 +888,8 @@ def testDemo(isSrc, version):
   else:
     cp = 'core/lucene-core-{0}.jar{1}demo/lucene-demo-{0}.jar{1}analysis/common/lucene-analyzers-common-{0}.jar{1}queryparser/lucene-queryparser-{0}.jar'.format(version, sep)
     docsDir = 'docs'
-  run('%s; java -cp "%s" org.apache.lucene.demo.IndexFiles -index index -docs %s' % (javaExe('1.6'), cp, docsDir), 'index.log')
-  run('%s; java -cp "%s" org.apache.lucene.demo.SearchFiles -index index -query lucene' % (javaExe('1.6'), cp), 'search.log')
+  run('%s; java -cp "%s" org.apache.lucene.demo.IndexFiles -index index -docs %s' % (javaExe(jdk), cp, docsDir), 'index.log')
+  run('%s; java -cp "%s" org.apache.lucene.demo.SearchFiles -index index -query lucene' % (javaExe(jdk), cp), 'search.log')
   reMatchingDocs = re.compile('(\d+) total matching documents')
   m = reMatchingDocs.search(open('search.log', encoding='UTF-8').read())
   if m is None:

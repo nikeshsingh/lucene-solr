@@ -86,23 +86,24 @@ import org.apache.lucene.util.Version;
  * @lucene.experimental
  */
 public class DirectoryTaxonomyWriter implements TaxonomyWriter {
-
+  
   /**
-   * Property name of user commit data that contains the creation time of a
-   * taxonomy index.
+   * Property name of user commit data that contains the index epoch. The epoch
+   * changes whenever the taxonomy is recreated (i.e. opened with
+   * {@link OpenMode#CREATE}.
    * <p>
    * Applications should not use this property in their commit data because it
    * will be overridden by this taxonomy writer.
    */
-  public static final String INDEX_CREATE_TIME = "index.create.time";
-
+  public static final String INDEX_EPOCH = "index.epoch";
+  
   private final Directory dir;
   private final IndexWriter indexWriter;
   private final TaxonomyWriterCache cache;
   private final AtomicInteger cacheMisses = new AtomicInteger(0);
   
-  /** Records the taxonomy index creation time, updated on replaceTaxonomy as well. */
-  private String createTime;
+  // Records the taxonomy index epoch, updated on replaceTaxonomy as well.
+  private long indexEpoch;
   
   private char delimiter = Consts.DEFAULT_DELIMITER;
   private SinglePositionTokenStream parentStream = new SinglePositionTokenStream(Consts.PAYLOAD_PARENT);
@@ -128,6 +129,8 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
   private volatile ParentArray parentArray;
   private volatile int nextID;
 
+//  private Map<String,String> commitData;
+  
   /** Reads the commit data from a Directory. */
   private static Map<String, String> readCommitData(Directory dir) throws IOException {
     SegmentInfos infos = new SegmentInfos();
@@ -200,27 +203,33 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
   public DirectoryTaxonomyWriter(Directory directory, OpenMode openMode,
       TaxonomyWriterCache cache) throws IOException {
 
-    if (!DirectoryReader.indexExists(directory) || openMode==OpenMode.CREATE) {
-      createTime = Long.toString(System.nanoTime());
-    } else {
-      Map<String, String> commitData = readCommitData(directory);
-      if (commitData != null) {
-        // It is ok if an existing index doesn't have commitData, or the
-        // INDEX_CREATE_TIME property. If ever it will be recreated, we'll set
-        // createTime accordingly in the above 'if'. 
-        createTime = commitData.get(INDEX_CREATE_TIME);
-      } else {
-        createTime = null;
-      }
-    }
-    
     dir = directory;
     IndexWriterConfig config = createIndexWriterConfig(openMode);
     indexWriter = openIndexWriter(dir, config);
-    
+
     // verify (to some extent) that merge policy in effect would preserve category docids 
     assert !(indexWriter.getConfig().getMergePolicy() instanceof TieredMergePolicy) : 
       "for preserving category docids, merging none-adjacent segments is not allowed";
+    
+    // after we opened the writer, and the index is locked, it's safe to check
+    // the commit data and read the index epoch
+    openMode = config.getOpenMode();
+    if (!DirectoryReader.indexExists(directory)) {
+      indexEpoch = 1;
+    } else {
+      String epochStr = null;
+      Map<String, String> commitData = readCommitData(directory);
+      if (commitData != null) {
+        epochStr = commitData.get(INDEX_EPOCH);
+      }
+      // no commit data, or no epoch in it means an old taxonomy, so set its epoch to 1, for lack
+      // of a better value.
+      indexEpoch = epochStr == null ? 1 : Long.parseLong(epochStr);
+    }
+    
+    if (openMode == OpenMode.CREATE) {
+      ++indexEpoch;
+    }
     
     FieldType ft = new FieldType(TextField.TYPE_NOT_STORED);
     ft.setOmitNorms(true);
@@ -287,6 +296,9 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
    * @param openMode see {@link OpenMode}
    */
   protected IndexWriterConfig createIndexWriterConfig(OpenMode openMode) {
+    // TODO: should we use a more optimized Codec, e.g. Pulsing (or write custom)?
+    // The taxonomy has a unique structure, where each term is associated with one document
+ 
     // Make sure we use a MergePolicy which always merges adjacent segments and thus
     // keeps the doc IDs ordered as well (this is crucial for the taxonomy index).
     return new IndexWriterConfig(Version.LUCENE_50,
@@ -343,7 +355,8 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
   @Override
   public synchronized void close() throws IOException {
     if (!isClosed) {
-      indexWriter.commit(combinedCommitData(null));
+      indexWriter.setCommitData(combinedCommitData(indexWriter.getCommitData()));
+      indexWriter.commit();
       doClose();
     }
   }
@@ -576,7 +589,7 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
     addToCache(categoryPath, length, id);
     
     // also add to the parent array
-    getParentArray().add(id, parent);
+    parentArray = getParentArray().add(id, parent);
 
     return id;
   }
@@ -650,41 +663,31 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
     }
   }
   
-  /**
-   * Calling commit() ensures that all the categories written so far are
-   * visible to a reader that is opened (or reopened) after that call.
-   * When the index is closed(), commit() is also implicitly done.
-   * See {@link TaxonomyWriter#commit()}
-   */ 
   @Override
   public synchronized void commit() throws IOException {
     ensureOpen();
-    indexWriter.commit(combinedCommitData(null));
+    indexWriter.setCommitData(combinedCommitData(indexWriter.getCommitData()));
+    indexWriter.commit();
   }
 
-  /**
-   * Combine original user data with that of the taxonomy creation time
-   */
-  private Map<String,String> combinedCommitData(Map<String,String> userData) {
+  /** Combine original user data with the taxonomy epoch. */
+  private Map<String,String> combinedCommitData(Map<String,String> commitData) {
     Map<String,String> m = new HashMap<String, String>();
-    if (userData != null) {
-      m.putAll(userData);
+    if (commitData != null) {
+      m.putAll(commitData);
     }
-    if (createTime != null) {
-      m.put(INDEX_CREATE_TIME, createTime);
-    }
+    m.put(INDEX_EPOCH, Long.toString(indexEpoch));
     return m;
   }
   
-  /**
-   * Like commit(), but also store properties with the index. These properties
-   * are retrievable by {@link DirectoryTaxonomyReader#getCommitUserData}.
-   * See {@link TaxonomyWriter#commit(Map)}. 
-   */
   @Override
-  public synchronized void commit(Map<String,String> commitUserData) throws IOException {
-    ensureOpen();
-    indexWriter.commit(combinedCommitData(commitUserData));
+  public void setCommitData(Map<String,String> commitUserData) {
+    indexWriter.setCommitData(combinedCommitData(commitUserData));
+  }
+  
+  @Override
+  public Map<String,String> getCommitData() {
+    return combinedCommitData(indexWriter.getCommitData());
   }
   
   /**
@@ -694,17 +697,8 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
   @Override
   public synchronized void prepareCommit() throws IOException {
     ensureOpen();
-    indexWriter.prepareCommit(combinedCommitData(null));
-  }
-
-  /**
-   * Like above, and also prepares to store user data with the index.
-   * See {@link IndexWriter#prepareCommit(Map)}
-   */
-  @Override
-  public synchronized void prepareCommit(Map<String,String> commitUserData) throws IOException {
-    ensureOpen();
-    indexWriter.prepareCommit(combinedCommitData(commitUserData));
+    indexWriter.setCommitData(combinedCommitData(indexWriter.getCommitData()));
+    indexWriter.prepareCommit();
   }
   
   @Override
@@ -806,10 +800,9 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
       synchronized (this) {
         if (parentArray == null) {
           initReaderManager();
-          parentArray = new ParentArray();
           DirectoryReader reader = readerManager.acquire();
           try {
-            parentArray.refresh(reader);
+            parentArray = new ParentArray(reader);
           } finally {
             readerManager.release(reader);
           }
@@ -1022,13 +1015,29 @@ public class DirectoryTaxonomyWriter implements TaxonomyWriter {
     cacheIsComplete = false;
     shouldFillCache = true;
     
-    // update createTime as a taxonomy replace is just like it has be recreated
-    createTime = Long.toString(System.nanoTime());
+    // update indexEpoch as a taxonomy replace is just like it has be recreated
+    ++indexEpoch;
   }
 
   /** Returns the {@link Directory} of this taxonomy writer. */
   public Directory getDirectory() {
     return dir;
   }
-
+  
+  /**
+   * Used by {@link DirectoryTaxonomyReader} to support NRT.
+   * <p>
+   * <b>NOTE:</b> you should not use the obtained {@link IndexWriter} in any
+   * way, other than opening an IndexReader on it, or otherwise, the taxonomy
+   * index may become corrupt!
+   */
+  final IndexWriter getInternalIndexWriter() {
+    return indexWriter;
+  }
+  
+  /** Used by {@link DirectoryTaxonomyReader} to support NRT. */
+  final long getTaxonomyEpoch() {
+    return indexEpoch;
+  }
+  
 }

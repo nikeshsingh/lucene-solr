@@ -8,9 +8,12 @@ http://s.apache.org/luceneversions
 
 Changes in backwards compatibility policy
 
+* LUCENE-4535: oal.util.FilterIterator is now an internal API.
+  (Adrien Grand)
+
 * LUCENE-3312: The API of oal.document was restructured to
   differentiate between stored documents and indexed documents.
-  IndexReader.document(int) now returns StorableDocument
+  IndexReader.document(int) now returns StoredDocument
   instead of Document. In most cases a simple replacement
   of the return type is enough to upgrade (see MIGRATE.txt).
   (Nikola Tanković, Uwe Schindler, Chris Male, Mike McCandless,
@@ -18,11 +21,53 @@ Changes in backwards compatibility policy
 
 ======================= Lucene 4.1.0 =======================
 
+Changes in backwards compatibility policy
+
+* LUCENE-4514: Scorer's freq() method returns an integer value indicating
+  the number of times the scorer matches the current document. Previously
+  this was only sometimes the case, in some cases it returned a (meaningless)
+  floating point value.  Scorer now extends DocsEnum so it has attributes().
+  (Robert Muir)
+
+* LUCENE-4543: TFIDFSimilarity's index-time computeNorm is now final to
+  match the fact that its query-time norm usage requires a FIXED_8 encoding. 
+  Override lengthNorm and/or encode/decodeNormValue to change the specifics,
+  like Lucene 3.x. (Robert Muir)
+
+* LUCENE-3441: The facet module now supports NRT. As a result, the following
+  changes were made:
+  - DirectoryTaxonomyReader has a new constructor which takes a 
+    DirectoryTaxonomyWriter. You should use that constructor in order to get
+    the NRT support (or the old one for non-NRT).
+  - TaxonomyReader.refresh() removed in exchange for TaxonomyReader.openIfChanged
+    static method. Similar to DirectoryReader, the method either returns null
+    if no changes were made to the taxonomy, or a new TR instance otherwise.
+    Instead of calling refresh(), you should write similar code to how you reopen
+    a regular DirectoryReader.
+  - TaxonomyReader.openIfChanged (previously refresh()) no longer throws
+    IncosistentTaxonomyException, and supports recreate. InconsistentTaxoEx
+    was removed.
+  - ChildrenArrays was pulled out of TaxonomyReader into a top-level class.
+  - TaxonomyReader was made an abstract class (instead of an interface), with
+    methods such as close() and reference counting management pulled from
+    DirectoryTaxonomyReader, and made final. The rest of the methods, remained
+    abstract.
+    (Shai Erera, Gilad Barkai)
+
+* LUCENE-4576: Remove CachingWrapperFilter(Filter, boolean). This recacheDeletes
+  option gave less than 1% speedup at the expense of cache churn (filters were
+  invalidated on reopen if even a single delete was posted against the segment).
+  (Robert Muir)
+
+* LUCENE-4575: Replace IndexWriter's commit/prepareCommit versions that take
+  commitData with setCommitData(). That allows committing changes to IndexWriter
+  even if the commitData is the only thing that changes.
+  (Shai Erera, Michael McCandless)
+
 New Features
 
-* LUCENE-4226: New experimental StoredFieldsFormat (in lucene/codecs) that
-  compresses chunks of documents together in order to improve the compression
-  ratio. (Adrien Grand)
+* LUCENE-4226: New experimental StoredFieldsFormat that compresses chunks of
+  documents together in order to improve the compression ratio. (Adrien Grand)
 
 * LUCENE-4426: New ValueSource implementations (in lucene/queries) for
   DocValues fields. (Adrien Grand)
@@ -35,7 +80,7 @@ New Features
   output for a single input.  UpToTwoPositiveIntsOutputs was moved
   from lucene/core to lucene/misc.  (Mike McCandless)
 
-* LUCENE-3842: New AnalyzingCompletionLookup, for doing auto-suggest
+* LUCENE-3842: New AnalyzingSuggester, for doing auto-suggest
   using an analyzer.  This can create powerful suggesters: if the analyzer
   remove stop words then "ghost chr..." could suggest "The Ghost of
   Christmas Past"; if SynonymFilter is used to map wifi and wireless
@@ -44,31 +89,141 @@ New Features
   the suggester to ignore such variations. (Robert Muir, Sudarshan
   Gaikaiwari, Mike McCandless)
 
+* LUCENE-4446: Lucene 4.1 has a new default index format (Lucene41Codec)
+  that incorporates the previously experimental "Block" postings format
+  for better search performance. 
+  (Han Jiang, Adrien Grand, Robert Muir, Mike McCandless)
+
+* LUCENE-3846: New FuzzySuggester, like AnalyzingSuggester except it
+  also finds completions allowing for fuzzy edits in the input string.
+  (Robert Muir, Simon Willnauer, Mike McCandless)
+
+* LUCENE-4515: MemoryIndex now supports adding the same field multiple
+  times. (Simon Willnauer)
+
+* LUCENE-4540: Added an experimental Norm.setPackedLong, which allows
+  the use of VAR_INTS-encoded norms. This can be useful for cases where
+  you only need a few bits per-document, or where you might want exact
+  document length, and so on.  (Robert Muir)
+
+* LUCENE-4489: Added consumeAllTokens option to LimitTokenCountFilter
+  (hossman, Robert Muir)
+
+* LUCENE-4566: Add NRT/SearcherManager.RefreshListener/addListener to
+  be notified whenever a new searcher was opened. (selckin via Shai
+  Erera, Mike McCandless)
+
 API Changes
 
 * LUCENE-4399: Deprecated AppendingCodec. Lucene's term dictionaries
   no longer seek when writing.  (Adrien Grand, Robert Muir)
 
+* LUCENE-4479: Rename TokenStream.getTokenStream(IndexReader, int, String)
+  to TokenStream.getTokenStreamWithOffsets, and return null on failure
+  rather than throwing IllegalArgumentException.  (Alan Woodward)
+
+* LUCENE-4472: MergePolicy now accepts a MergeTrigger that provides 
+  information about the trigger of the merge ie. merge triggered due
+  to a segment merge or a full flush etc. (Simon Willnauer)
+
+* Lucene-4415: TermsFilter is now immutable. All terms need to be provided
+  as constructor argument. (Simon Willnauer)
+
+* LUCENE-4520: ValueSource.getSortField no longer throws IOExceptions
+  (Alan Woodward)
+  
+* LUCENE-4537: RateLimiter is now separated from FSDirectory and exposed via
+  RateLimitingDirectoryWrapper. Any Directory can now be rate-limited.
+  (Simon Willnauer)  
+  
 Bug Fixes
 
 * LUCENE-1822: BaseFragListBuilder hard-coded 6 char margin is too naive.
   (Alex Vigdor, Arcadius Ahouansou, Koji Sekiguchi)
 
-* LUCENE-4468: Fix rareish integer overflows in Block and Lucene40 postings 
-  formats (Robert Muir)
+* LUCENE-4468: Fix rareish integer overflows in Lucene41 postings 
+  format. (Robert Muir)
+  
+* LUCENE-4486: Add support for ConstantScoreQuery in Highlighter.
+ (Simon Willnauer)
+
+* LUCENE-4485: When CheckIndex terms, terms/docs pairs and tokens,
+  these counts now all exclude deleted documents.  (Mike McCandless)
+
+* LUCENE-4479: Highlighter works correctly for fields with term vector
+  positions, but no offsets.  (Alan Woodward)
+
+* SOLR-3906: JapaneseReadingFormFilter in romaji mode will return
+  romaji even for out-of-vocabulary kana cases (e.g. half-width forms).
+  (Robert Muir)
+
+* LUCENE-4504: Fix broken sort comparator in ValueSource.getSortField,
+  used when sorting by a function query.  (Tom Shally via Robert Muir)
+
+* LUCENE-4511: TermsFilter might return wrong results if a field is not 
+  indexed or doesn't exist in the index. (Simon Willnauer)
+
+* LUCENE-4521: IndexWriter.tryDeleteDocument could return true
+  (successfully deleting the document) but then on IndexWriter
+  close/commit fail to write the new deletions, if no other changes
+  happened in the IndexWriter instance.  (Ivan Vasilev via Mike
+  McCandless)
+
+* LUCENE-4513: Fixed that deleted nested docs are scored into the
+  parent doc when using ToParentBlockJoinQuery. (Martijn van Groningen)
+
+* LUCENE-4534: Fixed WFSTCompletionLookup and Analyzing/FuzzySuggester
+  to allow 0 byte values in the lookup keys.  (Mike McCandless)
+
+* LUCENE-4532: DirectoryTaxonomyWriter use a timestamp to denote taxonomy
+  index re-creation, which could cause a bug in case machine clocks were
+  not synced. Instead, it now tracks an 'epoch' version, which is incremented
+  whenever the taxonomy is re-created, or replaced. (Shai Erera)
+
+* LUCENE-4544: Fixed off-by-1 in ConcurrentMergeScheduler that would
+  allow 1+maxMergeCount merges threads to be created, instead of just
+  maxMergeCount (Radim Kolar, Mike McCandless)
+
+* LUCENE-4567: Fixed NullPointerException in analzying, fuzzy, and
+  WFST suggesters when no suggestions were added (selckin via Mike
+  McCandless)
+
+* LUCENE-4568: Fixed integer overflow in
+  PagedBytes.PagedBytesData{In,Out}put.getPosition. (Adrien Grand)
+
+* LUCENE-4581: GroupingSearch.setAllGroups(true) was failing to
+  actually compute allMatchingGroups (dizh@neusoft.com via Mike
+  McCandless)
+
+* LUCENE-4009: Improve TermsFilter.toString (Tim Costermans via Chris
+  Male, Mike McCandless)
 
 Optimizations
 
-* LUCENE-4443: BlockPostingsFormat no longer writes unnecessary offsets 
-  into the skipdata. You need to reindex any indexes created with
-  this experimental codec.  (Robert Muir)
+* LUCENE-2221: oal.util.BitUtil was modified to use Long.bitCount and
+  Long.numberOfTrailingZeros (which are intrinsics since Java 6u18) instead of
+  pure java bit twiddling routines in order to improve performance on modern
+  JVMs/hardware. (Dawid Weiss, Adrien Grand)
+
+* LUCENE-4509: Enable stored fields compression by default in the Lucene 4.1
+  default codec. (Adrien Grand)
+
+* LUCENE-4536: PackedInts on-disk format is now byte-aligned (it used to be
+  long-aligned), saving up to 7 bytes per array of values.
+  (Adrien Grand, Mike McCandless)
+
+* LUCENE-4512: Additional memory savings for CompressingStoredFieldsFormat.
+  (Adrien Grand, Robert Muir)
+
+* LUCENE-4443: Lucene41PostingsFormat no longer writes unnecessary offsets 
+  into the skipdata. (Robert Muir)
 
 * LUCENE-4459: Improve WeakIdentityMap.keyIterator() to remove GCed keys
   from backing map early instead of waiting for reap(). This makes test
   failures in TestWeakIdentityMap disappear, too.
   (Uwe Schindler, Mike McCandless, Robert Muir)
 
-* LUCENE-4473: BlockPostingsFormat encodes offsets more efficiently
+* LUCENE-4473: Lucene41PostingsFormat encodes offsets more efficiently
   for low frequency terms (< 128 occurrences).  (Robert Muir)
 
 * LUCENE-4462: DocumentsWriter now flushes deletes, segment infos and builds
@@ -76,7 +231,35 @@ Optimizations
   was a single threaded process while now all IO and CPU heavy computation is done
   concurrently in DocumentsWriterPerThread. (Simon Willnauer)
 
+* LUCENE-4496: Optimize Lucene41PostingsFormat when requesting a subset of
+  the postings data (via flags to TermsEnum.docs/docsAndPositions) to use
+  ForUtil.skipBlock.  (Robert Muir)
+
+* LUCENE-4497: Don't write PosVIntCount to the positions file in 
+  Lucene41PostingsFormat, as its always totalTermFreq % BLOCK_SIZE. (Robert Muir)
+
+* LUCENE-4498: In Lucene41PostingsFormat, when a term appears in only one document, 
+  Instead of writing a file pointer to a VIntBlock containing the doc id, just 
+  write the doc id.  (Mike McCandless, Robert Muir)
+
+* LUCENE-4515: MemoryIndex now uses Byte/IntBlockPool internally to hold terms and 
+  posting lists. All index data is represented as consecutive byte/int arrays to 
+  reduce GC cost and memory overhead. (Simon Willnauer) 
+
+* LUCENE-4538: DocValues now caches direct sources in a ThreadLocal exposed via SourceCache. 
+  Users of this API can now simply obtain an instance via DocValues#getDirectSource per thread.
+  (Simon Willnauer)
+
+Documentation
+
+* LUCENE-4483: Refer to BytesRef.deepCopyOf in Term's constructor that takes BytesRef.
+  (Paul Elschot via Robert Muir)
+
 Build
+
+* Upgrade randomized testing to version 2.0.4: avoid hangs on shutdown
+  hooks hanging forever by calling Runtime.halt() in addition to 
+  Runtime.exit() after a short delay to allow graceful shutdown (Dawid Weiss)
 
 * LUCENE-4451: Memory leak per unique thread caused by 
   RandomizedContext.contexts static map. Upgrade randomized testing
@@ -266,7 +449,7 @@ Bug Fixes
   many cases where IndexWriter could leave leftover files (on
   exception in various places, on reuse of a segment name after crash
   and recovery.  (Uwe Schindler, Robert Muir, Mike McCandless)
-
+  
 Optimizations
 
 * LUCENE-4322: Decrease lucene-core JAR size. The core JAR size had increased a

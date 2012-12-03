@@ -34,15 +34,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.codecs.Codec;
-import org.apache.lucene.index.DocumentsWriterPerThread.FlushedSegment;
 import org.apache.lucene.index.FieldInfos.FieldNumbers;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.index.MergePolicy.MergeTrigger;
 import org.apache.lucene.index.MergeState.CheckAbort;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.FlushInfo;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.Lock;
 import org.apache.lucene.store.LockObtainFailedException;
@@ -52,7 +51,6 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.Constants;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.InfoStream;
-import org.apache.lucene.util.MutableBits;
 import org.apache.lucene.util.ThreadInterruptedException;
 
 /**
@@ -184,6 +182,10 @@ import org.apache.lucene.util.ThreadInterruptedException;
  * keeps track of the last non commit checkpoint.
  */
 public class IndexWriter implements Closeable, TwoPhaseCommit {
+  
+  private static final int UNBOUNDED_MAX_MERGE_SEGMENTS = -1;
+
+  
   /**
    * Name of the write lock in the index.
    */
@@ -380,7 +382,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
       }
     }
     if (anySegmentFlushed) {
-      maybeMerge();
+      maybeMerge(MergeTrigger.FULL_FLUSH, UNBOUNDED_MAX_MERGE_SEGMENTS);
     }
     if (infoStream.isEnabled("IW")) {
       infoStream.message("IW", "getReader took " + (System.currentTimeMillis() - tStart) + " msec");
@@ -538,13 +540,18 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
   }
 
   /**
-   * Used internally to throw an {@link
-   * AlreadyClosedException} if this IndexWriter has been
-   * closed.
-   * @throws AlreadyClosedException if this IndexWriter is closed
+   * Used internally to throw an {@link AlreadyClosedException} if this
+   * IndexWriter has been closed or is in the process of closing.
+   * 
+   * @param failIfClosing
+   *          if true, also fail when {@code IndexWriter} is in the process of
+   *          closing ({@code closing=true}) but not yet done closing (
+   *          {@code closed=false})
+   * @throws AlreadyClosedException
+   *           if this IndexWriter is closed or in the process of closing
    */
-  protected final void ensureOpen(boolean includePendingClose) throws AlreadyClosedException {
-    if (closed || (includePendingClose && closing)) {
+  protected final void ensureOpen(boolean failIfClosing) throws AlreadyClosedException {
+    if (closed || (failIfClosing && closing)) {
       throw new AlreadyClosedException("this IndexWriter is closed");
     }
   }
@@ -552,7 +559,8 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
   /**
    * Used internally to throw an {@link
    * AlreadyClosedException} if this IndexWriter has been
-   * closed.
+   * closed ({@code closed=true}) or is in the process of
+   * closing ({@code closing=true}).
    * <p>
    * Calls {@link #ensureOpen(boolean) ensureOpen(true)}.
    * @throws AlreadyClosedException if this IndexWriter is closed
@@ -952,7 +960,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
       }
 
       if (doFlush) {
-        commitInternal(null);
+        commitInternal();
       }
 
       if (infoStream.isEnabled("IW")) {
@@ -1229,7 +1237,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
         }
       }
       if (anySegmentFlushed) {
-        maybeMerge();
+        maybeMerge(MergeTrigger.SEGMENT_FLUSH, UNBOUNDED_MAX_MERGE_SEGMENTS);
       }
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "updateDocuments");
@@ -1315,6 +1323,10 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
                 checkpoint();
               }
             }
+
+            // Must bump changeCount so if no other changes
+            // happened, we still commit this change:
+            changeCount++;
           }
           //System.out.println("  yes " + info.info.name + " " + docID);
           return true;
@@ -1451,7 +1463,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
       }
 
       if (anySegmentFlushed) {
-        maybeMerge();
+        maybeMerge(MergeTrigger.SEGMENT_FLUSH, UNBOUNDED_MAX_MERGE_SEGMENTS);
       }
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "updateDocument");
@@ -1624,7 +1636,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
       }
     }
 
-    maybeMerge(maxNumSegments);
+    maybeMerge(MergeTrigger.EXPLICIT, maxNumSegments);
 
     if (doWait) {
       synchronized(this) {
@@ -1799,25 +1811,28 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
    * Explicit calls to maybeMerge() are usually not
    * necessary. The most common case is when merge policy
    * parameters have changed.
+   * 
+   * This method will call the {@link MergePolicy} with
+   * {@link MergeTrigger#EXPLICIT}.
    *
    * <p><b>NOTE</b>: if this method hits an OutOfMemoryError
    * you should immediately close the writer.  See <a
    * href="#OOME">above</a> for details.</p>
    */
   public final void maybeMerge() throws IOException {
-    maybeMerge(-1);
+    maybeMerge(MergeTrigger.EXPLICIT, UNBOUNDED_MAX_MERGE_SEGMENTS);
   }
 
-  private final void maybeMerge(int maxNumSegments) throws IOException {
+  private final void maybeMerge(MergeTrigger trigger, int maxNumSegments) throws IOException {
     ensureOpen(false);
-    updatePendingMerges(maxNumSegments);
+    updatePendingMerges(trigger, maxNumSegments);
     mergeScheduler.merge(this);
   }
 
-  private synchronized void updatePendingMerges(int maxNumSegments)
+  private synchronized void updatePendingMerges(MergeTrigger trigger, int maxNumSegments)
     throws IOException {
     assert maxNumSegments == -1 || maxNumSegments > 0;
-
+    assert trigger != null;
     if (stopMerges) {
       return;
     }
@@ -1828,7 +1843,9 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
     }
 
     final MergePolicy.MergeSpecification spec;
-    if (maxNumSegments != -1) {
+    if (maxNumSegments != UNBOUNDED_MAX_MERGE_SEGMENTS) {
+      assert trigger == MergeTrigger.EXPLICIT || trigger == MergeTrigger.MERGE_FINISHED :
+        "Expected EXPLICT or MERGE_FINISHED as trigger even with maxNumSegments set but was: " + trigger.name();
       spec = mergePolicy.findForcedMerges(segmentInfos, maxNumSegments, Collections.unmodifiableMap(segmentsToMerge));
       if (spec != null) {
         final int numMerges = spec.merges.size();
@@ -1839,7 +1856,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
       }
 
     } else {
-      spec = mergePolicy.findMerges(segmentInfos);
+      spec = mergePolicy.findMerges(trigger, segmentInfos);
     }
 
     if (spec != null) {
@@ -1877,6 +1894,15 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
       runningMerges.add(merge);
       return merge;
     }
+  }
+
+  /**
+   * Expert: returns true if there are merges waiting to be scheduled.
+   * 
+   * @lucene.experimental
+   */
+  public synchronized boolean hasPendingMerges() {
+    return pendingMerges.size() != 0;
   }
 
   /**
@@ -2062,7 +2088,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
       // they are aborted.
       while(runningMerges.size() > 0) {
         if (infoStream.isEnabled("IW")) {
-          infoStream.message("IW", "now wait for " + runningMerges.size() + " running merge to abort");
+          infoStream.message("IW", "now wait for " + runningMerges.size() + " running merge/s to abort");
         }
         doWait();
       }
@@ -2533,20 +2559,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
    */
   protected void doBeforeFlush() throws IOException {}
 
-  /** Expert: prepare for commit.
-   *
-   * <p><b>NOTE</b>: if this method hits an OutOfMemoryError
-   * you should immediately close the writer.  See <a
-   * href="#OOME">above</a> for details.</p>
-   *
-   * @see #prepareCommit(Map) */
-  public final void prepareCommit() throws IOException {
-    ensureOpen();
-    prepareCommit(null);
-  }
-
-  /** <p>Expert: prepare for commit, specifying
-   *  commitUserData Map (String -> String).  This does the
+  /** <p>Expert: prepare for commit.  This does the
    *  first phase of 2-phase commit. This method does all
    *  steps necessary to commit changes since this writer
    *  was opened: flushes pending added and deleted docs,
@@ -2556,29 +2569,22 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
    *  #rollback()} to revert the commit and undo all changes
    *  done since the writer was opened.</p>
    *
-   *  <p>You can also just call {@link #commit(Map)} directly
+   * <p>You can also just call {@link #commit()} directly
    *  without prepareCommit first in which case that method
    *  will internally call prepareCommit.
    *
    *  <p><b>NOTE</b>: if this method hits an OutOfMemoryError
    *  you should immediately close the writer.  See <a
    *  href="#OOME">above</a> for details.</p>
-   *
-   *  @param commitUserData Opaque Map (String->String)
-   *  that's recorded into the segments file in the index,
-   *  and retrievable by {@link
-   *  IndexCommit#getUserData}.  Note that when
-   *  IndexWriter commits itself during {@link #close}, the
-   *  commitUserData is unchanged (just carried over from
-   *  the prior commit).  If this is null then the previous
-   *  commitUserData is kept.  Also, the commitUserData will
-   *  only "stick" if there are actually changes in the
-   *  index to commit.
    */
-  public final void prepareCommit(Map<String,String> commitUserData) throws IOException {
-    ensureOpen(false);
+  public final void prepareCommit() throws IOException {
+    ensureOpen();
+    prepareCommitInternal();
+  }
 
+  private void prepareCommitInternal() throws IOException {
     synchronized(commitLock) {
+      ensureOpen(false);
       if (infoStream.isEnabled("IW")) {
         infoStream.message("IW", "prepareCommit: flush");
         infoStream.message("IW", "  index before flush " + segString());
@@ -2656,7 +2662,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
       boolean success = false;
       try {
         if (anySegmentsFlushed) {
-          maybeMerge();
+          maybeMerge(MergeTrigger.FULL_FLUSH, UNBOUNDED_MAX_MERGE_SEGMENTS);
         }
         success = true;
       } finally {
@@ -2668,10 +2674,33 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
         }
       }
 
-      startCommit(toCommit, commitUserData);
+      startCommit(toCommit);
     }
   }
-
+  
+  /**
+   * Sets the commit user data map. That method is considered a transaction by
+   * {@link IndexWriter} and will be {@link #commit() committed} even if no other
+   * changes were made to the writer instance. Note that you must call this method
+   * before {@link #prepareCommit()}, or otherwise it won't be included in the
+   * follow-on {@link #commit()}.
+   * <p>
+   * <b>NOTE:</b> the map is cloned internally, therefore altering the map's
+   * contents after calling this method has no effect.
+   */
+  public final synchronized void setCommitData(Map<String,String> commitUserData) {
+    segmentInfos.setUserData(new HashMap<String,String>(commitUserData));
+    ++changeCount;
+  }
+  
+  /**
+   * Returns the commit user data map that was last committed, or the one that
+   * was set on {@link #setCommitData(Map)}.
+   */
+  public final synchronized Map<String,String> getCommitData() {
+    return segmentInfos.getUserData();
+  }
+  
   // Used only by commit and prepareCommit, below; lock
   // order is commitLock -> IW
   private final Object commitLock = new Object();
@@ -2704,29 +2733,13 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
    * href="#OOME">above</a> for details.</p>
    *
    * @see #prepareCommit
-   * @see #commit(Map)
    */
   public final void commit() throws IOException {
-    commit(null);
-  }
-
-  /** Commits all changes to the index, specifying a
-   *  commitUserData Map (String -> String).  This just
-   *  calls {@link #prepareCommit(Map)} (if you didn't
-   *  already call it) and then {@link #commit}.
-   *
-   * <p><b>NOTE</b>: if this method hits an OutOfMemoryError
-   * you should immediately close the writer.  See <a
-   * href="#OOME">above</a> for details.</p>
-   */
-  public final void commit(Map<String,String> commitUserData) throws IOException {
-
     ensureOpen();
-
-    commitInternal(commitUserData);
+    commitInternal();
   }
 
-  private final void commitInternal(Map<String,String> commitUserData) throws IOException {
+  private final void commitInternal() throws IOException {
 
     if (infoStream.isEnabled("IW")) {
       infoStream.message("IW", "commit: start");
@@ -2743,7 +2756,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
         if (infoStream.isEnabled("IW")) {
           infoStream.message("IW", "commit: now prepare");
         }
-        prepareCommit(commitUserData);
+        prepareCommitInternal();
       } else {
         if (infoStream.isEnabled("IW")) {
           infoStream.message("IW", "commit: already prepared");
@@ -2767,7 +2780,6 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
         }
         lastCommitChangeCount = pendingCommitChangeCount;
         segmentInfos.updateGeneration(pendingCommit);
-        segmentInfos.setUserData(pendingCommit.getUserData());
         rollbackSegments = pendingCommit.createBackupSegmentInfos();
         deleter.checkpoint(pendingCommit, true);
       } finally {
@@ -2812,7 +2824,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
     // We can be called during close, when closing==true, so we must pass false to ensureOpen:
     ensureOpen(false);
     if (doFlush(applyAllDeletes) && triggerMerge) {
-      maybeMerge();
+      maybeMerge(MergeTrigger.FULL_FLUSH, UNBOUNDED_MAX_MERGE_SEGMENTS);
     }
   }
 
@@ -3118,13 +3130,11 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
         mergedDeletes.dropChanges();
       }
       readerPool.release(mergedDeletes);
-      if (dropSegment) {
-        readerPool.drop(mergedDeletes.info);
-      }
     }
 
     if (dropSegment) {
       assert !segmentInfos.contains(merge.info);
+      readerPool.drop(merge.info);
       deleter.deleteNewFiles(merge.info.files());
     }
 
@@ -3245,7 +3255,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
           // segments) may now enable new merges, so we call
           // merge policy & update pending merges.
           if (success && !merge.isAborted() && (merge.maxNumSegments != -1 || (!closed && !closing))) {
-            updatePendingMerges(merge.maxNumSegments);
+            updatePendingMerges(MergeTrigger.MERGE_FINISHED, merge.maxNumSegments);
           }
         }
       }
@@ -3736,8 +3746,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
       }
 
       final IndexReaderWarmer mergedSegmentWarmer = config.getMergedSegmentWarmer();
-
-      if (poolReaders && mergedSegmentWarmer != null) {
+      if (poolReaders && mergedSegmentWarmer != null && merge.info.info.getDocCount() != 0) {
         final ReadersAndLiveDocs rld = readerPool.get(merge.info, true);
         final SegmentReader sr = rld.getReader(IOContext.READ);
         try {
@@ -3889,7 +3898,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
    *  if it wasn't already.  If that succeeds, then we
    *  prepare a new segments_N file but do not fully commit
    *  it. */
-  private void startCommit(final SegmentInfos toSync, final Map<String,String> commitUserData) throws IOException {
+  private void startCommit(final SegmentInfos toSync) throws IOException {
 
     assert testPoint("startStartCommit");
     assert pendingCommit == null;
@@ -3922,10 +3931,6 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
         }
 
         assert filesExist(toSync);
-
-        if (commitUserData != null) {
-          toSync.setUserData(commitUserData);
-        }
       }
 
       assert testPoint("midStartCommit");

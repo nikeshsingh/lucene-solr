@@ -144,7 +144,7 @@
     depends="javadocs,changes-to-html,process-webpages"/>
   <target name="compile-core" depends="compile-solr-core" unless="solr.core.compiled"/>
   
-  <target name="process-webpages" depends="define-lucene-javadoc-url"><!--depends="resolve-groovy,resolve-pegdown">-->
+  <target name="process-webpages" depends="define-lucene-javadoc-url,resolve-groovy,resolve-pegdown">
     <makeurl property="process-webpages.buildfiles" separator="|">
       <fileset dir="." includes="core/build.xml,test-framework/build.xml,solrj/build.xml,contrib/**/build.xml"/>
     </makeurl>
@@ -163,12 +163,10 @@
       <param name="luceneJavadocUrl" expression="${lucene.javadoc.url}"/>
     </xslt>
     
-    <!--nothing at the moment:
     <pegdown todir="${javadoc.dir}">
-      <fileset dir="." includes="MIGRATE.txt,JRE_VERSION_MIGRATION.txt"/>
+      <fileset dir="." includes="SYSTEM_REQUIREMENTS.txt"/>
       <globmapper from="*.txt" to="*.html"/>
     </pegdown>
-    -->
 
     <copy todir="${javadoc.dir}">
       <fileset dir="site/html" includes="**/*"/>
@@ -251,9 +249,7 @@
         <include name="executors.txt" />
       </apiFileSet>
       <fileset dir="${basedir}/build">
-        <include name="**/*.class" />
-        <!-- exclude DIH for now as it is broken with Locales and Encodings: SOLR-1916 -->
-        <exclude name="contrib/solr-dataimporthandler*/**" />
+        <include name="**/*.class" />        
       </fileset>
     </forbidden-apis>
   </target>
@@ -439,8 +435,8 @@
     <tar destfile="${package.dir}/${fullnamever}.tgz" compression="gzip" longfile="gnu">
       <tarfileset dir="."
                   prefix="${fullnamever}"
-                  includes="LICENSE.txt NOTICE.txt CHANGES.txt README.txt example/**
-                            client/README.txt client/ruby/solr-ruby/** 
+                  includes="LICENSE.txt NOTICE.txt CHANGES.txt README.txt SYSTEM_REQUIREMENTS.txt
+                            example/** client/README.txt client/ruby/solr-ruby/** 
                             contrib/**/lib/** contrib/**/README.txt 
                             licenses/**"
                   excludes="lib/README.committers.txt **/data/ **/logs/* 
@@ -522,9 +518,35 @@
     </sequential>
   </target>
 
+  <target name="documentation-lint" depends="-ecj-javadoc-lint,-documentation-lint,-documentation-lint-unsupported"
+          description="Validates the generated documentation (HTML errors, broken links,...)"/>
+  
   <!-- TODO: does solr have any other docs we should check? -->
   <!-- TODO: also integrate checkJavaDocs.py, which does more checks -->
-  <target name="documentation-lint" depends="compile-solr-test-framework,documentation,-ecj-resolve">
+  <target name="-documentation-lint" if="documentation-lint.supported" depends="documentation">
+    <jtidy-macro>
+       <!-- NOTE: must currently exclude deprecated-list due to a javadocs bug (as of 1.7.0_09)
+            javadocs generates invalid XML if you deprecate a method that takes a parameter
+            with a generic type -->
+      <fileset dir="build/docs" includes="**/*.html" excludes="**/deprecated-list.html"/>
+    </jtidy-macro>
+    <echo message="Checking for broken links..."/>
+    <check-broken-links dir="${javadoc.dir}"/>
+    <echo message="Checking for malformed docs..."/>
+    <!-- TODO: add missing package.htmls and bump this to level=package -->
+    <check-missing-javadocs dir="${javadoc.dir}" level="none"/>
+    <!-- prevent the modules without problems from getting worse -->
+    <check-missing-javadocs dir="${javadoc.dir}/solr-analysis-extras" level="package"/>
+    <check-missing-javadocs dir="${javadoc.dir}/solr-cell" level="package"/>
+    <check-missing-javadocs dir="${javadoc.dir}/solr-clustering" level="package"/>
+    <!-- solr-core: problems: -->
+    <check-missing-javadocs dir="${javadoc.dir}/solr-dataimporthandler" level="package"/>
+    <check-missing-javadocs dir="${javadoc.dir}/solr-dataimporthandler-extras" level="package"/>
+    <check-missing-javadocs dir="${javadoc.dir}/solr-solrj" level="package"/>
+    <check-missing-javadocs dir="${javadoc.dir}/solr-test-framework" level="package"/>
+  </target>
+ 
+  <target name="-ecj-javadoc-lint" depends="documentation,compile-solr-test-framework,-ecj-resolve">
     <subant target="-ecj-javadoc-lint" failonerror="true" inheritall="false">
       <propertyset refid="uptodate.and.compiled.properties"/>
       <fileset dir="core" includes="build.xml"/>
@@ -532,13 +554,8 @@
       <fileset dir="test-framework" includes="build.xml"/>
     </subant>
     <contrib-crawl target="-ecj-javadoc-lint"/>
-    <echo message="Checking for broken links..."/>
-    <check-broken-links dir="${javadoc.dir}"/>
-    <echo message="Checking for malformed docs..."/>
-    <!-- TODO: add missing package.htmls and bump this to level=package -->
-    <check-missing-javadocs dir="${javadoc.dir}" level="none"/>
   </target>
- 
+
   <!-- install-maven-tasks is *not* a useless dependency. do not remove -->
   <target name="generate-maven-artifacts" depends="install-maven-tasks">
     <sequential>

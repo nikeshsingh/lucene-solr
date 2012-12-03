@@ -30,8 +30,8 @@ import java.io.IOException;
 
 
 /**
- *  Directly provide MMapDirectory instead of relying on {@link org.apache.lucene.store.FSDirectory#open}
- *
+ * Directly provide MMapDirectory instead of relying on {@link org.apache.lucene.store.FSDirectory#open}.
+ * <p>
  * Can set the following parameters:
  * <ul>
  *  <li>unmap -- See {@link MMapDirectory#setUseUnmap(boolean)}</li>
@@ -39,7 +39,7 @@ import java.io.IOException;
  * </ul>
  *
  **/
-public class MMapDirectoryFactory extends CachingDirectoryFactory {
+public class MMapDirectoryFactory extends StandardDirectoryFactory {
   private transient static Logger log = LoggerFactory.getLogger(MMapDirectoryFactory.class);
   boolean unmapHack;
   private int maxChunk;

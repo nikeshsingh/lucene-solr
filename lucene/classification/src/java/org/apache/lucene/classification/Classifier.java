@@ -1,5 +1,3 @@
-package org.apache.lucene.classification;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.classification;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.classification;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.index.AtomicReader;
@@ -29,12 +28,12 @@ import java.io.IOException;
 public interface Classifier {
 
   /**
-   * Assign a class to the given text String
+   * Assign a class (with score) to the given text String
    * @param text a String containing text to be classified
-   * @return a String representing a class
+   * @return a {@link ClassificationResult} holding assigned class and score
    * @throws IOException If there is a low-level I/O error.
    */
-  public String assignClass(String text) throws IOException;
+  public ClassificationResult assignClass(String text) throws IOException;
 
   /**
    * Train the classifier using the underlying Lucene index

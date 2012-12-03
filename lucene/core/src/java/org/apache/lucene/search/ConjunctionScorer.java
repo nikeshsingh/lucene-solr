@@ -99,7 +99,7 @@ class ConjunctionScorer extends Scorer {
   }
 
   @Override
-  public float freq() {
+  public int freq() throws IOException {
     return scorers.length;
   }
 
