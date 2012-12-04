@@ -91,7 +91,7 @@ public abstract class CachingCollector extends Collector {
     public final int nextDoc() { throw new UnsupportedOperationException(); }
 
     @Override
-    public long estimateCost() {  return 0;  }
+    public long estimatedDocCount() {  return 0;  }
     
     }
 

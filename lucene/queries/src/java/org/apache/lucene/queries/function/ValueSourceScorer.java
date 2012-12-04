@@ -93,7 +93,7 @@ public class ValueSourceScorer extends Scorer {
   }
 
   @Override
-  public long estimateCost() {
+  public long estimatedDocCount() {
     return maxDoc;
   }
 }

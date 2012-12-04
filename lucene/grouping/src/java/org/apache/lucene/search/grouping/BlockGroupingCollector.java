@@ -119,7 +119,7 @@ public class BlockGroupingCollector extends Collector {
     }
     
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return 0;
     }
   }

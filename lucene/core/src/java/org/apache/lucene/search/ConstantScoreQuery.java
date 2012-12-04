@@ -136,7 +136,7 @@ public class ConstantScoreQuery extends Query {
       } else {
         assert query != null && innerWeight != null;
         disi = innerWeight.scorer(context, scoreDocsInOrder, topScorer, acceptDocs);
-        cost = disi == null ? 0 : ((Scorer)disi).estimateCost();
+        cost = disi == null ? 0 : ((Scorer)disi).estimatedDocCount();
       }
 
       if (disi == null) {
@@ -255,7 +255,7 @@ public class ConstantScoreQuery extends Query {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return cost;
     }
   }

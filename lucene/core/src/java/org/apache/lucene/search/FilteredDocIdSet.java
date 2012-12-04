@@ -95,8 +95,8 @@ public abstract class FilteredDocIdSet extends DocIdSet {
       }
 
       @Override
-      public long estimateCost() {
-        return _innerIter.estimateCost();
+      public long estimatedDocCount() {
+        return _innerIter.estimatedDocCount();
       }
     };
   }

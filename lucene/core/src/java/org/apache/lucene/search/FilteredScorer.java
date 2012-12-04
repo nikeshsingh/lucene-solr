@@ -53,8 +53,8 @@ public abstract class FilteredScorer extends Scorer {
   }
 
   @Override
-  public long estimateCost() {
-    return in.estimateCost();
+  public long estimatedDocCount() {
+    return in.estimatedDocCount();
   }
 
   @Override

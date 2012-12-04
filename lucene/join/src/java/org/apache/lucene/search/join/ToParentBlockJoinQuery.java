@@ -410,7 +410,7 @@ public class ToParentBlockJoinQuery extends Query {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return 1;
     }
 

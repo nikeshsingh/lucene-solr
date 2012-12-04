@@ -56,7 +56,7 @@ public final class MultiDocsEnum extends DocsEnum {
       this.subs[i] = new EnumWithSlice();
       this.subs[i].docsEnum = subs[i].docsEnum;
       if (subs[i].docsEnum != null) {
-        cost += subs[i].docsEnum.estimateCost();
+        cost += subs[i].docsEnum.estimatedDocCount();
       }
       this.subs[i].slice = subs[i].slice;
     }
@@ -161,7 +161,7 @@ public final class MultiDocsEnum extends DocsEnum {
   }
 
   @Override
-  public long estimateCost() {
+  public long estimatedDocCount() {
     return cost;
   }
 }

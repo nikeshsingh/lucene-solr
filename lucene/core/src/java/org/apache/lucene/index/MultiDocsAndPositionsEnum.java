@@ -61,7 +61,7 @@ public final class MultiDocsAndPositionsEnum extends DocsAndPositionsEnum {
       this.subs[i].docsAndPositionsEnum = subs[i].docsAndPositionsEnum;
       this.subs[i].slice = subs[i].slice;
       if (this.subs[i].docsAndPositionsEnum != null) {
-        cost += this.subs[i].docsAndPositionsEnum.estimateCost();
+        cost += this.subs[i].docsAndPositionsEnum.estimatedDocCount();
       }
     }
     upto = -1;
@@ -180,7 +180,7 @@ public final class MultiDocsAndPositionsEnum extends DocsAndPositionsEnum {
   }
 
   @Override
-  public long estimateCost() {
+  public long estimatedDocCount() {
     return cost;
   }
 }

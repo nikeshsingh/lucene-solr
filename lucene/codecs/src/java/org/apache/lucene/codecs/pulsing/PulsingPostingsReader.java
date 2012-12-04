@@ -371,7 +371,7 @@ public class PulsingPostingsReader extends PostingsReaderBase {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return cost;
     }
   }
@@ -397,7 +397,7 @@ public class PulsingPostingsReader extends PostingsReaderBase {
     private int offsetLength;
 
     private boolean payloadRetrieved;
-    private long cost;
+    private int cost;
 
     public PulsingDocsAndPositionsEnum(FieldInfo fieldInfo) {
       indexOptions = fieldInfo.getIndexOptions();
@@ -562,7 +562,7 @@ public class PulsingPostingsReader extends PostingsReaderBase {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return cost;
     }
   }

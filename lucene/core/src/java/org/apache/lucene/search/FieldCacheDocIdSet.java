@@ -109,7 +109,7 @@ public abstract class FieldCacheDocIdSet extends DocIdSet {
         }
         
         @Override
-        public long estimateCost() {
+        public long estimatedDocCount() {
           return maxDoc;
         }
       };
@@ -123,7 +123,7 @@ public abstract class FieldCacheDocIdSet extends DocIdSet {
         }
 
         @Override
-        public long estimateCost() {
+        public long estimatedDocCount() {
           return maxDoc;
         }
       };
@@ -159,7 +159,7 @@ public abstract class FieldCacheDocIdSet extends DocIdSet {
         }
 
         @Override
-        public long estimateCost() {
+        public long estimatedDocCount() {
           return maxDoc;
         }
       };

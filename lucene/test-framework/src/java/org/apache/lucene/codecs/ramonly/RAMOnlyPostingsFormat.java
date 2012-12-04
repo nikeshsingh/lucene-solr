@@ -434,7 +434,7 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return ramTerm.docs.size();
     }
   }
@@ -511,7 +511,7 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return ramTerm.docs.size();
     }
   }

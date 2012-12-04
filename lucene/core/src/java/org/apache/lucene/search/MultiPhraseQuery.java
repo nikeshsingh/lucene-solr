@@ -571,7 +571,8 @@ class UnionDocsAndPositionsEnum extends DocsAndPositionsEnum {
   }
 
   @Override
-  public long estimateCost() {
-    return Integer.MAX_VALUE; // nocommit - doesn't really matter does it?
+  public long estimatedDocCount() {
+    // this query is nuts - no idea how to estimate the cost here
+    return Integer.MAX_VALUE;
   }
 }

@@ -348,8 +348,8 @@ public class CustomScoreQuery extends Query {
     }
 
     @Override
-    public long estimateCost() {
-      return subQueryScorer.estimateCost();
+    public long estimatedDocCount() {
+      return subQueryScorer.estimatedDocCount();
     }
   }
 

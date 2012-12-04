@@ -61,7 +61,7 @@ public class TestDocIdSet extends LuceneTestCase {
             }
 
             @Override
-            public long estimateCost() {
+            public long estimatedDocCount() {
               return maxdoc;
             }
           };

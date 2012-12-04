@@ -155,7 +155,7 @@ abstract class DocSetBase implements DocSet {
           @Override
           public DocIdSetIterator iterator() {
             return new DocIdSetIterator() {            
-              private long cost = -1;
+              final long cost = bs.iterator().estimatedDocCount();
               int pos=base-1;
               int adjustedDoc=-1;
 
@@ -178,9 +178,8 @@ abstract class DocSetBase implements DocSet {
               }
 
               @Override
-              public long estimateCost() {
-                // no commit how
-                return cost = cost == -1 ? bs.cardinality() : cost;
+              public long estimatedDocCount() {
+                return cost;
               }
             };
           }

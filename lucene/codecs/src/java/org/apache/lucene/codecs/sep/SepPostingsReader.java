@@ -443,7 +443,7 @@ public class SepPostingsReader extends PostingsReaderBase {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return docFreq;
     }
   }
@@ -724,7 +724,7 @@ public class SepPostingsReader extends PostingsReaderBase {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return docFreq;
     }
   }

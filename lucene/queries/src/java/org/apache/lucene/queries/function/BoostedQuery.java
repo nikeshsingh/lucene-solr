@@ -190,8 +190,8 @@ public class BoostedQuery extends Query {
     }
 
     @Override
-    public long estimateCost() {
-      return scorer.estimateCost();
+    public long estimatedDocCount() {
+      return scorer.estimatedDocCount();
     }
   }
 

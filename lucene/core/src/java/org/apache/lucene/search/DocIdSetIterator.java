@@ -98,6 +98,6 @@ public abstract class DocIdSetIterator {
    * The estimation is a function of the number of documents the iterator
    * returns.
    */
-  public abstract long estimateCost();
+  public abstract long estimatedDocCount();
 
 }

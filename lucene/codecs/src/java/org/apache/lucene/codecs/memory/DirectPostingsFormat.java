@@ -1488,7 +1488,7 @@ public final class DirectPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return postings.length;
     }
   }
@@ -1558,7 +1558,7 @@ public final class DirectPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return postings.length;
     }
   }
@@ -1644,7 +1644,7 @@ public final class DirectPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return postings.length;
     }
   }
@@ -1801,7 +1801,7 @@ public final class DirectPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return postings.length;
     }
   }
@@ -1979,7 +1979,7 @@ public final class DirectPostingsFormat extends PostingsFormat {
     }
     
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return docIDs.length;
     }
   }
@@ -2217,7 +2217,7 @@ public final class DirectPostingsFormat extends PostingsFormat {
     }
     
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return docIDs.length;
     }
   }

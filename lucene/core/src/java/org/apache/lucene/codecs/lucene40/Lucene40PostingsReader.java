@@ -515,7 +515,7 @@ public class Lucene40PostingsReader extends PostingsReaderBase {
     }
     
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return limit;
     }
   }
@@ -893,7 +893,7 @@ public class Lucene40PostingsReader extends PostingsReaderBase {
     }
     
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return limit;
     }
   }
@@ -1191,7 +1191,7 @@ public class Lucene40PostingsReader extends PostingsReaderBase {
     }
     
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return limit;
     }
   }

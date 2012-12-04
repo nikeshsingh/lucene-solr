@@ -527,8 +527,8 @@ public class TestFilteredQuery extends LuceneTestCase {
               }
 
               @Override
-              public long estimateCost() {
-                return termDocsEnum.estimateCost();
+              public long estimatedDocCount() {
+                return termDocsEnum.estimatedDocCount();
               }
             };
           }

@@ -243,7 +243,7 @@ public class BitDocSet extends DocSetBase {
     final OpenBitSet bs = bits;
     // TODO: if cardinality isn't cached, do a quick measure of sparseness
     // and return null from bits() if too sparse.
-    final long cost = size();
+    final int cost = size();
 
     return new Filter() {
       @Override
@@ -286,7 +286,7 @@ public class BitDocSet extends DocSetBase {
               }
 
               @Override
-              public long estimateCost() {
+              public long estimatedDocCount() {
                 return cost;
               }
             };

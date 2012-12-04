@@ -41,7 +41,7 @@ class ConjunctionScorer extends Scorer {
     // lead the matching.
     ArrayUtil.mergeSort(scorers, new Comparator<Scorer>() { // sort the array
       public int compare(Scorer o1, Scorer o2) {
-        return Long.signum(o1.estimateCost() - o2.estimateCost());
+        return Long.signum(o1.estimatedDocCount() - o2.estimatedDocCount());
       }
     });
     lead = scorers[0]; // least frequent Scorer leads the intersection
@@ -113,7 +113,7 @@ class ConjunctionScorer extends Scorer {
   }
 
   @Override
-  public long estimateCost() {
-    return lead.estimateCost() * scorers.length;
+  public long estimatedDocCount() {
+    return lead.estimatedDocCount() * scorers.length;
   }
 }

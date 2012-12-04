@@ -999,7 +999,7 @@ public class MemoryIndex {
       }
 
       @Override
-      public long estimateCost() {
+      public long estimatedDocCount() {
         return 1;
       }
     }
@@ -1084,7 +1084,7 @@ public class MemoryIndex {
       }
 
       @Override
-      public long estimateCost() {
+      public long estimatedDocCount() {
         return 1;
       }
     }

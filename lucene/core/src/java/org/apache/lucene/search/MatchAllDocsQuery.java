@@ -79,7 +79,7 @@ public class MatchAllDocsQuery extends Query {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return maxDoc;
     }
   }

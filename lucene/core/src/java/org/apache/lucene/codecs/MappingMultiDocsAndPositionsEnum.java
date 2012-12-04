@@ -136,10 +136,10 @@ public final class MappingMultiDocsAndPositionsEnum extends DocsAndPositionsEnum
   }
 
   @Override
-  public long estimateCost() {
+  public long estimatedDocCount() {
     long cost = 0;
     for (EnumWithSlice enumWithSlice : subs) {
-      cost += enumWithSlice.docsAndPositionsEnum.estimateCost();
+      cost += enumWithSlice.docsAndPositionsEnum.estimatedDocCount();
     }
     return cost;
   }

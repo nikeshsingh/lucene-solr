@@ -18,7 +18,6 @@ package org.apache.lucene.util;
  */
 
 import java.util.BitSet;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
@@ -98,9 +97,9 @@ public class DocIdBitSet extends DocIdSet implements Bits {
     }
 
     @Override
-    public long estimateCost() {
-      // nocommit - how expensive can this be? it's not cached!
-      return bitSet.cardinality();
+    public long estimatedDocCount() {
+      // cardinality is too expensive - lets do an upper bound
+      return bitSet.length();
     }
   }
 }

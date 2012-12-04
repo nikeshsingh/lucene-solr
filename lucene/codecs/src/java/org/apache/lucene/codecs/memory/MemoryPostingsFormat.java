@@ -433,7 +433,7 @@ public final class MemoryPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return numDocs;
     }
   }
@@ -625,7 +625,7 @@ public final class MemoryPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return numDocs;
     }
   }

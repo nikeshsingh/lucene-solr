@@ -303,8 +303,8 @@ public class ToChildBlockJoinQuery extends Query {
     }
 
     @Override
-    public long estimateCost() {
-      return parentScorer.estimateCost();
+    public long estimatedDocCount() {
+      return parentScorer.estimatedDocCount();
     }
   }
 

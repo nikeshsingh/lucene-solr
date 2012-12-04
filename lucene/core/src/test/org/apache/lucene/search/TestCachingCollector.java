@@ -48,7 +48,7 @@ public class TestCachingCollector extends LuceneTestCase {
     public int advance(int target) throws IOException { return 0; }
     
     @Override 
-    public long estimateCost() { return 1; }
+    public long estimatedDocCount() { return 1; }
     
   }
   

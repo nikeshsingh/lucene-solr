@@ -212,8 +212,8 @@ public class FilteredQuery extends Query {
     }
 
     @Override
-    public long estimateCost() {
-      return scorer.estimateCost();
+    public long estimatedDocCount() {
+      return scorer.estimatedDocCount();
     }
   }
   
@@ -311,8 +311,8 @@ public class FilteredQuery extends Query {
     }
 
     @Override
-    public long estimateCost() {
-      return primary.estimateCost();
+    public long estimatedDocCount() {
+      return primary.estimatedDocCount();
     }
   }
   
@@ -497,7 +497,7 @@ public class FilteredQuery extends Query {
 
       final Bits filterAcceptDocs = docIdSet.bits();
         // force if RA is requested
-      final boolean useRandomAccess = (filterAcceptDocs != null && (useRandomAccess(filterAcceptDocs, filterIter.estimateCost(), context.reader().maxDoc())));
+      final boolean useRandomAccess = (filterAcceptDocs != null && (useRandomAccess(filterAcceptDocs, filterIter.estimatedDocCount(), context.reader().maxDoc())));
       if (useRandomAccess) {
         // if we are using random access, we return the inner scorer, just with other acceptDocs
         return weight.scorer(context, scoreDocsInOrder, topScorer, filterAcceptDocs);
@@ -510,7 +510,7 @@ public class FilteredQuery extends Query {
         }
         final DocIdSetIterator primary;
         final DocIdSetIterator secondary;
-        if (scorer.estimateCost() < filterIter.estimateCost()) {
+        if (scorer.estimatedDocCount() < filterIter.estimatedDocCount()) {
           primary = scorer;
           secondary = filterIter;
         } else {

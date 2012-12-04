@@ -601,7 +601,7 @@ public final class Lucene41PostingsReader extends PostingsReaderBase {
     }
     
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return docFreq;
     }
   }
@@ -1017,7 +1017,7 @@ public final class Lucene41PostingsReader extends PostingsReaderBase {
     }
     
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return docFreq;
     }
   }
@@ -1600,7 +1600,7 @@ public final class Lucene41PostingsReader extends PostingsReaderBase {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return docFreq;
     }
   }

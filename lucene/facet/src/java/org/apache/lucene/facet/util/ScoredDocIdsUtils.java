@@ -151,7 +151,7 @@ public class ScoredDocIdsUtils {
               }
 
               @Override
-              public long estimateCost() {
+              public long estimatedDocCount() {
                 return size;
               }
 
@@ -280,7 +280,7 @@ public class ScoredDocIdsUtils {
             }
 
             @Override
-            public long estimateCost() {
+            public long estimatedDocCount() {
               return maxDoc;
             }
 
@@ -375,7 +375,7 @@ public class ScoredDocIdsUtils {
             }
 
             @Override
-            public long estimateCost() {
+            public long estimatedDocCount() {
               return maxDoc;
             }
 

@@ -746,7 +746,7 @@ public class SortedIntDocSet extends DocSetBase {
               }
 
               @Override
-              public long estimateCost() {
+              public long estimatedDocCount() {
                 return endIdx - startIdx;
               }
 

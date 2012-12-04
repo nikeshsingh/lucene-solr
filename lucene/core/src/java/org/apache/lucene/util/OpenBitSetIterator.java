@@ -17,6 +17,8 @@
 
 package org.apache.lucene.util;
 
+import java.util.concurrent.TimeUnit;
+
 import org.apache.lucene.search.DocIdSetIterator;
 
 /** An iterator to iterate over set bits in an OpenBitSet.
@@ -191,9 +193,33 @@ public class OpenBitSetIterator extends DocIdSetIterator {
   }
 
   @Override
-  public long estimateCost() {
-    // this is expensive?
-    return (int) BitUtil.pop_array(arr, 0, words);
+  public long estimatedDocCount() {
+    long numSet = 0;
+    int numWordsToCount =(words / 10);
+    int increment = 1 + (words / numWordsToCount);
+    for (int i = 0; i < words; i += increment) {
+       numSet += Long.bitCount(arr[i]);
+    }
+    return numSet * 10;
   }
   
+  public static void main(String[] args) {
+    int words = Integer.MAX_VALUE >>> 6;
+    long[] arr = new long[words];
+    for (int i = 0; i < arr.length; i++) {
+      arr[i] = i;
+    }
+    for (int j = 0; j < 10; j++) {
+      
+    long t = System.nanoTime();
+    long numSet = 0;
+
+    int numWordsToCount =(words / 10);
+    int increment = 1 + (words / numWordsToCount);
+    for (int i = 0; i < words; i += increment) {
+       numSet += Long.bitCount(arr[i]);
+    }
+    System.out.println(TimeUnit.MILLISECONDS.convert(System.nanoTime() - t, TimeUnit.NANOSECONDS));
+    }
+  }
 }

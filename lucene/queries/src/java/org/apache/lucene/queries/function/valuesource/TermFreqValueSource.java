@@ -92,7 +92,7 @@ public class TermFreqValueSource extends DocFreqValueSource {
             }
 
             @Override
-            public long estimateCost() {
+            public long estimatedDocCount() {
               return 0;
             }
           };

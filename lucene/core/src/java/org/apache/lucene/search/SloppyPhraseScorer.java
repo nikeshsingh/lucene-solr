@@ -515,7 +515,7 @@ final class SloppyPhraseScorer extends Scorer {
   }
 
   @Override
-  public long estimateCost() {
+  public long estimatedDocCount() {
     return cost;
   }
   

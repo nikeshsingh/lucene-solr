@@ -281,7 +281,7 @@ public abstract class BasePostingsFormatTestCase extends LuceneTestCase {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return docFreq;
     }
   }

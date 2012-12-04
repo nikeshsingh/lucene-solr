@@ -2254,8 +2254,8 @@ class FilterImpl extends Filter {
     }
 
     @Override
-    public long estimateCost() {
-      return first.estimateCost();
+    public long estimatedDocCount() {
+      return first.estimatedDocCount();
     }
   }
 
@@ -2296,9 +2296,8 @@ class FilterImpl extends Filter {
     }
 
     @Override
-    public long estimateCost() {
-      // nocommit - can we optimize this alg based on the cost?
-      return Math.min(a.estimateCost(), b.estimateCost());
+    public long estimatedDocCount() {
+      return Math.min(a.estimatedDocCount(), b.estimatedDocCount());
     }
   }
 

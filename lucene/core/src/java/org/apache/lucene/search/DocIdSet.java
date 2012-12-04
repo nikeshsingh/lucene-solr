@@ -37,7 +37,7 @@ public abstract class DocIdSet {
       @Override
       public int nextDoc() { return NO_MORE_DOCS; }
       @Override
-      public long estimateCost() { return 0; }
+      public long estimatedDocCount() { return 0; }
     };
     
     @Override

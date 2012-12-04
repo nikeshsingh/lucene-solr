@@ -311,7 +311,7 @@ class SimpleTextFieldsReader extends FieldsProducer {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return 0;
     }
   }
@@ -332,7 +332,7 @@ class SimpleTextFieldsReader extends FieldsProducer {
     private boolean readPositions;
     private int startOffset;
     private int endOffset;
-    private long cost;
+    private int cost;
 
     public SimpleTextDocsAndPositionsEnum() {
       this.inStart = SimpleTextFieldsReader.this.in;
@@ -473,7 +473,7 @@ class SimpleTextFieldsReader extends FieldsProducer {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return cost;
     }
   }

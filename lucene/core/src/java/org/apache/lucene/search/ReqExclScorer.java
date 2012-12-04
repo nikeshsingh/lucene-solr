@@ -130,7 +130,7 @@ class ReqExclScorer extends Scorer {
   }
 
   @Override
-  public long estimateCost() {
-    return reqScorer.estimateCost();
+  public long estimatedDocCount() {
+    return reqScorer.estimatedDocCount();
   }
 }

@@ -545,7 +545,7 @@ class JoinQuery extends Query {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return cost;
     }
   }

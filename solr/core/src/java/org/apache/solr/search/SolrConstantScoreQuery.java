@@ -202,7 +202,7 @@ public class SolrConstantScoreQuery extends ConstantScoreQuery implements Extend
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return cost;
     }
   }

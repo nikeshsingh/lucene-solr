@@ -109,7 +109,7 @@ public class SpanScorer extends Scorer {
   }
 
   @Override
-  public long estimateCost() {
+  public long estimatedDocCount() {
     return Integer.MAX_VALUE; // ;)
   }
 }

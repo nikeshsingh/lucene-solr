@@ -446,7 +446,7 @@ public class SimpleTextTermVectorsReader extends TermVectorsReader {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return 1;
     }
   }
@@ -542,7 +542,7 @@ public class SimpleTextTermVectorsReader extends TermVectorsReader {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return 1;
     }
   }

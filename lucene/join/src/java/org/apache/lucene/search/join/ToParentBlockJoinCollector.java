@@ -349,7 +349,7 @@ public class ToParentBlockJoinCollector extends Collector {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return 1;
     }
   }

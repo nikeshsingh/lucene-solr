@@ -149,7 +149,7 @@ class BooleanScorer2 extends Scorer {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return 1;
     }
   }
@@ -343,7 +343,7 @@ class BooleanScorer2 extends Scorer {
   }
 
   @Override
-  public long estimateCost() {
-    return countingSumScorer.estimateCost();
+  public long estimatedDocCount() {
+    return countingSumScorer.estimatedDocCount();
   }
 }

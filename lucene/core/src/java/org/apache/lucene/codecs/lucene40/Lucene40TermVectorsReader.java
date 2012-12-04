@@ -621,7 +621,7 @@ public class Lucene40TermVectorsReader extends TermVectorsReader implements Clos
     }
     
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return freq;
     }
   }
@@ -733,7 +733,7 @@ public class Lucene40TermVectorsReader extends TermVectorsReader implements Clos
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       return freq();
     }
   }

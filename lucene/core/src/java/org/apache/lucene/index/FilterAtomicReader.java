@@ -253,8 +253,8 @@ public class FilterAtomicReader extends AtomicReader {
     }
 
     @Override
-    public long estimateCost() {
-      return in.estimateCost();
+    public long estimatedDocCount() {
+      return in.estimatedDocCount();
     }
   }
 
@@ -317,8 +317,8 @@ public class FilterAtomicReader extends AtomicReader {
     }
 
     @Override
-    public long estimateCost() {
-      return in.estimateCost();
+    public long estimatedDocCount() {
+      return in.estimatedDocCount();
     }
   }
 

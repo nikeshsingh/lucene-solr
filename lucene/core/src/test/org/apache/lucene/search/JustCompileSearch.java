@@ -89,7 +89,7 @@ final class JustCompileSearch {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
   }
@@ -193,7 +193,7 @@ final class JustCompileSearch {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
     
@@ -245,7 +245,7 @@ final class JustCompileSearch {
     }
 
     @Override
-    public long estimateCost() {
+    public long estimatedDocCount() {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
   }

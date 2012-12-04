@@ -136,7 +136,7 @@ final class BooleanScorer extends Scorer {
     public float score() { return (float)score; }
 
     @Override
-    public long estimateCost() { return 1; }
+    public long estimatedDocCount() { return 1; }
     
   }
 
@@ -216,7 +216,7 @@ final class BooleanScorer extends Scorer {
     if (optionalScorers != null && optionalScorers.size() > 0) {
       for (Scorer scorer : optionalScorers) {
         if (scorer.nextDoc() != NO_MORE_DOCS) {
-          cost += scorer.estimateCost();
+          cost += scorer.estimatedDocCount();
           scorers = new SubScorer(scorer, false, false, bucketTable.newCollector(0), scorers);
         }
       }
@@ -354,7 +354,7 @@ final class BooleanScorer extends Scorer {
   }
 
   @Override
-  public long estimateCost() {
+  public long estimatedDocCount() {
     return cost;
   }
 }
