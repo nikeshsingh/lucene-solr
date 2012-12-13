@@ -72,6 +72,8 @@ public class CommonTermsQuery extends Query {
   protected final float maxTermFrequency;
   protected final Occur lowFreqOccur;
   protected final Occur highFreqOccur;
+  private float lowFreqBoost = 1.0f;
+  private float highFreqBoost = 1.0f;
   
   /**
    * Creates a new {@link CommonTermsQuery}
@@ -147,6 +149,8 @@ public class CommonTermsQuery extends Query {
       final TermContext[] contextArray, final Term[] queryTerms) {
     BooleanQuery lowFreq = new BooleanQuery(disableCoord);
     BooleanQuery highFreq = new BooleanQuery(disableCoord);
+    highFreq.setBoost(highFreqBoost);
+    lowFreq.setBoost(lowFreqBoost);
     if (lowFreqOccur == Occur.SHOULD) {
       lowFreq.setMinimumNumberShouldMatch(minNrShouldMatch);
     }
@@ -272,6 +276,35 @@ public class CommonTermsQuery extends Query {
   public int getMinimumNumberShouldMatch() {
     return minNrShouldMatch;
   }
+  
+  /**
+   * Returns the boost for the low frequency terms subquery.
+   */
+  public float getLowFreqBoost() {
+    return lowFreqBoost;
+  }
+
+  /**
+   * Sets the boost for the low frequency terms subquery.
+   */
+  public void setLowFreqBoost(float lowFreqBoost) {
+    this.lowFreqBoost = lowFreqBoost;
+  }
+  
+  /**
+   * Returns the boost for the high frequency terms subquery.
+   */
+  public float getHighFreqBoost() {
+    return highFreqBoost;
+  }
+
+  /**
+   * Sets the boost for the high frequency terms subquery.
+   */
+  public void setHighFreqBoost(float highFreqBoost) {
+    this.highFreqBoost = highFreqBoost;
+  }
+  
   
   @Override
   public void extractTerms(Set<Term> terms) {

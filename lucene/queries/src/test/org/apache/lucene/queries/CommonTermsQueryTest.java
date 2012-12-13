@@ -1,5 +1,22 @@
 package org.apache.lucene.queries;
 
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -29,29 +46,12 @@ import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.PriorityQueue;
 
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 public class CommonTermsQueryTest extends LuceneTestCase {
   
   public void testBasics() throws IOException {
     Directory dir = newDirectory();
     RandomIndexWriter w = new RandomIndexWriter(random(), dir);
-    String[] docs = new String[] {"this is the end of the world",
+    String[] docs = new String[] {"this is the end of the world right",
         "is this it or maybe not",
         "this is the end of the universe as we know it",
         "there is the famous restaurant at the end of the universe",};
@@ -72,6 +72,7 @@ public class CommonTermsQueryTest extends LuceneTestCase {
       query.add(new Term("field", "end"));
       query.add(new Term("field", "world"));
       query.add(new Term("field", "universe"));
+      query.add(new Term("field", "right"));
       TopDocs search = s.search(query, 10);
       assertEquals(search.totalHits, 3);
       assertEquals("0", r.document(search.scoreDocs[0].doc).get("id"));
