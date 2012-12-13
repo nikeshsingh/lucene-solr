@@ -80,6 +80,7 @@ New Features
     (Mark Miller, Markus Jelsma)
   - SOLR-4033: Consistently use the solrconfig.xml lockType everywhere.
     (Mark Miller, Markus Jelsma)
+  - SOLR-4144: Replication using too much RAM. (yonik, Markus Jelsma)
     
 * SOLR-1972: Add extra statistics to RequestHandlers - 5 & 15-minute reqs/sec
   rolling averages; median, 75th, 95th, 99th, 99.9th percentile request times
@@ -142,6 +143,12 @@ New Features
 
 * SOLR-4166: LBHttpSolrServer ignores ResponseParser passed in constructor.
   (Steve Molloy via Mark Miller)
+
+* SOLR-4140: Allow access to the collections API through CloudSolrServer
+  without referencing an existing collection. (Per Steffensen via Mark Miller)
+
+* SOLR-788: Distributed search support for MLT.
+  (Matthew Woytowitz, Mike Anderson, Jamie Johnson, Mark Miller)
 
 Optimizations
 ----------------------
@@ -337,6 +344,12 @@ Bug Fixes
 * SOLR-4171: CachingDirectoryFactory should not return any directories after it
   has been closed. (Mark Miller)
 
+* SOLR-4102: Fix UI javascript error if canonical hostname can not be resolved
+  (steffkes via hossman)
+
+* SOLR-4178: ReplicationHandler should abort any current pulls and wait for 
+  it's executor to stop during core close. (Mark Miller)
+
 Other Changes
 ----------------------
 
@@ -394,6 +407,8 @@ Other Changes
 
 * SOLR-2986: Add MoreLikeThis to warning about features that require uniqueKey.
   Also, change the warning to warn log level. (Shawn Heisey via Mark Miller)
+
+* SOLR-4163: README improvements (Shawn Heisey via hossman)
 
 ==================  4.0.0 ==================
 

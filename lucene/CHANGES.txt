@@ -90,6 +90,12 @@ Changes in backwards compatibility policy
   FacetArrays no longer takes those allocators; if you need to reuse the arrays,
   you should use ReusingFacetArrays. (Shai Erera, Gilad Barkai)
 
+* LUCENE-4621: FacetIndexingParams is now a concrete class (instead of DefaultFIP).
+  Also, the entire IndexingParams chain is now immutable. If you need to override
+  a setting, you should extend the relevant class.
+  Additionally, FacetSearchParams is now immutable, and requires all FacetRequests
+  to speified at initialization time. (Shai Erera)
+  
 New Features
 
 * LUCENE-4226: New experimental StoredFieldsFormat that compresses chunks of
@@ -179,6 +185,12 @@ API Changes
   
 * LUCENE-4605: Added DocsEnum.FLAG_NONE which can be passed instead of 0 as
   the flag to .docs() and .docsAndPositions(). (Shai Erera)
+
+* LUCENE-4617: Remove FST.pack() method. Previously to make a packed FST,
+  you had to make a Builder with willPackFST=true (telling it you will later pack it),
+  create your fst with finish(), and then call pack() to get another FST.
+  Instead just pass true for doPackFST to Builder and finish() returns a packed FST.
+  (Robert Muir)
   
 Bug Fixes
 
