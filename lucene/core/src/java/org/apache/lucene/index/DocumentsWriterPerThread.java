@@ -296,7 +296,9 @@ class DocumentsWriterPerThread {
       infoStream.message("DWPT", Thread.currentThread().getName() + " update delTerm=" + delTerm + " docID=" + docState.docID + " seg=" + segmentInfo.name);
     }
     int docCount = 0;
+    boolean allDocsIndexed = false;
     try {
+      
       for(IndexDocument doc : docs) {
         docState.doc = doc;
         docState.docID = numDocsInRAM;
@@ -343,6 +345,7 @@ class DocumentsWriterPerThread {
 
         finishDocument(null);
       }
+      allDocsIndexed = true;
 
       // Apply delTerm only after all indexing has
       // succeeded, but apply it only to docs prior to when
@@ -354,6 +357,16 @@ class DocumentsWriterPerThread {
       }
 
     } finally {
+      if (!allDocsIndexed && !aborting) {
+        // the iterator threw an exception that is not aborting 
+        // go and mark all docs from this block as deleted
+        int docID = numDocsInRAM-1;
+        final int endDocID = docID - docCount;
+        while (docID > endDocID) {
+          deleteDocID(docID);
+          docID--;
+        }
+      }
       docState.clear();
     }
 
