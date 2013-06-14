@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.index.DocumentsWriter.Event;
 import org.apache.lucene.index.FieldInfos.FieldNumbers;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.MergePolicy.MergeTrigger;
@@ -182,7 +183,7 @@ import org.apache.lucene.util.ThreadInterruptedException;
  * referenced by the "front" of the index). For this, IndexFileDeleter
  * keeps track of the last non commit checkpoint.
  */
-public class IndexWriter implements Closeable, TwoPhaseCommit {
+public class IndexWriter implements Closeable, TwoPhaseCommit{
   
   private static final int UNBOUNDED_MAX_MERGE_SEGMENTS = -1;
   
@@ -360,7 +361,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
       synchronized (fullFlushLock) {
         boolean success = false;
         try {
-          anySegmentFlushed = docWriter.flushAllThreads();
+          anySegmentFlushed = docWriter.flushAllThreads(this);
           if (!anySegmentFlushed) {
             // prevent double increment since docWriter#doFlush increments the flushcount
             // if we flushed anything.
@@ -726,7 +727,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
 
       // start with previous field numbers, but new FieldInfos
       globalFieldNumberMap = getFieldNumberMap();
-      docWriter = new DocumentsWriter(codec, config, directory, this, globalFieldNumberMap, bufferedDeletesStream);
+      docWriter = new DocumentsWriter(codec, this, config, directory);
 
       // Default deleter (for backwards compatibility) is
       // KeepOnlyLastCommitDeleter:
@@ -957,7 +958,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
         if (doFlush) {
           flush(waitForMerges, true);
         } else {
-          docWriter.abort(); // already closed -- never sync on IW 
+          docWriter.abort(this); // already closed -- never sync on IW 
         }
         
       } finally {
@@ -1029,7 +1030,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
       synchronized(this) {
         closed = true;
       }
-      assert oldWriter.perThreadPool.numDeactivatedThreadStates() == oldWriter.perThreadPool.getMaxThreadStates();
+      assert oldWriter.perThreadPool.numDeactivatedThreadStates() == oldWriter.perThreadPool.getMaxThreadStates() : "" +  oldWriter.perThreadPool.numDeactivatedThreadStates() + " " +  oldWriter.perThreadPool.getMaxThreadStates();
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "closeInternal");
     } finally {
@@ -1276,9 +1277,10 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
     ensureOpen();
     try {
       boolean success = false;
-      boolean anySegmentFlushed = false;
       try {
-        anySegmentFlushed = docWriter.updateDocuments(docs, analyzer, delTerm);
+        if (docWriter.updateDocuments(docs, analyzer, delTerm)) {
+          processEvents(true);
+        }
         success = true;
       } finally {
         if (!success) {
@@ -1286,9 +1288,6 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
             infoStream.message("IW", "hit exception updating document");
           }
         }
-      }
-      if (anySegmentFlushed) {
-        maybeMerge(MergeTrigger.SEGMENT_FLUSH, UNBOUNDED_MAX_MERGE_SEGMENTS);
       }
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "updateDocuments");
@@ -1309,7 +1308,9 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
   public void deleteDocuments(Term term) throws IOException {
     ensureOpen();
     try {
-      docWriter.deleteTerms(term);
+      if (docWriter.deleteTerms(term)) {
+        processEvents(true);
+      }
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "deleteDocuments(Term)");
     }
@@ -1408,7 +1409,9 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
   public void deleteDocuments(Term... terms) throws IOException {
     ensureOpen();
     try {
-      docWriter.deleteTerms(terms);
+      if (docWriter.deleteTerms(terms)) {
+        processEvents(true);
+      }
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "deleteDocuments(Term..)");
     }
@@ -1428,7 +1431,9 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
   public void deleteDocuments(Query query) throws IOException {
     ensureOpen();
     try {
-      docWriter.deleteQueries(query);
+      if (docWriter.deleteQueries(query)) {
+        processEvents(true);
+      }
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "deleteDocuments(Query)");
     }
@@ -1450,7 +1455,9 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
   public void deleteDocuments(Query... queries) throws IOException {
     ensureOpen();
     try {
-      docWriter.deleteQueries(queries);
+      if (docWriter.deleteQueries(queries)) {
+        processEvents(true);
+      }
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "deleteDocuments(Query..)");
     }
@@ -1501,9 +1508,10 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
     ensureOpen();
     try {
       boolean success = false;
-      boolean anySegmentFlushed = false;
       try {
-        anySegmentFlushed = docWriter.updateDocument(doc, analyzer, term);
+        if (docWriter.updateDocument(doc, analyzer, term)) {
+          processEvents(true);
+        }
         success = true;
       } finally {
         if (!success) {
@@ -1511,10 +1519,6 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
             infoStream.message("IW", "hit exception updating document");
           }
         }
-      }
-
-      if (anySegmentFlushed) {
-        maybeMerge(MergeTrigger.SEGMENT_FLUSH, UNBOUNDED_MAX_MERGE_SEGMENTS);
       }
     } catch (OutOfMemoryError oom) {
       handleOOM(oom, "updateDocument");
@@ -1726,7 +1730,6 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
       // complete
       ensureOpen();
     }
-
     // NOTE: in the ConcurrentMergeScheduler case, when
     // doWait is false, we can return immediately while
     // background threads accomplish the merging
@@ -2005,8 +2008,9 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
       mergeScheduler.close();
 
       bufferedDeletesStream.clear();
+      processEvents(false);
       docWriter.close(); // mark it as closed first to prevent subsequent indexing actions/flushes 
-      docWriter.abort(); // don't sync on IW here
+      docWriter.abort(this); // don't sync on IW here
       synchronized(this) {
 
         if (pendingCommit != null) {
@@ -2098,7 +2102,8 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
          * sure it's just like a fresh index.
          */
       try {
-        docWriter.lockAndAbortAll();
+        docWriter.lockAndAbortAll(this);
+        processEvents(false);
         synchronized (this) {
           try {
             // Abort any running merges
@@ -2131,7 +2136,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
           }
         }
       } finally {
-        docWriter.unlockAllAfterAbortAll();
+        docWriter.unlockAllAfterAbortAll(this);
       }
     }
   }
@@ -2239,33 +2244,40 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
    * Atomically adds the segment private delete packet and publishes the flushed
    * segments SegmentInfo to the index writer.
    */
-  synchronized void publishFlushedSegment(SegmentInfoPerCommit newSegment,
+  void publishFlushedSegment(SegmentInfoPerCommit newSegment,
       FrozenBufferedDeletes packet, FrozenBufferedDeletes globalPacket) throws IOException {
-    // Lock order IW -> BDS
-    synchronized (bufferedDeletesStream) {
-      if (infoStream.isEnabled("IW")) {
-        infoStream.message("IW", "publishFlushedSegment");
+    try {
+      synchronized (this) {
+        // Lock order IW -> BDS
+        synchronized (bufferedDeletesStream) {
+          if (infoStream.isEnabled("IW")) {
+            infoStream.message("IW", "publishFlushedSegment");
+          }
+          
+          if (globalPacket != null && globalPacket.any()) {
+            bufferedDeletesStream.push(globalPacket);
+          } 
+          // Publishing the segment must be synched on IW -> BDS to make the sure
+          // that no merge prunes away the seg. private delete packet
+          final long nextGen;
+          if (packet != null && packet.any()) {
+            nextGen = bufferedDeletesStream.push(packet);
+          } else {
+            // Since we don't have a delete packet to apply we can get a new
+            // generation right away
+            nextGen = bufferedDeletesStream.getNextGen();
+          }
+          if (infoStream.isEnabled("IW")) {
+            infoStream.message("IW", "publish sets newSegment delGen=" + nextGen + " seg=" + segString(newSegment));
+          }
+          newSegment.setBufferedDeletesGen(nextGen);
+          segmentInfos.add(newSegment);
+          checkpoint();
+        }
       }
-      
-      if (globalPacket != null && globalPacket.any()) {
-        bufferedDeletesStream.push(globalPacket);
-      } 
-      // Publishing the segment must be synched on IW -> BDS to make the sure
-      // that no merge prunes away the seg. private delete packet
-      final long nextGen;
-      if (packet != null && packet.any()) {
-        nextGen = bufferedDeletesStream.push(packet);
-      } else {
-        // Since we don't have a delete packet to apply we can get a new
-        // generation right away
-        nextGen = bufferedDeletesStream.getNextGen();
-      }
-      if (infoStream.isEnabled("IW")) {
-        infoStream.message("IW", "publish sets newSegment delGen=" + nextGen + " seg=" + segString(newSegment));
-      }
-      newSegment.setBufferedDeletesGen(nextGen);
-      segmentInfos.add(newSegment);
-      checkpoint();
+    } finally {
+      flushCount.incrementAndGet();
+      doAfterFlush();
     }
   }
 
@@ -2695,12 +2707,13 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
           boolean flushSuccess = false;
           boolean success = false;
           try {
-            anySegmentsFlushed = docWriter.flushAllThreads();
+            anySegmentsFlushed = docWriter.flushAllThreads(this);
             if (!anySegmentsFlushed) {
               // prevent double increment since docWriter#doFlush increments the flushcount
               // if we flushed anything.
               flushCount.incrementAndGet();
             }
+            processEvents(false);
             flushSuccess = true;
 
             synchronized(this) {
@@ -2740,7 +2753,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
       } catch (OutOfMemoryError oom) {
         handleOOM(oom, "prepareCommit");
       }
- 
+     
       boolean success = false;
       try {
         if (anySegmentsFlushed) {
@@ -2755,7 +2768,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
           }
         }
       }
-
+      
       startCommit(toCommit);
     }
   }
@@ -2914,6 +2927,7 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
     if (doFlush(applyAllDeletes) && triggerMerge) {
       maybeMerge(MergeTrigger.FULL_FLUSH, UNBOUNDED_MAX_MERGE_SEGMENTS);
     }
+    processEvents(triggerMerge);
   }
 
   private boolean doFlush(boolean applyAllDeletes) throws IOException {
@@ -2935,10 +2949,11 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
       synchronized (fullFlushLock) {
       boolean flushSuccess = false;
         try {
-          anySegmentFlushed = docWriter.flushAllThreads();
+          anySegmentFlushed = docWriter.flushAllThreads(this);
           flushSuccess = true;
         } finally {
           docWriter.finishFullFlush(flushSuccess);
+          processEvents(false);
         }
       }
       synchronized(this) {
@@ -4282,5 +4297,34 @@ public class IndexWriter implements Closeable, TwoPhaseCommit {
    */
   synchronized final void flushFailed(SegmentInfo info) throws IOException {
     deleter.refresh(info.name);
+  }
+
+  final void applyDeletesAndPurge() throws IOException {
+    try {
+      docWriter.purgeBuffer(this);
+    } finally {
+      applyAllDeletes();
+      flushCount.incrementAndGet();
+    }
+  }
+  final void doAfterSegmentFlushed(boolean triggerMerge) throws IOException {
+    try {
+      docWriter.purgeBuffer(this);
+    } finally {
+      if (triggerMerge) {
+        maybeMerge(MergeTrigger.SEGMENT_FLUSH, UNBOUNDED_MAX_MERGE_SEGMENTS);
+      }
+    }
+    
+  }
+  
+  private boolean processEvents(boolean triggerMerge) throws IOException {
+    Event event;
+    boolean processed = false;
+    while((event = docWriter.pollNextEvent()) != null)  {
+      processed = true;
+      event.process(this, triggerMerge);
+    }
+    return processed;
   }
 }
